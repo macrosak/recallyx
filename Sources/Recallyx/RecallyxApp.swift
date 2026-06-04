@@ -31,13 +31,28 @@ private struct MenuBarIcon: View {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let state = AppState()
+    private let store = HistoryStore()
+    private var watcher: ClipboardWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.info("applicationDidFinishLaunching")
-        // Launch wiring is filled in across later commits: history store,
-        // clipboard watcher, hotkeys, panel, settings. The lazy-MenuBarExtra
-        // lesson from AI Replace means all of this must live here, NOT on the
-        // MenuBarExtra content's `.task`.
+        // The lazy-MenuBarExtra lesson from AI Replace means all launch wiring
+        // must live here, NOT on the MenuBarExtra content's `.task`.
+
+        state.historyCount = store.items.count
+        store.onChange = { [weak self] in
+            guard let self else { return }
+            self.state.historyCount = self.store.items.count
+        }
+
+        // "Capture sensitive data" is off by default; wired to Settings in a
+        // later commit.
+        let watcher = ClipboardWatcher(store: store, captureSensitive: { false })
+        watcher.start()
+        self.watcher = watcher
+
+        // Remaining wiring (hotkeys, history panel, settings window) lands in
+        // later commits.
     }
 
     func openSettings() {
@@ -46,7 +61,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func clearHistory() {
-        // Wired up in commit 6 (Settings / history store).
-        Log.info("clearHistory (not yet wired)")
+        store.clear()
     }
 }
