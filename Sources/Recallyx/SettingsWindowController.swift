@@ -32,8 +32,8 @@ final class SettingsWindowController {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 564, height: 640))
-        window.contentMinSize = NSSize(width: 564, height: 560)
+        window.setContentSize(NSSize(width: 720, height: 640))
+        window.contentMinSize = NSSize(width: 600, height: 560)
         window.center()
         self.window = window
 

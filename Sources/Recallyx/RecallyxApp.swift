@@ -77,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let historyPanel = HistoryPanelController(
             itemsProvider: { [store] in store.items },
             actionsProvider: { [settingsStore] in settingsStore.settings.actions },
+            defaultModelProvider: { [settingsStore] in settingsStore.settings.defaultModel },
             imageURLResolver: { [store] in store.imageURL(for: $0) },
             onBuiltin: { [weak self] action, item, app in
                 self?.runBuiltin(action, item: item, into: app) ?? true

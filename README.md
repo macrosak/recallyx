@@ -11,7 +11,9 @@ The panel is a frosted floating window matching the [design reference](docs.loca
 
 > Status: **Phase 1 complete** — a usable clipboard manager (watch · store · search · paste · built-in actions · settings), no AI. Phase 2 layers script/AI actions and ⌃⇧V on top. See [`docs.local/2026-06-04-recallyx-design.md`](docs.local/2026-06-04-recallyx-design.md).
 
-Settings (menu bar → Settings…, or ⌘,) lets you set the history cap, toggle capturing of sensitive/transient clips (off by default — password-manager copies are skipped), clear history, and launch at login.
+Settings (menu bar → Settings…, or ⌘,) lets you set the history cap, toggle capturing of sensitive/transient clips (off by default — password-manager copies are skipped), clear history, and launch at login. The **Actions** tab builds reorderable pipelines of script/AI steps; the General tab holds your OpenAI key + default model.
+
+**Actions** (⇥ on a clip in the panel) run a clip's text through a pipeline and paste the result. Pick a saved action, type a **Custom…** one-off instruction, or ⇥ again to **edit a saved action's steps for just this run**. Add your OpenAI API key in Settings → General to use AI steps.
 
 ## Requirements
 

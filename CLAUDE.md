@@ -45,7 +45,10 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 - `ScriptRunner.swift` / `OpenAIClient.swift` / `KeychainStore.swift` / `Notifier.swift` — copied from AI Replace (env key `RECALLYX_SCRIPT`, keychain service `io.github.macrosak.recallyx`, `ModelCatalog.default = gpt-4o-mini`).
 - Action menu now shows built-ins → `Saved actions` divider → user actions (text clips only, with SCRIPT/AI tags). Running a saved action threads the clip text through `ActionRunner` and pastes the result (which re-enters history as a fresh top item — *not* marked self-copy). Settings General gains the OpenAI section (API key + Show/Test/Save, Default model). `AppSettings` extended with `defaultModel` + `actions`.
 
-(Still to come: Actions tab UI + Custom…/edit-before-run, ⌃⇧V.)
+- `SettingsActionsView.swift` (+ `IconCatalog`/`IconPickerView`) — the Actions tab: action list (add/delete/select) on the left, a step-pipeline editor on the right (name, icon picker, per-step type segmented Script/AI, enable toggle, body editor, model override, reorder/remove, Add step). Edits write straight into `settingsStore.settings.actions`.
+- **Ad-hoc AI in the panel.** The vm gains `.custom` and `.edit` modes. The action menu's **Custom…** entry (text clips) opens a one-off prompt column → ↵ runs a transient single-`ai`-step action. **Edit-before-run**: ⇥ on a highlighted saved action enters `.edit`, showing step 1's body editable; ⇥ paginates steps; ⌘↵ runs the modified *transient copy* (the saved action is untouched). Both go through the same `onRunAction` → `ActionRunner`. `CustomPromptColumn`/`EditStepsColumn` match the design. Focus moves to the editor in custom/edit modes, to search in list, to nothing in the menu (so typed letters don't mutate the query).
+
+(Still to come: ⌃⇧V transform-selection, final polish.)
 
 ## UI / visual design
 Native SwiftUI matched to the proposal export in `docs.local/design-reference/` (30 reference panels + the `screens/*.jsx` token source). `RXTheme` is the JSX `RX` palette translated to `Color`. The panel is a frosted floating `NSPanel`; Settings (later) is a solid window. Dark + light both supported via `@Environment(\.colorScheme)`.

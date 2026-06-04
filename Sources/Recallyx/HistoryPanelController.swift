@@ -19,6 +19,7 @@ final class HistoryPanelController {
 
     private let itemsProvider: () -> [HistoryItem]
     private let actionsProvider: () -> [Action]
+    private let defaultModelProvider: () -> String
     private let imageURLResolver: (HistoryItem) -> URL?
     /// Perform a built-in action. Returns `true` if the panel should dismiss
     /// afterwards (paste/copy/reveal); `false` keeps it open (delete).
@@ -29,12 +30,14 @@ final class HistoryPanelController {
     init(
         itemsProvider: @escaping () -> [HistoryItem],
         actionsProvider: @escaping () -> [Action] = { [] },
+        defaultModelProvider: @escaping () -> String = { ModelCatalog.default },
         imageURLResolver: @escaping (HistoryItem) -> URL?,
         onBuiltin: @escaping (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool,
         onRunAction: @escaping (Action, HistoryItem, NSRunningApplication?) -> Void = { _, _, _ in }
     ) {
         self.itemsProvider = itemsProvider
         self.actionsProvider = actionsProvider
+        self.defaultModelProvider = defaultModelProvider
         self.imageURLResolver = imageURLResolver
         self.onBuiltin = onBuiltin
         self.onRunAction = onRunAction
@@ -70,9 +73,11 @@ final class HistoryPanelController {
         )
         self.viewModel = viewModel
 
-        let root = HistoryPanelView(viewModel: viewModel, imageURL: { [weak self] in
-            self?.imageURLResolver($0)
-        })
+        let root = HistoryPanelView(
+            viewModel: viewModel,
+            imageURL: { [weak self] in self?.imageURLResolver($0) },
+            defaultModel: defaultModelProvider()
+        )
         let hosting = NSHostingView(rootView: root)
         hosting.frame = NSRect(origin: .zero, size: panelSize)
         let panel = HistoryPanel(contentView: hosting, size: panelSize)
@@ -129,16 +134,42 @@ final class HistoryPanelController {
         localClickMonitor = nil
     }
 
-    /// Intercept navigation keys; everything else flows to the search TextField.
+    /// Intercept navigation keys; everything else flows to the focused control
+    /// (search field, or the ad-hoc AI text editor). Branches on mode so arrows
+    /// reach the text editor for cursor movement in custom/edit modes.
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         guard let vm = viewModel else { return event }
-        switch event.keyCode {
-        case 0x7E: vm.moveUp(); return nil       // ↑
-        case 0x7D: vm.moveDown(); return nil      // ↓
-        case 0x24, 0x4C: vm.confirm(); return nil // ↵ / numpad enter
-        case 0x35: vm.cancel(); return nil        // esc
-        case 0x30: vm.tab(); return nil           // ⇥ — open/close action menu
-        default: return event
+        let isReturn = event.keyCode == 0x24 || event.keyCode == 0x4C
+        let isEsc = event.keyCode == 0x35
+        let isTab = event.keyCode == 0x30
+
+        switch vm.mode {
+        case .list, .actions:
+            switch event.keyCode {
+            case 0x7E: vm.moveUp(); return nil
+            case 0x7D: vm.moveDown(); return nil
+            case 0x24, 0x4C: vm.confirm(); return nil
+            case 0x35: vm.cancel(); return nil
+            case 0x30: vm.tab(); return nil
+            default: return event
+            }
+
+        case .custom:
+            // ↵ runs the one-off prompt; esc backs out; arrows/typing → editor.
+            if isReturn { vm.confirm(); return nil }
+            if isEsc { vm.cancel(); return nil }
+            if isTab { return nil }
+            return event
+
+        case .edit:
+            // ⌘↵ runs; plain ↵ adds a newline; ⇥ advances steps; esc cancels.
+            if isReturn {
+                if event.modifierFlags.contains(.command) { vm.runEdit(); return nil }
+                return event
+            }
+            if isEsc { vm.cancel(); return nil }
+            if isTab { vm.tab(); return nil }
+            return event
         }
     }
 }

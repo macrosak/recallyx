@@ -119,6 +119,124 @@ struct ActionMenuColumn: View {
     }
 }
 
+/// Right column for the Custom… one-off prompt (a transient single-AI-step run).
+struct CustomPromptColumn: View {
+    let item: HistoryItem
+    @Binding var text: String
+    let defaultModel: String
+    let theme: RXTheme
+    var focus: FocusState<HistoryPanelView.Field?>.Binding
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ColumnHeader(label: "Custom prompt", theme: theme) {
+                AppIconView(item: item, size: 15)
+            }
+            VStack(alignment: .leading, spacing: 11) {
+                Text("One-off instruction — runs once on this clip, then it's discarded.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(theme.textDim)
+                PanelEditField(text: $text, theme: theme, minHeight: 92)
+                    .focused(focus, equals: .editor)
+                HStack(alignment: .top, spacing: 8) {
+                    Text("{{TEXT}}")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(theme.textDim)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 4).fill(theme.chip))
+                    Text("is replaced with the clip. Omit it and the clip is appended to your instruction.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(theme.textFaint)
+                }
+                Spacer(minLength: 0)
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkle").font(.system(size: 13)).foregroundStyle(theme.textDim)
+                    Text("Runs through the AI step · model \(defaultModel)")
+                        .font(.system(size: 12)).foregroundStyle(theme.textDim)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+        }
+    }
+}
+
+/// Right column for edit-before-run: paginated over a transient copy's steps.
+struct EditStepsColumn: View {
+    let action: Action
+    let stepIndex: Int
+    @Binding var body_: String
+    let theme: RXTheme
+    var focus: FocusState<HistoryPanelView.Field?>.Binding
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ColumnHeader(label: "Edit & run · \(action.name)", theme: theme)
+            VStack(alignment: .leading, spacing: 11) {
+                HStack(spacing: 7) {
+                    ForEach(Array(action.steps.enumerated()), id: \.element.id) { idx, step in
+                        stepPill(idx: idx, step: step)
+                    }
+                    Spacer()
+                    Text("Step \(stepIndex + 1) of \(action.steps.count)")
+                        .font(.system(size: 11.5)).foregroundStyle(theme.textFaint).monospacedDigit()
+                }
+                Text(currentIsAI ? "PROMPT" : "BASH")
+                    .font(.system(size: 11.5, weight: .semibold)).tracking(0.3)
+                    .foregroundStyle(theme.textFaint)
+                PanelEditField(text: $body_, theme: theme, minHeight: 96)
+                    .focused(focus, equals: .editor)
+                Spacer(minLength: 0)
+                HStack(spacing: 7) {
+                    Image(systemName: "lock").font(.system(size: 12)).foregroundStyle(theme.textFaint)
+                    Text("This run only — your saved “\(action.name)” is left untouched.")
+                        .font(.system(size: 11.5)).foregroundStyle(theme.textFaint)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 13)
+        }
+    }
+
+    private var currentIsAI: Bool {
+        action.steps.indices.contains(stepIndex) && action.steps[stepIndex].type == .ai
+    }
+
+    private func stepPill(idx: Int, step: Step) -> some View {
+        let on = idx == stepIndex
+        return HStack(spacing: 6) {
+            Text("\(idx + 1)").opacity(0.8)
+            Image(systemName: step.type == .ai ? "sparkle" : "scroll").font(.system(size: 11))
+            Text(step.type == .ai ? "AI" : "Script")
+        }
+        .font(.system(size: 11.5, weight: .semibold))
+        .foregroundStyle(on ? .white : theme.textDim)
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 7).fill(on ? theme.sel : theme.chip)
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(on ? .clear : theme.chipBorder, lineWidth: 0.5)))
+    }
+}
+
+/// Accent-bordered monospaced editor used by the ad-hoc AI columns.
+struct PanelEditField: View {
+    @Binding var text: String
+    let theme: RXTheme
+    var minHeight: CGFloat = 92
+
+    var body: some View {
+        TextEditor(text: $text)
+            .font(.system(size: 12.5, design: .monospaced))
+            .foregroundStyle(theme.text)
+            .scrollContentBackground(.hidden)
+            .padding(.horizontal, 9).padding(.vertical, 7)
+            .frame(minHeight: minHeight, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(theme.isDark ? Color(white: 0, opacity: 0.22) : Color(white: 0, opacity: 0.03))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(theme.accent, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(theme.selSoft, lineWidth: 3).blur(radius: 1))
+            )
+    }
+}
+
 /// Uppercase divider with a trailing hairline, mirroring the proposal's `Divider`.
 struct MenuDivider: View {
     let label: String

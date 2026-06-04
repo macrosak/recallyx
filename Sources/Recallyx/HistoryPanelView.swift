@@ -6,9 +6,16 @@ struct HistoryPanelView: View {
     @ObservedObject var viewModel: HistoryPanelViewModel
     /// Resolves an image item to its on-disk PNG (the store owns the path).
     let imageURL: (HistoryItem) -> URL?
+    /// Default model name shown in the Custom… footer.
+    var defaultModel: String = ModelCatalog.default
+
+    /// Which control holds keyboard focus. Search in list mode; the ad-hoc AI
+    /// editor in custom/edit mode; nothing in the action menu (so typed letters
+    /// don't mutate the search query under it).
+    enum Field: Hashable { case search, editor }
 
     @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var searchFocused: Bool
+    @FocusState private var focus: Field?
 
     private var theme: RXTheme { RXTheme.current(colorScheme) }
 
@@ -34,7 +41,17 @@ struct HistoryPanelView: View {
         }
         .frame(width: 760)
         .background(theme.panelTint)
-        .onAppear { searchFocused = true }
+        .onAppear { focus = .search }
+        .onChange(of: viewModel.mode) { syncFocus($0) }
+    }
+
+    /// Move focus to the right control as the mode changes (see `Field`).
+    private func syncFocus(_ mode: HistoryPanelViewModel.Mode) {
+        switch mode {
+        case .list: focus = .search
+        case .actions: focus = nil
+        case .custom, .edit: focus = .editor
+        }
     }
 
     private var hints: [HintItem] {
@@ -49,7 +66,19 @@ struct HistoryPanelView: View {
             return [
                 HintItem(keys: ["↑", "↓"], label: "select"),
                 HintItem(keys: ["↵"], label: "run"),
+                HintItem(keys: ["⇥"], label: "edit"),
                 HintItem(keys: ["esc"], label: "back"),
+            ]
+        case .custom:
+            return [
+                HintItem(keys: ["↵"], label: "run once"),
+                HintItem(keys: ["esc"], label: "back"),
+            ]
+        case .edit:
+            return [
+                HintItem(keys: ["⇥"], label: "next step"),
+                HintItem(keys: ["⌘", "↵"], label: "run"),
+                HintItem(keys: ["esc"], label: "cancel"),
             ]
         }
     }
@@ -60,16 +89,18 @@ struct HistoryPanelView: View {
     private var leftColumn: some View {
         switch viewModel.mode {
         case .list: list
-        case .actions: detail // the clip you're acting on becomes the context
+        // The clip you're acting on becomes the context column.
+        case .actions, .custom, .edit: detail(viewModel.actionItem)
         }
     }
 
     @ViewBuilder
     private var rightColumn: some View {
         switch viewModel.mode {
-        case .list: detail
+        case .list:
+            detail(viewModel.selectedItem)
         case .actions:
-            if let item = viewModel.selectedItem {
+            if let item = viewModel.actionItem {
                 ActionMenuColumn(
                     item: item,
                     items: viewModel.menuItems,
@@ -80,6 +111,18 @@ struct HistoryPanelView: View {
                         viewModel.confirm()
                     }
                 )
+            } else {
+                Color.clear
+            }
+        case .custom:
+            if let item = viewModel.actionItem {
+                CustomPromptColumn(item: item, text: $viewModel.customText, defaultModel: defaultModel, theme: theme, focus: $focus)
+            } else {
+                Color.clear
+            }
+        case .edit:
+            if let action = viewModel.editAction {
+                EditStepsColumn(action: action, stepIndex: viewModel.editStepIndex, body_: $viewModel.editBody, theme: theme, focus: $focus)
             } else {
                 Color.clear
             }
@@ -97,7 +140,7 @@ struct HistoryPanelView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 19))
                 .foregroundStyle(theme.text)
-                .focused($searchFocused)
+                .focused($focus, equals: .search)
             Text("\(viewModel.filtered.count) clips")
                 .font(.system(size: 12))
                 .foregroundStyle(theme.textFaint)
@@ -139,13 +182,12 @@ struct HistoryPanelView: View {
 
     // MARK: - Detail
 
-    private var detail: some View {
-        Group {
-            if let item = viewModel.selectedItem {
-                DetailPaneView(item: item, theme: theme, imageURL: imageURL(item))
-            } else {
-                Color.clear
-            }
+    @ViewBuilder
+    private func detail(_ item: HistoryItem?) -> some View {
+        if let item {
+            DetailPaneView(item: item, theme: theme, imageURL: imageURL(item))
+        } else {
+            Color.clear
         }
     }
 }

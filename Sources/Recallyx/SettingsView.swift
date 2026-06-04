@@ -20,8 +20,7 @@ struct SettingsView: View {
     let clearHistory: () -> Void
     @State private var tab: SettingsTab
 
-    /// Tabs available this build. The Actions tab is added with the AI layer.
-    private let tabs: [SettingsTab] = [.general]
+    private let tabs: [SettingsTab] = [.general, .actions]
 
     @Environment(\.colorScheme) private var colorScheme
     private var theme: SettingsTheme { SettingsTheme.current(colorScheme) }
@@ -35,21 +34,19 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                Group {
-                    switch tab {
-                    case .general:
-                        SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, theme: theme)
-                    case .actions:
-                        EmptyView()
-                    }
+            switch tab {
+            case .general:
+                ScrollView {
+                    SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, theme: theme)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 20)
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 20)
+            case .actions:
+                SettingsActionsView(settingsStore: settingsStore, theme: theme)
             }
         }
         .background(theme.body)
-        .frame(minWidth: 564, minHeight: 560)
+        .frame(minWidth: 600, minHeight: 560)
     }
 
     private var header: some View {
