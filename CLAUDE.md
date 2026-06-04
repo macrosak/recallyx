@@ -34,7 +34,12 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 - `Paster.swift` — paste mechanics extracted from `CorrectionController` (set clipboard → activate source app → synth ⌘V; text + image).
 - `ActionMenu.swift` — `BuiltinAction` (Paste / Copy / Delete / Copy file path / Reveal in Finder; entries vary by clip kind) + `ActionRowView` / `ActionMenuColumn`. The vm gains a `.actions` mode: ⇥ opens the menu (columns swap to detail | actions), ↑↓ pick, ↵ run, esc back. Delete removes locally and stays open; other actions perform + dismiss.
 
-(Components still to come per commit: settings, `ActionRunner`, `ScriptRunner`/`OpenAIClient`. The action menu's Custom… + saved script/AI actions land with the Phase 2 action model.)
+- `Settings.swift` — `AppSettings` (retentionCap / captureSensitive / launchAtLogin; custom decoder defaults missing keys) + `SettingsStore` (debounced UserDefaults, `onChange` pushes live changes into the stores). `LaunchAtLogin.swift` wraps `SMAppService`.
+- `SettingsView.swift` / `SettingsGeneralView.swift` / `SettingsChrome.swift` / `SettingsWindowController.swift` — solid Settings window (transparent full-size titlebar so the custom header sits behind native traffic lights). `SettingsTheme` = the proposal's `stheme`. General tab: Shortcuts (read-only ⌘⇧V / ⌃⇧V), History (retention cap, Capture sensitive data, Clear), Startup (Launch at login). OpenAI section + Actions tab arrive with the AI layer.
+
+**Phase 1 complete here** — a usable, shippable clipboard manager with no AI.
+
+(Components still to come per commit: `ActionRunner`, `ScriptRunner`/`OpenAIClient`, OpenAI settings, Actions tab + Custom…/edit-before-run, ⌃⇧V.)
 
 ## UI / visual design
 Native SwiftUI matched to the proposal export in `docs.local/design-reference/` (30 reference panels + the `screens/*.jsx` token source). `RXTheme` is the JSX `RX` palette translated to `Color`. The panel is a frosted floating `NSPanel`; Settings (later) is a solid window. Dark + light both supported via `@Environment(\.colorScheme)`.

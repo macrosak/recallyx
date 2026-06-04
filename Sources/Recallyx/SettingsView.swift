@@ -1,0 +1,106 @@
+import SwiftUI
+
+enum SettingsTab: String, Hashable {
+    case general
+    case actions
+
+    var title: String {
+        switch self {
+        case .general: return "General"
+        case .actions: return "Actions"
+        }
+    }
+}
+
+/// Root of the Settings window: a custom header (segmented tabs + brand) over a
+/// transparent native title bar (traffic lights show through), then the tab body.
+/// Matches the proposal's `WinChrome`.
+struct SettingsView: View {
+    @ObservedObject var settingsStore: SettingsStore
+    let clearHistory: () -> Void
+    @State private var tab: SettingsTab
+
+    /// Tabs available this build. The Actions tab is added with the AI layer.
+    private let tabs: [SettingsTab] = [.general]
+
+    @Environment(\.colorScheme) private var colorScheme
+    private var theme: SettingsTheme { SettingsTheme.current(colorScheme) }
+
+    init(settingsStore: SettingsStore, clearHistory: @escaping () -> Void, initialTab: SettingsTab = .general) {
+        self.settingsStore = settingsStore
+        self.clearHistory = clearHistory
+        self._tab = State(initialValue: initialTab)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            ScrollView {
+                Group {
+                    switch tab {
+                    case .general:
+                        SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, theme: theme)
+                    case .actions:
+                        EmptyView()
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 20)
+            }
+        }
+        .background(theme.body)
+        .frame(minWidth: 564, minHeight: 560)
+    }
+
+    private var header: some View {
+        ZStack {
+            theme.chrome
+            if tabs.count > 1 {
+                SegmentedTabs(tabs: tabs, selection: $tab, theme: theme)
+            }
+            HStack {
+                Spacer()
+                HStack(spacing: 7) {
+                    BrandMark(size: 16, color: theme.accent)
+                    Text("Recallyx")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.textDim)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .frame(height: 48)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.cardBorder).frame(height: 0.5)
+        }
+    }
+}
+
+/// Pill segmented control in the title bar.
+struct SegmentedTabs: View {
+    let tabs: [SettingsTab]
+    @Binding var selection: SettingsTab
+    let theme: SettingsTheme
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(tabs, id: \.self) { tab in
+                let on = tab == selection
+                Text(tab.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(on ? theme.text : theme.textDim)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(on ? (theme.isDark ? Color(white: 1, opacity: 0.10) : .white) : .clear)
+                            .shadow(color: on && !theme.isDark ? .black.opacity(0.12) : .clear, radius: 1, y: 0.5)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { selection = tab }
+            }
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 9).fill(theme.segBg))
+    }
+}

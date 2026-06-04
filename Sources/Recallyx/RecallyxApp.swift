@@ -31,10 +31,12 @@ private struct MenuBarIcon: View {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let state = AppState()
-    private let store = HistoryStore()
+    private let settingsStore = SettingsStore()
+    private lazy var store = HistoryStore(cap: settingsStore.settings.retentionCap)
     private var watcher: ClipboardWatcher?
     private var hotkey: HotkeyManager?
     private var historyPanel: HistoryPanelController?
+    private var settingsWindow: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.info("applicationDidFinishLaunching")
@@ -47,11 +49,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.state.historyCount = self.store.items.count
         }
 
-        // "Capture sensitive data" is off by default; wired to Settings in a
-        // later commit.
-        let watcher = ClipboardWatcher(store: store, captureSensitive: { false })
+        // Reconcile launch-at-login with the persisted preference.
+        applyLaunchAtLoginIfDrifted()
+
+        // Push live settings changes into the stores.
+        settingsStore.onChange = { [weak self] settings in
+            self?.store.cap = settings.retentionCap
+        }
+
+        // The watcher reads the "Capture sensitive data" flag live from settings.
+        let watcher = ClipboardWatcher(
+            store: store,
+            captureSensitive: { [settingsStore] in settingsStore.settings.captureSensitive }
+        )
         watcher.start()
         self.watcher = watcher
+
+        let settingsWindow = SettingsWindowController(
+            settingsStore: settingsStore,
+            clearHistory: { [weak self] in self?.store.clear() }
+        )
+        self.settingsWindow = settingsWindow
 
         let historyPanel = HistoryPanelController(
             itemsProvider: { [store] in store.items },
@@ -118,11 +136,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func openSettings() {
-        // Wired up in commit 6 (Settings window).
-        Log.info("openSettings (not yet wired)")
+        settingsWindow?.show()
     }
 
     func clearHistory() {
         store.clear()
+    }
+
+    /// The system can silently disable us (user removed us from Login Items);
+    /// the persisted preference wins — reconcile on every launch.
+    private func applyLaunchAtLoginIfDrifted() {
+        let want = settingsStore.settings.launchAtLogin
+        guard LaunchAtLogin.isEnabled != want else { return }
+        do {
+            try LaunchAtLogin.set(want)
+            Log.info("launch-at-login reconciled to \(want)")
+        } catch {
+            Log.error("launch-at-login reconcile failed: \(error.localizedDescription)")
+        }
     }
 }
