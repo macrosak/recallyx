@@ -56,8 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let historyPanel = HistoryPanelController(
             itemsProvider: { [store] in store.items },
             imageURLResolver: { [store] in store.imageURL(for: $0) },
-            onPaste: { [weak self] item, app in
-                self?.paste(item, into: app)
+            onBuiltin: { [weak self] action, item, app in
+                self?.runBuiltin(action, item: item, into: app) ?? true
             }
         )
         self.historyPanel = historyPanel
@@ -67,6 +67,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .showHistory: self?.historyPanel?.toggle()
             case .transformSelection: break // wired in the ⌃⇧V commit
             }
+        }
+    }
+
+    /// Run a built-in action against a clip. Returns whether the panel should
+    /// dismiss afterwards (true for everything except Delete, which keeps the
+    /// panel open so the user can keep browsing).
+    @discardableResult
+    private func runBuiltin(_ action: BuiltinAction, item: HistoryItem, into app: NSRunningApplication?) -> Bool {
+        switch action {
+        case .paste:
+            paste(item, into: app)
+            return true
+        case .copy:
+            if let text = item.text { Paster.copyText(text) }
+            watcher?.markSelfCopy(item.contentHash)
+            state.flash(.success)
+            return true
+        case .delete:
+            store.delete(item.id)
+            return false
+        case .copyFilePath:
+            if let url = store.imageURL(for: item) { Paster.copyText(url.path) }
+            state.flash(.success)
+            return true
+        case .revealInFinder:
+            if let url = store.imageURL(for: item) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+            return true
         }
     }
 

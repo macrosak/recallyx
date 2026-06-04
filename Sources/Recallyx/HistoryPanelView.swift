@@ -20,25 +20,70 @@ struct HistoryPanelView: View {
                     .frame(height: 470)
             } else {
                 HStack(spacing: 0) {
-                    list
+                    leftColumn
                         .frame(maxWidth: .infinity)
                         .overlay(alignment: .trailing) {
                             Rectangle().fill(theme.hairline).frame(width: 0.5)
                         }
-                    detail
+                    rightColumn
                         .frame(maxWidth: .infinity)
                 }
                 .frame(height: 470)
             }
-            HintBar(items: [
-                HintItem(keys: ["↵"], label: "Paste"),
-                HintItem(keys: ["⇥"], label: "Actions"),
-                HintItem(keys: ["esc"], label: "Close"),
-            ], theme: theme)
+            HintBar(items: hints, theme: theme)
         }
         .frame(width: 760)
         .background(theme.panelTint)
         .onAppear { searchFocused = true }
+    }
+
+    private var hints: [HintItem] {
+        switch viewModel.mode {
+        case .list:
+            return [
+                HintItem(keys: ["↵"], label: "Paste"),
+                HintItem(keys: ["⇥"], label: "Actions"),
+                HintItem(keys: ["esc"], label: "Close"),
+            ]
+        case .actions:
+            return [
+                HintItem(keys: ["↑", "↓"], label: "select"),
+                HintItem(keys: ["↵"], label: "run"),
+                HintItem(keys: ["esc"], label: "back"),
+            ]
+        }
+    }
+
+    // MARK: - Columns (swap by mode)
+
+    @ViewBuilder
+    private var leftColumn: some View {
+        switch viewModel.mode {
+        case .list: list
+        case .actions: detail // the clip you're acting on becomes the context
+        }
+    }
+
+    @ViewBuilder
+    private var rightColumn: some View {
+        switch viewModel.mode {
+        case .list: detail
+        case .actions:
+            if let item = viewModel.selectedItem {
+                ActionMenuColumn(
+                    item: item,
+                    entries: viewModel.actionEntries,
+                    selectedIndex: viewModel.actionIndex,
+                    theme: theme,
+                    onTap: { idx in
+                        viewModel.actionIndex = idx
+                        viewModel.confirm()
+                    }
+                )
+            } else {
+                Color.clear
+            }
+        }
     }
 
     // MARK: - Search bar

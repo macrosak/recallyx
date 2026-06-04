@@ -32,8 +32,9 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 - `HistoryPanelView.swift` — search bar · list rows (app icon, snippet, time) · detail (mono text / image preview + provenance footer) · empty state. `RXTheme.swift` carries the design tokens (dark/light), `BrandMark`, `AppIconView`. `SharedPanelViews.swift` = `Keycap`/`HintBar`/`ColumnHeader`.
 - `FuzzyMatcher.swift` — subsequence ranking (exact > prefix > substring > scattered). Unit-tested.
 - `Paster.swift` — paste mechanics extracted from `CorrectionController` (set clipboard → activate source app → synth ⌘V; text + image).
+- `ActionMenu.swift` — `BuiltinAction` (Paste / Copy / Delete / Copy file path / Reveal in Finder; entries vary by clip kind) + `ActionRowView` / `ActionMenuColumn`. The vm gains a `.actions` mode: ⇥ opens the menu (columns swap to detail | actions), ↑↓ pick, ↵ run, esc back. Delete removes locally and stays open; other actions perform + dismiss.
 
-(Components still to come per commit: action menu, settings, `ActionRunner`, `ScriptRunner`/`OpenAIClient`.)
+(Components still to come per commit: settings, `ActionRunner`, `ScriptRunner`/`OpenAIClient`. The action menu's Custom… + saved script/AI actions land with the Phase 2 action model.)
 
 ## UI / visual design
 Native SwiftUI matched to the proposal export in `docs.local/design-reference/` (30 reference panels + the `screens/*.jsx` token source). `RXTheme` is the JSX `RX` palette translated to `Color`. The panel is a frosted floating `NSPanel`; Settings (later) is a solid window. Dark + light both supported via `@Environment(\.colorScheme)`.

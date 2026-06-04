@@ -19,16 +19,18 @@ final class HistoryPanelController {
 
     private let itemsProvider: () -> [HistoryItem]
     private let imageURLResolver: (HistoryItem) -> URL?
-    private let onPaste: (HistoryItem, NSRunningApplication?) -> Void
+    /// Perform a built-in action. Returns `true` if the panel should dismiss
+    /// afterwards (paste/copy/reveal); `false` keeps it open (delete).
+    private let onBuiltin: (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool
 
     init(
         itemsProvider: @escaping () -> [HistoryItem],
         imageURLResolver: @escaping (HistoryItem) -> URL?,
-        onPaste: @escaping (HistoryItem, NSRunningApplication?) -> Void
+        onBuiltin: @escaping (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool
     ) {
         self.itemsProvider = itemsProvider
         self.imageURLResolver = imageURLResolver
-        self.onPaste = onPaste
+        self.onBuiltin = onBuiltin
     }
 
     var isVisible: Bool { panel?.isVisible == true }
@@ -44,11 +46,11 @@ final class HistoryPanelController {
 
         let viewModel = HistoryPanelViewModel(
             items: itemsProvider(),
-            onPaste: { [weak self] item in
+            onBuiltin: { [weak self] action, item in
                 guard let self else { return }
                 let app = self.sourceApp
-                self.dismiss()
-                self.onPaste(item, app)
+                let shouldDismiss = self.onBuiltin(action, item, app)
+                if shouldDismiss { self.dismiss() }
             },
             onDismiss: { [weak self] in self?.dismiss() }
         )
@@ -121,7 +123,7 @@ final class HistoryPanelController {
         case 0x7D: vm.moveDown(); return nil      // ↓
         case 0x24, 0x4C: vm.confirm(); return nil // ↵ / numpad enter
         case 0x35: vm.cancel(); return nil        // esc
-        case 0x30: return nil                     // ⇥ — action menu lands in commit 5
+        case 0x30: vm.tab(); return nil           // ⇥ — open/close action menu
         default: return event
         }
     }
