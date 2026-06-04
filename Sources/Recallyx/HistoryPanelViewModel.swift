@@ -18,21 +18,27 @@ final class HistoryPanelViewModel: ObservableObject {
     @Published private(set) var filtered: [HistoryItem]
     @Published var selectedIndex: Int = 0
     @Published private(set) var mode: Mode = .list
-    @Published private(set) var actionEntries: [BuiltinAction] = []
+    @Published private(set) var menuItems: [ActionMenuItem] = []
     @Published var actionIndex: Int = 0
 
     private(set) var allItems: [HistoryItem]
+    private let actions: [Action]
     private let onBuiltin: (BuiltinAction, HistoryItem) -> Void
+    private let onRunAction: (Action, HistoryItem) -> Void
     private let onDismiss: () -> Void
 
     init(
         items: [HistoryItem],
+        actions: [Action] = [],
         onBuiltin: @escaping (BuiltinAction, HistoryItem) -> Void,
+        onRunAction: @escaping (Action, HistoryItem) -> Void = { _, _ in },
         onDismiss: @escaping () -> Void
     ) {
         self.allItems = items
         self.filtered = items
+        self.actions = actions
         self.onBuiltin = onBuiltin
+        self.onRunAction = onRunAction
         self.onDismiss = onDismiss
     }
 
@@ -84,7 +90,7 @@ final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list:
             guard let item = selectedItem else { return }
-            actionEntries = BuiltinAction.entries(for: item.kind)
+            menuItems = buildMenu(for: item)
             actionIndex = 0
             mode = .actions
         case .actions:
@@ -92,18 +98,31 @@ final class HistoryPanelViewModel: ObservableObject {
         }
     }
 
+    /// Built-ins for the clip kind, then (text only) the saved user actions.
+    private func buildMenu(for item: HistoryItem) -> [ActionMenuItem] {
+        var entries: [ActionMenuItem] = BuiltinAction.entries(for: item.kind).map { .builtin($0) }
+        if item.kind == .text {
+            entries += actions.map { .saved($0) }
+        }
+        return entries
+    }
+
     // MARK: - Running
 
     private func runSelectedAction() {
-        guard let item = selectedItem, actionEntries.indices.contains(actionIndex) else { return }
-        let action = actionEntries[actionIndex]
-        if action == .delete {
+        guard let item = selectedItem, menuItems.indices.contains(actionIndex) else { return }
+        switch menuItems[actionIndex] {
+        case .builtin(.delete):
             onBuiltin(.delete, item)
             removeLocally(item)
             mode = .list
-        } else {
+        case .builtin(let action):
             // Controller performs the action and dismisses the panel.
             onBuiltin(action, item)
+        case .saved(let action):
+            onRunAction(action, item)
+        case .custom:
+            break // wired in the ad-hoc AI commit
         }
     }
 
@@ -125,8 +144,8 @@ final class HistoryPanelViewModel: ObservableObject {
     }
 
     private func stepAction(by delta: Int) {
-        guard !actionEntries.isEmpty else { return }
-        actionIndex = min(max(actionIndex + delta, 0), actionEntries.count - 1)
+        guard !menuItems.isEmpty else { return }
+        actionIndex = min(max(actionIndex + delta, 0), menuItems.count - 1)
     }
 }
 

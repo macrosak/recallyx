@@ -9,14 +9,93 @@ struct SettingsGeneralView: View {
 
     @State private var capText: String = ""
     @State private var launchError: String?
+    @State private var apiKey: String = ""
+    @State private var showKey: Bool = false
+    @State private var testResult: KeyTestResult = .idle
+
+    private let keychain = KeychainStore.openAIKey
+
+    private enum KeyTestResult: Equatable {
+        case idle, testing, ok, failed(String)
+    }
 
     var body: some View {
         VStack(spacing: 17) {
+            openAISection
             shortcutsSection
             historySection
             startupSection
         }
-        .onAppear { capText = String(settingsStore.settings.retentionCap) }
+        .onAppear {
+            capText = String(settingsStore.settings.retentionCap)
+            apiKey = keychain.read() ?? ""
+        }
+    }
+
+    // MARK: - OpenAI
+
+    private var openAISection: some View {
+        VStack(spacing: 0) {
+            SectionLabel(text: "OpenAI", theme: theme)
+            SettingsCard(theme: theme) {
+                SettingsRow(label: "API key", desc: apiKeyDesc, theme: theme) {
+                    if showKey {
+                        SettingsField(text: $apiKey, placeholder: "sk-…", mono: true, width: 150, theme: theme)
+                    } else {
+                        SecureField("sk-…", text: $apiKey)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12.5, design: .monospaced))
+                            .foregroundStyle(theme.text)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .frame(width: 150)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(theme.inputBg)
+                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.inputBorder, lineWidth: 0.5)))
+                    }
+                    SettingsButton(title: showKey ? "Hide" : "Show", theme: theme) { showKey.toggle() }
+                    SettingsButton(title: "Test", theme: theme) { Task { await testKey() } }
+                    SettingsButton(title: "Save", kind: .primary, theme: theme) { persistKey() }
+                }
+                SettingsRow(label: "Default model", desc: "Used by AI steps without an override.", last: true, theme: theme) {
+                    Picker("", selection: Binding(
+                        get: { settingsStore.settings.defaultModel },
+                        set: { settingsStore.settings.defaultModel = $0 }
+                    )) {
+                        ForEach(ModelCatalog.all, id: \.self) { Text($0).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 150)
+                }
+            }
+        }
+    }
+
+    private var apiKeyDesc: String {
+        switch testResult {
+        case .idle: return "Stored in your macOS Keychain."
+        case .testing: return "Testing key against \(ModelCatalog.default)…"
+        case .ok: return "✓ API key is valid."
+        case .failed(let msg): return "✗ \(msg)"
+        }
+    }
+
+    private func persistKey() {
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { _ = keychain.delete() } else { _ = keychain.write(trimmed) }
+    }
+
+    private func testKey() async {
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        persistKey()
+        testResult = .testing
+        do {
+            _ = try await OpenAIClient().complete(apiKey: trimmed, model: ModelCatalog.default, promptTemplate: "Reply with: ok", text: "")
+            testResult = .ok
+        } catch OpenAIError.emptyResponse {
+            testResult = .ok
+        } catch {
+            testResult = .failed(error.localizedDescription)
+        }
     }
 
     // MARK: - Shortcuts

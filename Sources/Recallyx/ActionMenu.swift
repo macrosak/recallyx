@@ -49,11 +49,28 @@ enum BuiltinAction: String, Identifiable, CaseIterable {
     }
 }
 
+/// One row in the action menu: a built-in, a saved user action, or the Custom…
+/// one-off entry. Indexed positionally by the view model's cursor.
+enum ActionMenuItem: Identifiable {
+    case builtin(BuiltinAction)
+    case custom
+    case saved(Action)
+
+    var id: String {
+        switch self {
+        case .builtin(let b): return "builtin.\(b.rawValue)"
+        case .custom: return "custom"
+        case .saved(let a): return "saved.\(a.id.uuidString)"
+        }
+    }
+}
+
 /// The right column when the action menu is open: an "ACTIONS" header (with the
-/// clip's app icon) over the list of built-in action rows.
+/// clip's app icon) over built-in rows, then a "Saved actions" divider before
+/// the user-defined actions.
 struct ActionMenuColumn: View {
     let item: HistoryItem
-    let entries: [BuiltinAction]
+    let items: [ActionMenuItem]
     let selectedIndex: Int
     let theme: RXTheme
     let onTap: (Int) -> Void
@@ -63,24 +80,61 @@ struct ActionMenuColumn: View {
             ColumnHeader(label: "Actions", theme: theme) {
                 AppIconView(item: item, size: 15)
             }
-            VStack(spacing: 1) {
-                ForEach(Array(entries.enumerated()), id: \.element.id) { idx, action in
-                    ActionRowView(
-                        icon: action.icon,
-                        title: action.title,
-                        subtitle: action.subtitle,
-                        tag: nil,
-                        danger: action.isDanger,
-                        active: idx == selectedIndex,
-                        theme: theme
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture { onTap(idx) }
+            ScrollView {
+                VStack(spacing: 1) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, entry in
+                        if case .saved = entry, isFirstSaved(idx) {
+                            MenuDivider(label: "Saved actions", theme: theme)
+                        }
+                        row(for: entry, active: idx == selectedIndex)
+                            .contentShape(Rectangle())
+                            .onTapGesture { onTap(idx) }
+                    }
                 }
+                .padding(.vertical, 6)
             }
-            .padding(.vertical, 6)
             Spacer(minLength: 0)
         }
+    }
+
+    private func isFirstSaved(_ idx: Int) -> Bool {
+        guard idx > 0 else { return true }
+        if case .saved = items[idx - 1] { return false }
+        return true
+    }
+
+    @ViewBuilder
+    private func row(for entry: ActionMenuItem, active: Bool) -> some View {
+        switch entry {
+        case .builtin(let b):
+            ActionRowView(icon: b.icon, title: b.title, subtitle: b.subtitle, tag: nil,
+                          danger: b.isDanger, active: active, theme: theme)
+        case .custom:
+            ActionRowView(icon: "sparkle", title: "Custom…", subtitle: "one-off prompt", tag: nil,
+                          danger: false, active: active, theme: theme)
+        case .saved(let a):
+            ActionRowView(icon: a.icon, title: a.name, subtitle: nil, tag: a.kindTag,
+                          danger: false, active: active, theme: theme)
+        }
+    }
+}
+
+/// Uppercase divider with a trailing hairline, mirroring the proposal's `Divider`.
+struct MenuDivider: View {
+    let label: String
+    let theme: RXTheme
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(label.uppercased())
+                .font(.system(size: 10.5, weight: .bold))
+                .tracking(0.6)
+                .foregroundStyle(theme.textFaint)
+            Rectangle().fill(theme.hairline).frame(height: 0.5)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
     }
 }
 

@@ -140,6 +140,8 @@ struct SettingsButton: View {
             Text(title)
                 .font(.system(size: 12.5, weight: .medium))
                 .foregroundStyle(fg)
+                .lineLimit(1)
+                .fixedSize()
                 .padding(.horizontal, 13)
                 .padding(.vertical, 5)
                 .background(
@@ -149,6 +151,7 @@ struct SettingsButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .fixedSize()
     }
 
     private var fg: Color {

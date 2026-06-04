@@ -18,19 +18,26 @@ final class HistoryPanelController {
     private let panelSize = NSSize(width: 760, height: 562)
 
     private let itemsProvider: () -> [HistoryItem]
+    private let actionsProvider: () -> [Action]
     private let imageURLResolver: (HistoryItem) -> URL?
     /// Perform a built-in action. Returns `true` if the panel should dismiss
     /// afterwards (paste/copy/reveal); `false` keeps it open (delete).
     private let onBuiltin: (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool
+    /// Run a saved action against a clip, then paste the result into `sourceApp`.
+    private let onRunAction: (Action, HistoryItem, NSRunningApplication?) -> Void
 
     init(
         itemsProvider: @escaping () -> [HistoryItem],
+        actionsProvider: @escaping () -> [Action] = { [] },
         imageURLResolver: @escaping (HistoryItem) -> URL?,
-        onBuiltin: @escaping (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool
+        onBuiltin: @escaping (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool,
+        onRunAction: @escaping (Action, HistoryItem, NSRunningApplication?) -> Void = { _, _, _ in }
     ) {
         self.itemsProvider = itemsProvider
+        self.actionsProvider = actionsProvider
         self.imageURLResolver = imageURLResolver
         self.onBuiltin = onBuiltin
+        self.onRunAction = onRunAction
     }
 
     var isVisible: Bool { panel?.isVisible == true }
@@ -46,11 +53,18 @@ final class HistoryPanelController {
 
         let viewModel = HistoryPanelViewModel(
             items: itemsProvider(),
+            actions: actionsProvider(),
             onBuiltin: { [weak self] action, item in
                 guard let self else { return }
                 let app = self.sourceApp
                 let shouldDismiss = self.onBuiltin(action, item, app)
                 if shouldDismiss { self.dismiss() }
+            },
+            onRunAction: { [weak self] action, item in
+                guard let self else { return }
+                let app = self.sourceApp
+                self.dismiss()
+                self.onRunAction(action, item, app)
             },
             onDismiss: { [weak self] in self?.dismiss() }
         )

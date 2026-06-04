@@ -37,12 +37,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkey: HotkeyManager?
     private var historyPanel: HistoryPanelController?
     private var settingsWindow: SettingsWindowController?
+    private let notifier = Notifier()
+    private lazy var actionRunner = ActionRunner(defaultModel: { [settingsStore] in settingsStore.settings.defaultModel })
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.info("applicationDidFinishLaunching")
         // The lazy-MenuBarExtra lesson from AI Replace means all launch wiring
         // must live here, NOT on the MenuBarExtra content's `.task`.
 
+        notifier.requestAuthorizationIfNeeded()
         state.historyCount = store.items.count
         store.onChange = { [weak self] in
             guard let self else { return }
@@ -73,17 +76,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let historyPanel = HistoryPanelController(
             itemsProvider: { [store] in store.items },
+            actionsProvider: { [settingsStore] in settingsStore.settings.actions },
             imageURLResolver: { [store] in store.imageURL(for: $0) },
             onBuiltin: { [weak self] action, item, app in
                 self?.runBuiltin(action, item: item, into: app) ?? true
+            },
+            onRunAction: { [weak self] action, item, app in
+                self?.runAction(action, item: item, into: app)
             }
         )
         self.historyPanel = historyPanel
+
+        // Also open Settings when a notification's action asks for it.
+        NotificationCenter.default.addObserver(forName: .openRecallyxSettings, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.openSettings() }
+        }
 
         hotkey = HotkeyManager { [weak self] action in
             switch action {
             case .showHistory: self?.historyPanel?.toggle()
             case .transformSelection: break // wired in the ⌃⇧V commit
+            }
+        }
+    }
+
+    /// Run a saved (or transient) action over a clip's text and paste the result
+    /// at the cursor. The result re-enters history naturally via the watcher
+    /// (it's new content, so it's NOT marked as a self-copy).
+    func runAction(_ action: Action, item: HistoryItem, into app: NSRunningApplication?) {
+        guard item.kind == .text, let text = item.text else {
+            notifier.notify(body: ActionError.imageNotSupported.localizedDescription)
+            return
+        }
+        state.status = .working
+        Task { @MainActor in
+            do {
+                let result = try await actionRunner.run(action, on: text)
+                await Paster.pasteText(result, into: app)
+                state.flash(.success)
+            } catch ActionError.missingApiKey {
+                state.flash(.error("no key"))
+                notifier.notify(body: "Set your OpenAI API key in Settings.", action: .openSettings)
+            } catch OpenAIError.invalidApiKey {
+                state.flash(.error("invalid key"))
+                notifier.notify(body: "OpenAI rejected the API key (401). Update it in Settings.", action: .openSettings)
+            } catch {
+                Log.error("action failed: \(error.localizedDescription)")
+                state.lastError = error.localizedDescription
+                state.flash(.error("action failed"))
+                notifier.notify(body: error.localizedDescription)
             }
         }
     }

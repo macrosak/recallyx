@@ -72,7 +72,7 @@ struct HistoryPanelView: View {
             if let item = viewModel.selectedItem {
                 ActionMenuColumn(
                     item: item,
-                    entries: viewModel.actionEntries,
+                    items: viewModel.menuItems,
                     selectedIndex: viewModel.actionIndex,
                     theme: theme,
                     onTap: { idx in

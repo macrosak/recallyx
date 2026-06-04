@@ -8,11 +8,23 @@ struct AppSettings: Codable, Equatable {
     var retentionCap: Int
     var captureSensitive: Bool
     var launchAtLogin: Bool
+    /// Model used by AI steps that don't override it.
+    var defaultModel: String
+    /// User-defined script/AI action pipelines shown in the Tab menu.
+    var actions: [Action]
 
-    init(retentionCap: Int = 1000, captureSensitive: Bool = false, launchAtLogin: Bool = false) {
+    init(
+        retentionCap: Int = 1000,
+        captureSensitive: Bool = false,
+        launchAtLogin: Bool = false,
+        defaultModel: String = ModelCatalog.default,
+        actions: [Action] = Action.defaults()
+    ) {
         self.retentionCap = retentionCap
         self.captureSensitive = captureSensitive
         self.launchAtLogin = launchAtLogin
+        self.defaultModel = defaultModel
+        self.actions = actions
     }
 
     init(from decoder: Decoder) throws {
@@ -20,6 +32,8 @@ struct AppSettings: Codable, Equatable {
         retentionCap = try c.decodeIfPresent(Int.self, forKey: .retentionCap) ?? 1000
         captureSensitive = try c.decodeIfPresent(Bool.self, forKey: .captureSensitive) ?? false
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        defaultModel = try c.decodeIfPresent(String.self, forKey: .defaultModel) ?? ModelCatalog.default
+        actions = try c.decodeIfPresent([Action].self, forKey: .actions) ?? Action.defaults()
     }
 }
 

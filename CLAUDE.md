@@ -39,7 +39,13 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 
 **Phase 1 complete here** — a usable, shippable clipboard manager with no AI.
 
-(Components still to come per commit: `ActionRunner`, `ScriptRunner`/`OpenAIClient`, OpenAI settings, Actions tab + Custom…/edit-before-run, ⌃⇧V.)
+### Phase 2 — actions / AI
+- `Action.swift` — `Action { name, icon, steps: [Step] }`, `Step { type: .script|.ai, enabled, script, prompt, model? }` (generalizes AI Replace's `Preset`). `Action.defaults()` seeds the menu. `kindTag` → SCRIPT/AI.
+- `ActionRunner.swift` — `@MainActor`; threads text through enabled steps in order (`.script` → `ScriptRunner`, `.ai` → `OpenAIClient`). Script/AI runners are **injectable** so tests are hermetic. A throwing step aborts before paste. Unit-tested.
+- `ScriptRunner.swift` / `OpenAIClient.swift` / `KeychainStore.swift` / `Notifier.swift` — copied from AI Replace (env key `RECALLYX_SCRIPT`, keychain service `io.github.macrosak.recallyx`, `ModelCatalog.default = gpt-4o-mini`).
+- Action menu now shows built-ins → `Saved actions` divider → user actions (text clips only, with SCRIPT/AI tags). Running a saved action threads the clip text through `ActionRunner` and pastes the result (which re-enters history as a fresh top item — *not* marked self-copy). Settings General gains the OpenAI section (API key + Show/Test/Save, Default model). `AppSettings` extended with `defaultModel` + `actions`.
+
+(Still to come: Actions tab UI + Custom…/edit-before-run, ⌃⇧V.)
 
 ## UI / visual design
 Native SwiftUI matched to the proposal export in `docs.local/design-reference/` (30 reference panels + the `screens/*.jsx` token source). `RXTheme` is the JSX `RX` palette translated to `Color`. The panel is a frosted floating `NSPanel`; Settings (later) is a solid window. Dark + light both supported via `@Environment(\.colorScheme)`.

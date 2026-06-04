@@ -29,13 +29,33 @@ struct HistoryPanelViewModelTests {
         let vm = makeVM([textItem("hi")])
         vm.tab()
         #expect(vm.mode == .actions)
-        #expect(vm.actionEntries == [.paste, .copy, .delete])
+        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.copy", "builtin.delete"])
     }
 
     @Test func tab_imageClip_includesImageActions() {
         let vm = makeVM([imageItem()])
         vm.tab()
-        #expect(vm.actionEntries == [.paste, .copyFilePath, .revealInFinder, .delete])
+        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.copyFilePath", "builtin.revealInFinder", "builtin.delete"])
+    }
+
+    @Test func tab_textClip_appendsSavedActions() {
+        let actions = [Action(name: "Upper", icon: "sparkles", steps: [])]
+        let vm = HistoryPanelViewModel(items: [textItem("hi")], actions: actions, onBuiltin: { _, _ in }, onDismiss: {})
+        vm.tab()
+        #expect(vm.menuItems.contains { $0.id.hasPrefix("saved.") })
+    }
+
+    @Test func savedAction_runsViaCallback() {
+        let action = Action(name: "Upper", icon: "sparkles", steps: [])
+        var ran: Action?
+        let vm = HistoryPanelViewModel(
+            items: [textItem("hi")], actions: [action],
+            onBuiltin: { _, _ in }, onRunAction: { a, _ in ran = a }, onDismiss: {}
+        )
+        vm.tab()
+        vm.actionIndex = vm.menuItems.firstIndex { if case .saved = $0 { return true }; return false }!
+        vm.confirm()
+        #expect(ran?.name == "Upper")
     }
 
     @Test func escFromActions_returnsToList() {
