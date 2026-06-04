@@ -149,5 +149,5 @@ recallyx/
 
 - The OpenAI API key is stored in the macOS Keychain (Settings → General).
 - Model: configurable; default `gpt-4o-mini`, per-AI-step override available.
-- The app icon is currently a placeholder carried over from AI Replace — regenerate from a Recallyx source PNG with `./scripts/make-icon.sh`.
+- The app icon is generated from the brand mark by `scripts/gen-icon.swift` (a blue→indigo squircle with the white stacked-clips logo); rebuild the source PNG with `swift scripts/gen-icon.swift Sources/Recallyx/Resources/icon.png` then `./scripts/make-icon.sh`.
 ```

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Builds AppIcon.icns from a 1024×1024 source PNG. The source icon
+# (Sources/Recallyx/Resources/icon.png) is itself generated from the brand mark
+# by scripts/gen-icon.swift — regenerate it with:
+#   swift scripts/gen-icon.swift Sources/Recallyx/Resources/icon.png
+
 cd "$(dirname "$0")/.."
 
 SRC="${1:-Sources/Recallyx/Resources/icon.png}"
