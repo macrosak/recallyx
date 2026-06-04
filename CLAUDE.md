@@ -21,8 +21,13 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 - `AppState.swift` — `@MainActor ObservableObject` (status / lastError / historyCount).
 - `StatusItemView.swift` — menu-bar dropdown.
 - `Log.swift` — `os.Logger` (subsystem `io.github.macrosak.recallyx`) mirrored to stderr.
+- `HistoryItem.swift` — `HistoryItem` (stored record), `CapturedClip` (raw capture from the watcher), `ContentHash` (SHA-256 dedupe keys via CryptoKit).
+- `HistoryStore.swift` — `@MainActor ObservableObject` owning the on-disk history. `add` (dedupe-bump or insert) / `bump` / `delete` / `clear`. Cap eviction, atomic save (temp + `replaceItemAt`), debounced writes, reseed-on-corrupt, orphan reconciliation.
 
-(Components are added per commit: `HistoryStore`/`HistoryItem`, `ClipboardWatcher`, `AppIconProvider`, history panel, action menu, settings, `ActionRunner`/`Paster`, `ScriptRunner`/`OpenAIClient`.)
+(Components still to come per commit: `ClipboardWatcher`, `AppIconProvider`, history panel, action menu, settings, `ActionRunner`/`Paster`, `ScriptRunner`/`OpenAIClient`.)
+
+## Storage
+`~/Library/Application Support/Recallyx/` — `history.json` (the index) + `images/<uuid>.png` (image payloads). Only small settings/actions go in UserDefaults; history is on disk because images make it megabytes-large. Ordering is `max(createdAt, lastUsedAt)` descending (a bump refreshes `lastUsedAt`).
 
 ## Logs
 ```
