@@ -25,6 +25,9 @@ struct HistoryPanelView: View {
             if viewModel.isEmpty {
                 EmptyHistoryView(theme: theme)
                     .frame(height: 470)
+            } else if viewModel.filtered.isEmpty {
+                NoMatchesView(query: viewModel.query, theme: theme)
+                    .frame(height: 470)
             } else {
                 HStack(spacing: 0) {
                     leftColumn
@@ -57,6 +60,9 @@ struct HistoryPanelView: View {
     private var hints: [HintItem] {
         switch viewModel.mode {
         case .list:
+            if viewModel.filtered.isEmpty {
+                return [HintItem(keys: ["esc"], label: "Close")]
+            }
             return [
                 HintItem(keys: ["↵"], label: "Paste"),
                 HintItem(keys: ["⇥"], label: "Actions"),
@@ -337,6 +343,26 @@ struct EmptyHistoryView: View {
                 .foregroundStyle(theme.textDim)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// Shown when a search matches nothing.
+struct NoMatchesView: View {
+    let query: String
+    let theme: RXTheme
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(theme.textFaint)
+            Text("No clips match “\(query)”")
+                .font(.system(size: 14))
+                .foregroundStyle(theme.textDim)
             Spacer()
         }
         .frame(maxWidth: .infinity)

@@ -48,9 +48,9 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 - `SettingsActionsView.swift` (+ `IconCatalog`/`IconPickerView`) — the Actions tab: action list (add/delete/select) on the left, a step-pipeline editor on the right (name, icon picker, per-step type segmented Script/AI, enable toggle, body editor, model override, reorder/remove, Add step). Edits write straight into `settingsStore.settings.actions`.
 - **Ad-hoc AI in the panel.** The vm gains `.custom` and `.edit` modes. The action menu's **Custom…** entry (text clips) opens a one-off prompt column → ↵ runs a transient single-`ai`-step action. **Edit-before-run**: ⇥ on a highlighted saved action enters `.edit`, showing step 1's body editable; ⇥ paginates steps; ⌘↵ runs the modified *transient copy* (the saved action is untouched). Both go through the same `onRunAction` → `ActionRunner`. `CustomPromptColumn`/`EditStepsColumn` match the design. Focus moves to the editor in custom/edit modes, to search in list, to nothing in the menu (so typed letters don't mutate the query).
 
-- `AccessibilityClient.swift` — trimmed copy of AI Replace's (read-only: selection capture + one-prompt-per-session permission flow; no write-back, since results paste via synth ⌘V). ⌃⇧V is now registered (`HotkeyManager(registerSelection: true)`): `handleTransformSelection` captures the selection, `store.add`s it to the top, and `historyPanel.showOnTopActions()` opens the panel already on that clip's action menu.
+- `AccessibilityClient.swift` — trimmed copy of AI Replace's (read-only: selection capture + one-prompt-per-session permission flow; no write-back, since results paste via synth ⌘V). ⌃⇧V is registered (`HotkeyManager(registerSelection: true)`): `handleTransformSelection` captures the selection, `store.add`s it to the top, and `historyPanel.showOnTopActions()` opens the panel already on that clip's action menu.
 
-(Still to come: final polish.)
+**Phase 2 complete** — the full clipboard manager + actions/AI, ⌘⇧V and ⌃⇧V. Recallyx now supersedes AI Replace.
 
 ## UI / visual design
 Native SwiftUI matched to the proposal export in `docs.local/design-reference/` (30 reference panels + the `screens/*.jsx` token source). `RXTheme` is the JSX `RX` palette translated to `Color`. The panel is a frosted floating `NSPanel`; Settings (later) is a solid window. Dark + light both supported via `@Environment(\.colorScheme)`.
@@ -73,10 +73,17 @@ Or run the binary directly: `./Recallyx.app/Contents/MacOS/Recallyx` (stderr mir
 - **Chromium/Electron silently drop `kAXSelectedText` writes** — re-read to verify, fall back to synthesized ⌘V at `.cghidEventTap`. (Phase 2 paste path.)
 - **OpenSSL 3 PBES2 p12 is rejected by macOS Security** — `create-signing-identity.sh` uses `/usr/bin/openssl` (LibreSSL).
 
+## When the user reports a problem
+1. App-side log: the `log stream` predicate above (info-level os_log is **not** persisted to disk — `log show` won't have it; use live `log stream`, or run the binary directly for the stderr mirror).
+2. TCC log (⌃⇧V permission): `log show --predicate 'subsystem == "com.apple.TCC" AND eventMessage CONTAINS "recallyx"' --last 5m --info --style compact`. `Failed to match existing code requirement` ⇒ stale TCC entry — `tccutil reset Accessibility io.github.macrosak.recallyx`.
+3. Codesign state: `codesign -dvvv Recallyx.app 2>&1 | grep -E "Authority|Signature"`. `Authority=Recallyx Dev` good; `Signature=adhoc` ⇒ TCC re-grant pain.
+4. Re-bundle before testing hotkeys/UI: `swift build` updates `.build/`, but the `.app` binary is only refreshed by `scripts/bundle.sh`. Running a stale `.app` is a classic "my change didn't take" trap.
+
 ## Don't
 - Add Xcode-only deps (no `#Preview` macros — Command Line Tools only).
 - Move launch wiring onto MenuBarExtra content's `.task`.
 - Run `tccutil reset` or `security add-trusted-cert` without explicit user confirmation.
+- Test a code change against a stale `.app` — re-run `bundle.sh` first.
 
 ## Maintaining this file
 Update when behavior changes; delete stale entries. Extend it in each commit that changes the lifecycle, adds a screen, or teaches a new lesson.
