@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var historyPanel: HistoryPanelController?
     private var settingsWindow: SettingsWindowController?
     private let notifier = Notifier()
+    private let accessibility = AccessibilityClient()
     private lazy var actionRunner = ActionRunner(defaultModel: { [settingsStore] in settingsStore.settings.defaultModel })
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -93,12 +94,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.openSettings() }
         }
 
-        hotkey = HotkeyManager { [weak self] action in
+        hotkey = HotkeyManager(registerSelection: true) { [weak self] action in
             switch action {
             case .showHistory: self?.historyPanel?.toggle()
-            case .transformSelection: break // wired in the ⌃⇧V commit
+            case .transformSelection: self?.handleTransformSelection()
             }
         }
+    }
+
+    /// ⌃⇧V — grab the current selection, push it to the top of history, and open
+    /// the panel already on that clip's action menu (the AI-Replace replacement).
+    private func handleTransformSelection() {
+        if historyPanel?.isVisible == true { historyPanel?.dismiss(); return }
+        guard accessibility.ensureTrustedOrPrompt() else { return }
+
+        let captured: (text: String, sourceApp: NSRunningApplication?)
+        do {
+            captured = try accessibility.captureSelection()
+        } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
+            Log.info("⌃⇧V: no selection")
+            notifier.notify(body: "Select some text first, then press ⌃⇧V.")
+            return
+        } catch {
+            Log.error("⌃⇧V capture failed: \(error.localizedDescription)")
+            notifier.notify(body: error.localizedDescription)
+            return
+        }
+
+        let app = captured.sourceApp
+        let clip = CapturedClip(
+            kind: .text, text: captured.text, imageData: nil,
+            preview: String(captured.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280)),
+            byteSize: captured.text.utf8.count,
+            sourceAppBundleID: app?.bundleIdentifier,
+            sourceAppName: app?.localizedName,
+            sourceAppPath: app?.bundleURL?.path,
+            contentHash: ContentHash.of(text: captured.text), imageDimensions: nil
+        )
+        store.add(clip)
+        Log.info("⌃⇧V captured selection len=\(captured.text.count) — opening actions")
+        historyPanel?.showOnTopActions()
     }
 
     /// Run a saved (or transient) action over a clip's text and paste the result
