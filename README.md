@@ -4,8 +4,10 @@ A macOS menu-bar **clipboard history manager**. It watches the system clipboard,
 
 Successor to [AI Replace](../ai-replace) — same proven menu-bar / hotkey / paste / OpenAI machinery, generalized into a clipboard manager.
 
-- **⌘⇧V** → history panel: fuzzy-search your clipboard, ↵ pastes the selected clip, ⇥ opens its action menu.
+- **⌘⇧V** → history panel: fuzzy-search your clipboard, ↑/↓ to select, ↵ pastes the selected clip into wherever you were, ⇥ opens its action menu, esc closes.
 - **⌃⇧V** (Phase 2) → grab the current selection, push it to history, and open its actions — the AI-Replace replacement.
+
+The panel is a frosted floating window matching the [design reference](docs.local/design-reference/) — a search field on top, your history list on the left (with source-app icons and relative timestamps), and a detail view on the right. It follows the system light/dark appearance.
 
 > Status: in active construction. Phase 1 (plain clipboard manager, no AI) ships first; Phase 2 layers actions/AI on top. See [`docs.local/2026-06-04-recallyx-design.md`](docs.local/2026-06-04-recallyx-design.md).
 
