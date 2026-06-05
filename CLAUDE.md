@@ -17,7 +17,7 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 - `./scripts/make-dmg.sh` → `Recallyx-<version>-arm64.dmg` (built-in `hdiutil`, drag-to-install layout). Needs `Recallyx.app` built first; honors `RECALLYX_VERSION` for the filename.
 - `./scripts/install.sh` — killalls running, copies to `~/Applications`, launches.
 - macOS 13+, Command Line Tools only (no Xcode). SPM, zero deps.
-- `swift build` / `swift test` for the library + unit tests.
+- `swift build` for the library. **Run tests via `./scripts/test.sh`, not bare `swift test`.** The suite uses swift-testing (`import Testing`); under CLT that framework + `lib_TestingInterop.dylib` live off the default search path, so plain `swift test` fails with `no such module 'Testing'` (then dlopen errors). The wrapper adds the `-F`/rpath flags. CI has full Xcode, so its plain `swift test` works.
 
 ## CI / Releases (`.github/workflows/`)
 - `pr-checks.yml` — runs `swift test` on PRs to `main` (macos-14).
