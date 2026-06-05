@@ -14,7 +14,7 @@ struct RecallyxApp: App {
         } label: {
             MenuBarIcon(state: delegate.state)
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
     }
 }
 

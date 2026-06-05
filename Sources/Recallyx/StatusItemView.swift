@@ -1,40 +1,29 @@
 import SwiftUI
 
-/// Menu-bar dropdown: status line, history count, and the standard actions.
+/// Menu-bar dropdown — a native `NSMenu` (the scene uses `.menuBarExtraStyle(.menu)`).
+/// `Text` items render as disabled status labels, `Button`s as standard menu items,
+/// `Divider` as separators.
 struct StatusItemView: View {
     @ObservedObject var state: AppState
     var onOpenSettings: () -> Void = {}
     var onClearHistory: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(state.status.menuLabel)
-                .font(.headline)
+        Text(state.status.menuLabel)
+        Text("\(state.historyCount) clips in history")
 
-            Text("\(state.historyCount) clips in history")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if !state.lastError.isEmpty {
-                Divider()
-                Text("Last error")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(state.lastError)
-                    .lineLimit(3)
-                    .truncationMode(.tail)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
-
+        if !state.lastError.isEmpty {
             Divider()
-            Button("Settings…", action: onOpenSettings)
-                .keyboardShortcut(",")
-            Button("Clear history…", action: onClearHistory)
-            Button("Quit Recallyx") { NSApp.terminate(nil) }
-                .keyboardShortcut("q")
+            Text("Last error: \(state.lastError)")
         }
-        .padding(12)
-        .frame(width: 280, alignment: .leading)
+
+        Divider()
+        Button("Settings…", action: onOpenSettings)
+            .keyboardShortcut(",")
+        Button("Clear History…", action: onClearHistory)
+
+        Divider()
+        Button("Quit Recallyx") { NSApp.terminate(nil) }
+            .keyboardShortcut("q")
     }
 }
