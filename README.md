@@ -7,7 +7,7 @@ Successor to [AI Replace](../ai-replace) — same proven menu-bar / hotkey / pas
 - **⌘⇧V** → history panel: fuzzy-search your clipboard, ↑/↓ to select, ↵ pastes the selected clip into wherever you were, ⇥ opens its action menu, esc closes.
 - **⌃⇧V** → grab the current selection, push it to history, and open its actions — the AI-Replace replacement (select text anywhere, transform it, paste in place).
 
-The panel is a frosted floating window matching the [design reference](docs.local/design-reference/): a search field on top, your history list on the left (with source-app icons and relative timestamps), and a detail view on the right. It follows the system light/dark appearance.
+The panel is a frosted floating window: a search field on top, your history list on the left (with source-app icons and relative timestamps), and a detail view on the right. It follows the system light/dark appearance.
 
 ### Actions
 
@@ -24,7 +24,23 @@ Build and edit actions in **Settings → Actions**. AI steps need an OpenAI API 
 ## Requirements
 
 - macOS 13 (Ventura) or newer.
+- **Apple Silicon (arm64)** — Intel Macs are not supported.
 - Apple Command Line Tools (`xcode-select --install`). Xcode itself is **not** required.
+  (Only needed to build from source — not for the download below.)
+
+## Download
+
+Grab the latest DMG from the [**Releases** page](https://github.com/macrosak/recallyx/releases/latest), open it, and drag **Recallyx.app** onto **Applications**.
+
+Builds are currently **ad-hoc signed** (not yet notarized), so Gatekeeper blocks the first launch with *"Apple could not verify Recallyx is free of malware."* Clear the quarantine flag from a terminal, then open the app normally:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Recallyx.app
+```
+
+(On macOS 15 Sequoia and later, the old right-click → Open override no longer appears for un-notarized apps, so the `xattr` command is the reliable way in.)
+
+> Versions are `0.<N>` where `N` is the commit count on `main`. A notarized build and a Homebrew cask (`brew install --cask`, which would remove this Gatekeeper step) are planned improvements.
 
 ## Setup on a fresh machine
 
@@ -141,8 +157,7 @@ recallyx/
 │   ├── RXTheme.swift / SharedPanelViews.swift / Icon*.swift
 │   └── Resources/                 # Info.plist, AppIcon.icns, icon.png
 ├── Tests/RecallyxTests/           # swift-testing suites
-├── scripts/                       # bundle / install / make-icon / create-signing-identity / test
-└── docs.local/                    # design doc + design-reference (panels + JSX tokens)
+└── scripts/                       # bundle / make-dmg / install / make-icon / create-signing-identity / test
 ```
 
 ## Notes

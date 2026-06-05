@@ -5,16 +5,25 @@ For AI agents. Keep terse and scannable; link to README/source for detail.
 ## What this is
 macOS menu-bar **clipboard history manager**. Watches the system clipboard, stores text + image history to disk, and a **⌘⇧V** floating panel (fuzzy search · list · detail) finds and pastes past clips. Phase 2 adds an **actions** layer: per-item pipelines of typed steps (`script` / `ai`) that transform the text and paste the result, plus **⌃⇧V** to transform the current selection in place.
 
-Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.recallyx`. Built in commit-sized slices; see [design doc](docs.local/2026-06-04-recallyx-design.md).
+Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.recallyx`. Built in commit-sized slices.
+
+> **`docs.local/`** (gitignored) holds implementation plans, design docs, and design references for your own use. **Never reference it anywhere that gets committed or published** — not in commit messages, PR descriptions, README, or any tracked `.md` file. This note is the only place it's named.
 
 - **⌘⇧V** → history panel: search clipboard, ↵ pastes the selected clip, ⇥ opens its action menu.
 - **⌃⇧V** (Phase 2) → grab the current selection, push to history, open the panel on its action menu (the AI-Replace replacement).
 
 ## Build
-- `./scripts/bundle.sh` → `Recallyx.app` (uses `Recallyx Dev` identity if present, else ad-hoc).
+- `./scripts/bundle.sh` → `Recallyx.app` (uses `Recallyx Dev` identity if present, else ad-hoc). Honors `RECALLYX_VERSION` (set by CI) — stamps `CFBundleShortVersionString`/`CFBundleVersion`, stripping any `-suffix` to keep the plist numeric.
+- `./scripts/make-dmg.sh` → `Recallyx-<version>-arm64.dmg` (built-in `hdiutil`, drag-to-install layout). Needs `Recallyx.app` built first; honors `RECALLYX_VERSION` for the filename.
 - `./scripts/install.sh` — killalls running, copies to `~/Applications`, launches.
 - macOS 13+, Command Line Tools only (no Xcode). SPM, zero deps.
 - `swift build` / `swift test` for the library + unit tests.
+
+## CI / Releases (`.github/workflows/`)
+- `pr-checks.yml` — runs `swift test` on PRs to `main` (macos-14).
+- `release.yml` — on push to `main`: derive version `0.<N>` (`N = git rev-list HEAD --first-parent --count`, like AI-Replace's eywa scheme but `0.N` not `vN`), `swift test` gate → `bundle.sh` (ad-hoc) → `make-dmg.sh` → `gh release create` with the DMG. **No version-bump commit; the count is the version.** A `gh release view` guard makes re-runs idempotent.
+- **Manual `workflow_dispatch`** (any branch via the native ref picker) → **pre-release** tagged `0.<N>-<branch-slug>.<short-sha>`, marked `--prerelease` so it never becomes "Latest".
+- Signing is **ad-hoc** (no Apple secrets); notarization is a future drop-in gated on secrets (the seam lives in `bundle.sh`). Repo is public → `macos-14` runners are free.
 
 ## Source layout
 - `RecallyxApp.swift` — `@main` + `NSApplicationDelegate`. **All launch wiring lives in `applicationDidFinishLaunching`** (see Lessons — MenuBarExtra content is lazy).
@@ -54,7 +63,7 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 **Phase 2 complete** — the full clipboard manager + actions/AI, ⌘⇧V and ⌃⇧V. Recallyx now supersedes AI Replace.
 
 ## UI / visual design
-Native SwiftUI matched to the proposal export in `docs.local/design-reference/` (30 reference panels + the `screens/*.jsx` token source). `RXTheme` is the JSX `RX` palette translated to `Color`. The panel is a frosted floating `NSPanel`; Settings (later) is a solid window. Dark + light both supported via `@Environment(\.colorScheme)`.
+Native SwiftUI matched to the proposal export (30 reference panels + the `screens/*.jsx` token source). `RXTheme` is the JSX `RX` palette translated to `Color`. The panel is a frosted floating `NSPanel`; Settings (later) is a solid window. Dark + light both supported via `@Environment(\.colorScheme)`.
 
 ## Storage
 `~/Library/Application Support/Recallyx/` — `history.json` (the index) + `images/<uuid>.png` (image payloads). Only small settings/actions go in UserDefaults; history is on disk because images make it megabytes-large. Ordering is `max(createdAt, lastUsedAt)` descending (a bump refreshes `lastUsedAt`).

@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # manual run from any branch (native ref picker)
+
+concurrency:
+  # per-ref: a manual branch build won't serialize behind / block a main release
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write           # for gh release create
+
+jobs:
+  release:
+    name: Build & release
+    runs-on: macos-15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0     # required: git rev-list --count needs full history
+
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Determine version
+        id: version
+        run: |
+          COUNT=$(git rev-list HEAD --first-parent --count)
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF_NAME}" = "main" ]; then
+            VERSION="0.${COUNT}"
+            PRERELEASE=false
+          else
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            SLUG=$(printf '%s' "${GITHUB_REF_NAME}" \
+              | tr '[:upper:]' '[:lower:]' \
+              | tr -c 'a-z0-9' '-' \
+              | sed -E 's/^-+|-+$//g')
+            VERSION="0.${COUNT}-${SLUG}.${SHORT_SHA}"
+            PRERELEASE=true
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+          if gh release view "${VERSION}" >/dev/null 2>&1; then
+            echo "Release ${VERSION} already exists — skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Version: ${VERSION} (prerelease=${PRERELEASE})"
+
+      - name: Run tests
+        if: steps.version.outputs.skip != 'true'
+        run: swift test
+
+      - name: Build & bundle
+        if: steps.version.outputs.skip != 'true'
+        env:
+          RECALLYX_VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/bundle.sh
+
+      - name: Package DMG
+        if: steps.version.outputs.skip != 'true'
+        env:
+          RECALLYX_VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/make-dmg.sh
+
+      - name: Create release
+        if: steps.version.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          git log -1 --pretty=%B > release-notes.txt
+          PRERELEASE_FLAG=""
+          [ "${PRERELEASE}" = "true" ] && PRERELEASE_FLAG="--prerelease"
+          gh release create "${VERSION}" Recallyx-*.dmg \
+            --title "Recallyx ${VERSION}" \
+            --notes-file release-notes.txt \
+            --target "${GITHUB_SHA}" \
+            ${PRERELEASE_FLAG}
