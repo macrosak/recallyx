@@ -32,14 +32,13 @@ Build and edit actions in **Settings → Actions**. AI steps need an OpenAI API 
 
 Grab the latest DMG from the [**Releases** page](https://github.com/macrosak/recallyx/releases/latest), open it, and drag **Recallyx.app** onto **Applications**.
 
-Builds are currently **ad-hoc signed** (not yet notarized), so Gatekeeper blocks the first launch. Either:
+Builds are currently **ad-hoc signed** (not yet notarized), so Gatekeeper blocks the first launch with *"Apple could not verify Recallyx is free of malware."* Clear the quarantine flag from a terminal, then open the app normally:
 
-- **Right-click `Recallyx.app` → Open → confirm** (only needed once), or
-- clear the quarantine flag from a terminal:
+```bash
+xattr -dr com.apple.quarantine /Applications/Recallyx.app
+```
 
-  ```bash
-  xattr -dr com.apple.quarantine /Applications/Recallyx.app
-  ```
+(On macOS 15 Sequoia and later, the old right-click → Open override no longer appears for un-notarized apps, so the `xattr` command is the reliable way in.)
 
 > Versions are `0.<N>` where `N` is the commit count on `main`. A notarized build and a Homebrew cask (`brew install --cask`, which would remove this Gatekeeper step) are planned improvements.
 
