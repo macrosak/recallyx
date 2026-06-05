@@ -28,12 +28,15 @@ final class SettingsWindowController {
 
         let window = NSWindow(contentViewController: hosting)
         window.title = "Recallyx Settings"
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        // Close only: a fixed-size settings window, so minimize + zoom show
+        // disabled (gray) — matching the design. (Dropping .resizable also drops
+        // the zoom button's active state; .fullSizeContentView keeps the header
+        // drawing up under the transparent titlebar.)
+        window.styleMask = [.titled, .closable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 720, height: 640))
-        window.contentMinSize = NSSize(width: 600, height: 560)
+        window.setContentSize(NSSize(width: 820, height: 740))
         window.center()
         self.window = window
 

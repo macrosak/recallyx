@@ -47,6 +47,10 @@ struct SettingsView: View {
         }
         .background(theme.body)
         .frame(minWidth: 600, minHeight: 560)
+        // Draw up under the transparent titlebar so the header band sits behind
+        // the traffic lights (one unified bar), not below them. Without this,
+        // NSHostingController insets the content by the titlebar height.
+        .ignoresSafeArea(.container, edges: .top)
     }
 
     private var header: some View {
@@ -90,7 +94,12 @@ struct SegmentedTabs: View {
                     .padding(.vertical, 5)
                     .background(
                         RoundedRectangle(cornerRadius: 7)
-                            .fill(on ? (theme.isDark ? Color(white: 1, opacity: 0.10) : .white) : .clear)
+                            // Opaque pill: the header lives in the window's
+                            // transparent titlebar, so a translucent white fill
+                            // composites over the vibrant backdrop and reads too
+                            // bright. A solid color matches the design's subtler
+                            // active tab regardless of what's behind the window.
+                            .fill(on ? (theme.isDark ? Color(hex: 0x47474B) : .white) : .clear)
                             .shadow(color: on && !theme.isDark ? .black.opacity(0.12) : .clear, radius: 1, y: 0.5)
                     )
                     .contentShape(Rectangle())
@@ -98,6 +107,7 @@ struct SegmentedTabs: View {
             }
         }
         .padding(3)
-        .background(RoundedRectangle(cornerRadius: 9).fill(theme.segBg))
+        // Opaque track for the same reason as the pill (transparent titlebar).
+        .background(RoundedRectangle(cornerRadius: 9).fill(theme.isDark ? Color(hex: 0x37373A) : theme.segBg))
     }
 }
