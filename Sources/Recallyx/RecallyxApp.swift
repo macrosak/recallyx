@@ -8,6 +8,8 @@ struct RecallyxApp: App {
         MenuBarExtra {
             StatusItemView(
                 state: delegate.state,
+                onSearchHistory: { delegate.searchHistory() },
+                onTransformSelection: { delegate.transformSelection() },
                 onOpenSettings: { delegate.openSettings() },
                 onClearHistory: { delegate.clearHistory() }
             )
@@ -20,11 +22,19 @@ struct RecallyxApp: App {
 
 /// Observes AppState so the menu-bar icon re-renders on every status change.
 /// Separate view because the App body does not observe the AppDelegate.
+///
+/// Idle shows the Recallyx brand mark (a template image echoing the app icon);
+/// the transient working/success/error states swap in an SF Symbol so the icon
+/// still conveys feedback.
 private struct MenuBarIcon: View {
     @ObservedObject var state: AppState
 
     var body: some View {
-        Image(systemName: state.status.iconSystemName)
+        if state.status == .idle {
+            Image(nsImage: MenuBarIconImage.shared)
+        } else {
+            Image(systemName: state.status.iconSystemName)
+        }
     }
 }
 
@@ -220,6 +230,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             state.flash(.success)
         }
+    }
+
+    /// ⌘⇧V from the menu — toggle the history panel (same as the global hotkey).
+    func searchHistory() {
+        historyPanel?.toggle()
+    }
+
+    /// ⌃⇧V from the menu — grab the selection and open its action menu.
+    func transformSelection() {
+        handleTransformSelection()
     }
 
     func openSettings() {
