@@ -1,6 +1,7 @@
 .build/
 .swiftpm/
 *.app
+*.dmg
 DerivedData/
 scripts/.signing-cert.pem
 .DS_Store
