@@ -21,7 +21,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0     # required: git rev-list --count needs full history
 
@@ -34,7 +34,7 @@ jobs:
         id: version
         run: |
           COUNT=$(git rev-list HEAD --first-parent --count)
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF_NAME}" = "main" ]; then
             VERSION="0.${COUNT}"
             PRERELEASE=false
           else
