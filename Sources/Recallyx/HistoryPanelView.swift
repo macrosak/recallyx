@@ -198,8 +198,10 @@ struct HistoryPanelView: View {
     }
 }
 
-/// One history list row — app icon, snippet (2 lines text / 1 line + dims image),
-/// relative time. Selected rows get the vivid blue fill + white text.
+/// One history list row — app icon, single-line snippet, relative time. The
+/// snippet runs full-width and fades to transparent just before the timestamp
+/// (a fixed-width alpha mask, so it dissolves into whatever's behind: the panel
+/// or the blue selection). 46px tall for a calm list. Shared by every clip list.
 struct HistoryRowView: View {
     let item: HistoryItem
     let active: Bool
@@ -211,32 +213,44 @@ struct HistoryRowView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 11) {
             AppIconView(item: item, size: 20)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.preview)
-                    .font(item.isMono ? .system(size: 13.5, design: .monospaced) : .system(size: 13.5))
-                    .foregroundStyle(fg)
-                    .lineLimit(item.kind == .image ? 1 : 2)
-                    .multilineTextAlignment(.leading)
-                if item.kind == .image, let dims = item.imageDimensions {
-                    Text(dims)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(faint)
-                }
-            }
-            Spacer(minLength: 6)
+            snippet
             Text(ClipTime.relative(item.recency))
                 .font(.system(size: 11.5))
                 .foregroundStyle(faint)
                 .monospacedDigit()
+                .fixedSize()
         }
         .padding(.horizontal, 12)
-        .frame(height: 54)
+        .frame(height: 46)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(active ? theme.sel : .clear)
                 .shadow(color: active ? Color(rgba: 10, 90, 200, 0.35) : .clear, radius: 3, y: 1)
         )
         .padding(.horizontal, 8)
+    }
+
+    /// Single-line snippet drawn at natural width, clipped to the available
+    /// space, with a fixed-width fade at the trailing edge instead of an ellipsis.
+    private var snippet: some View {
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: 18)
+            .overlay(alignment: .leading) {
+                Text(item.preview)
+                    .font(item.isMono ? .system(size: 13.5, design: .monospaced) : .system(size: 13.5))
+                    .foregroundStyle(fg)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .clipped()
+            .mask(
+                HStack(spacing: 0) {
+                    Rectangle().fill(.black)
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 36)
+                }
+            )
     }
 }
 
