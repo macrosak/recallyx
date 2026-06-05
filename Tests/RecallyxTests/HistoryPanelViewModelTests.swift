@@ -35,7 +35,7 @@ struct HistoryPanelViewModelTests {
     @Test func tab_imageClip_includesImageActions() {
         let vm = makeVM([imageItem()])
         vm.tab()
-        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.copyFilePath", "builtin.revealInFinder", "builtin.delete"])
+        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.openInPreview", "builtin.copyFilePath", "builtin.revealInFinder", "builtin.delete"])
     }
 
     @Test func tab_textClip_appendsSavedActions() {

@@ -8,6 +8,7 @@ enum BuiltinAction: String, Identifiable, CaseIterable {
     case delete
     case copyFilePath
     case revealInFinder
+    case openInPreview
 
     var id: String { rawValue }
 
@@ -18,6 +19,7 @@ enum BuiltinAction: String, Identifiable, CaseIterable {
         case .delete: return "Delete from history"
         case .copyFilePath: return "Copy file path"
         case .revealInFinder: return "Reveal in Finder"
+        case .openInPreview: return "Open in Preview"
         }
     }
 
@@ -35,6 +37,7 @@ enum BuiltinAction: String, Identifiable, CaseIterable {
         case .delete: return "trash"
         case .copyFilePath: return "link"
         case .revealInFinder: return "folder"
+        case .openInPreview: return "eye"
         }
     }
 
@@ -44,7 +47,7 @@ enum BuiltinAction: String, Identifiable, CaseIterable {
     static func entries(for kind: ClipKind) -> [BuiltinAction] {
         switch kind {
         case .text: return [.paste, .copy, .delete]
-        case .image: return [.paste, .copyFilePath, .revealInFinder, .delete]
+        case .image: return [.paste, .openInPreview, .copyFilePath, .revealInFinder, .delete]
         }
     }
 }

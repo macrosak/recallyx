@@ -191,6 +191,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             }
             return true
+        case .openInPreview:
+            if let url = store.imageURL(for: item) {
+                let config = NSWorkspace.OpenConfiguration()
+                if let preview = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Preview") {
+                    NSWorkspace.shared.open([url], withApplicationAt: preview, configuration: config)
+                } else {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            return true
         }
     }
 
