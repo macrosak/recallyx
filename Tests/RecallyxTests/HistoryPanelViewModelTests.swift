@@ -151,4 +151,41 @@ struct HistoryPanelViewModelTests {
         vm.confirm()
         #expect(pasted?.text == "b")
     }
+
+    @Test func tab_clearsQueryAndSwitchesSearchDomain() {
+        let vm = makeVM([textItem("alpha"), textItem("beta")])
+        vm.query = "alp"
+        #expect(vm.searchPlaceholder == "Search clipboard…")
+        vm.selectedIndex = 0
+        vm.tab()
+        #expect(vm.query == "")
+        #expect(vm.searchPlaceholder == "Search actions…")
+        #expect(vm.countText.hasSuffix("actions"))
+    }
+
+    @Test func actionSearch_filtersTheMenu() {
+        let actions = [
+            Action(name: "Fix grammar", icon: "sparkles", steps: []),
+            Action(name: "Pretty-print JSON", icon: "scroll", steps: []),
+        ]
+        let vm = HistoryPanelViewModel(items: [textItem("x")], actions: actions, onBuiltin: { _, _ in }, onDismiss: {})
+        vm.tab()
+        let full = vm.filteredMenuItems.count
+        vm.query = "json"
+        #expect(vm.filteredMenuItems.count < full)
+        #expect(vm.filteredMenuItems.contains { $0.searchText == "Pretty-print JSON" })
+        #expect(!vm.filteredMenuItems.contains { $0.searchText == "Paste" })
+    }
+
+    @Test func escFromActions_restoresClipSearch() {
+        let vm = makeVM([textItem("alpha"), textItem("beta")])
+        vm.query = "alp"
+        vm.selectedIndex = 0
+        vm.tab()
+        #expect(vm.query == "")
+        vm.cancel()
+        #expect(vm.mode == .list)
+        #expect(vm.query == "alp")
+        #expect(vm.searchPlaceholder == "Search clipboard…")
+    }
 }

@@ -48,11 +48,12 @@ struct HistoryPanelView: View {
         .onChange(of: viewModel.mode) { syncFocus($0) }
     }
 
-    /// Move focus to the right control as the mode changes (see `Field`).
+    /// Move focus to the right control as the mode changes (see `Field`). The
+    /// search field is focused in both list and actions modes — it filters clips
+    /// or the action list respectively — and the editor in custom/edit.
     private func syncFocus(_ mode: HistoryPanelViewModel.Mode) {
         switch mode {
-        case .list: focus = .search
-        case .actions: focus = nil
+        case .list, .actions: focus = .search
         case .custom, .edit: focus = .editor
         }
     }
@@ -109,7 +110,7 @@ struct HistoryPanelView: View {
             if let item = viewModel.actionItem {
                 ActionMenuColumn(
                     item: item,
-                    items: viewModel.menuItems,
+                    items: viewModel.filteredMenuItems,
                     selectedIndex: viewModel.actionIndex,
                     theme: theme,
                     onTap: { idx in
@@ -142,12 +143,12 @@ struct HistoryPanelView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(theme.textDim)
-            TextField("Search clipboard…", text: $viewModel.query)
+            TextField(viewModel.searchPlaceholder, text: $viewModel.query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 19))
                 .foregroundStyle(theme.text)
                 .focused($focus, equals: .search)
-            Text("\(viewModel.filtered.count) clips")
+            Text(viewModel.countText)
                 .font(.system(size: 12))
                 .foregroundStyle(theme.textFaint)
                 .monospacedDigit()

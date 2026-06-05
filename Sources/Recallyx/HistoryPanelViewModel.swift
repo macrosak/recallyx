@@ -16,20 +16,39 @@ final class HistoryPanelViewModel: ObservableObject {
         case edit
     }
 
+    /// The same search field serves two domains: clips in list mode, the action
+    /// list once you're in an action state. `didSet` routes the filter to the
+    /// active domain. (Guarded against same-value re-writes — SwiftUI re-fires
+    /// the binding when the field resigns focus, which would otherwise reset the
+    /// cursor out from under an open menu.)
     @Published var query: String = "" {
-        // Guard against same-value re-writes (SwiftUI re-fires the binding when
-        // the search field resigns focus) — an unconditional refresh() would
-        // reset selectedIndex to 0 out from under an open action menu.
-        didSet { if query != oldValue { refresh() } }
+        didSet { if query != oldValue { onQueryChanged() } }
     }
     @Published private(set) var filtered: [HistoryItem]
     @Published var selectedIndex: Int = 0
     @Published private(set) var mode: Mode = .list
+    /// Full menu for the captured clip; `filteredMenuItems` is what's shown/navigated.
     @Published private(set) var menuItems: [ActionMenuItem] = []
+    @Published private(set) var filteredMenuItems: [ActionMenuItem] = []
     @Published var actionIndex: Int = 0
     /// The clip the action menu / custom / edit modes operate on. Captured when
     /// the menu opens so it stays fixed even if `selectedIndex` shifts.
     @Published private(set) var actionItem: HistoryItem?
+
+    /// The clip search, stashed while we're in an action state so it can be
+    /// restored when we return to the list (Tab clears the field for action
+    /// search; Esc brings the clip search back).
+    private var savedClipQuery: String = ""
+
+    /// Placeholder + count adapt to the active search domain.
+    var searchPlaceholder: String { mode == .list ? "Search clipboard…" : "Search actions…" }
+    var countText: String {
+        switch mode {
+        case .list: return "\(filtered.count) clips"
+        case .actions: return "\(filteredMenuItems.count) actions"
+        case .custom, .edit: return "\(menuItems.count) actions"
+        }
+    }
 
     // Ad-hoc AI state.
     @Published var customText: String = ""
@@ -108,9 +127,7 @@ final class HistoryPanelViewModel: ObservableObject {
     /// esc — actions/custom/edit: step back; list: close the panel.
     func cancel() {
         switch mode {
-        case .actions:
-            actionItem = nil
-            mode = .list
+        case .actions: returnToList()
         case .custom, .edit: backToActions()
         case .list: onDismiss()
         }
@@ -124,8 +141,13 @@ final class HistoryPanelViewModel: ObservableObject {
             guard let item = selectedItem else { return }
             actionItem = item
             menuItems = buildMenu(for: item)
-            actionIndex = 0
+            // Hand the search field to the action list: stash the clip query,
+            // clear it, then filter the menu (empty query → all).
+            savedClipQuery = query
             mode = .actions
+            query = ""
+            applyMenuFilter()
+            actionIndex = 0
         case .actions:
             if case .saved(let action) = currentEntry, !action.steps.isEmpty {
                 enterEdit(action)
@@ -148,7 +170,7 @@ final class HistoryPanelViewModel: ObservableObject {
     }
 
     private var currentEntry: ActionMenuItem? {
-        menuItems.indices.contains(actionIndex) ? menuItems[actionIndex] : nil
+        filteredMenuItems.indices.contains(actionIndex) ? filteredMenuItems[actionIndex] : nil
     }
 
     // MARK: - Running
@@ -158,9 +180,8 @@ final class HistoryPanelViewModel: ObservableObject {
         switch entry {
         case .builtin(.delete):
             onBuiltin(.delete, item)
-            removeLocally(item)
-            actionItem = nil
-            mode = .list
+            allItems.removeAll { $0.id == item.id }
+            returnToList()
         case .builtin(let action):
             // Controller performs the action and dismisses the panel.
             onBuiltin(action, item)
@@ -240,18 +261,47 @@ final class HistoryPanelViewModel: ObservableObject {
         customText = ""
         editBody = ""
         mode = .actions
+        // Reset the action search to show the full menu again.
+        query = ""
+        applyMenuFilter()
+        actionIndex = 0
     }
 
-    private func removeLocally(_ item: HistoryItem) {
-        allItems.removeAll { $0.id == item.id }
-        refresh()
+    /// Return from an action state to the list, restoring the stashed clip search.
+    private func returnToList() {
+        actionItem = nil
+        menuItems = []
+        filteredMenuItems = []
+        mode = .list
+        if query != savedClipQuery {
+            query = savedClipQuery   // didSet → refreshClips for the restored query
+        } else {
+            refreshClips()           // same value (or allItems changed) — refresh explicitly
+        }
     }
 
-    // MARK: - Internals
+    // MARK: - Filtering
 
-    private func refresh() {
+    private func onQueryChanged() {
+        switch mode {
+        case .list: refreshClips()
+        case .actions: applyMenuFilter(); actionIndex = 0
+        case .custom, .edit: break   // the field isn't the active control here
+        }
+    }
+
+    private func refreshClips() {
         filtered = FuzzyMatcher.rank(allItems, query: query)
         selectedIndex = 0
+    }
+
+    /// Filter the menu in place (preserving the built-ins → saved order so the
+    /// "Saved actions" divider still groups correctly).
+    private func applyMenuFilter() {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        filteredMenuItems = q.isEmpty
+            ? menuItems
+            : menuItems.filter { FuzzyMatcher.score($0.searchText, query: q) != nil }
     }
 
     private func stepList(by delta: Int) {
@@ -260,8 +310,8 @@ final class HistoryPanelViewModel: ObservableObject {
     }
 
     private func stepAction(by delta: Int) {
-        guard !menuItems.isEmpty else { return }
-        actionIndex = min(max(actionIndex + delta, 0), menuItems.count - 1)
+        guard !filteredMenuItems.isEmpty else { return }
+        actionIndex = min(max(actionIndex + delta, 0), filteredMenuItems.count - 1)
     }
 }
 

@@ -63,6 +63,15 @@ enum ActionMenuItem: Identifiable {
         case .saved(let a): return "saved.\(a.id.uuidString)"
         }
     }
+
+    /// Text the action search matches against.
+    var searchText: String {
+        switch self {
+        case .builtin(let b): return b.title
+        case .custom: return "Custom"
+        case .saved(let a): return a.name
+        }
+    }
 }
 
 /// The right column when the action menu is open: an "ACTIONS" header (with the
