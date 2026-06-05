@@ -5,6 +5,8 @@ import SwiftUI
 /// `Divider` as separators.
 struct StatusItemView: View {
     @ObservedObject var state: AppState
+    var onSearchHistory: () -> Void = {}
+    var onTransformSelection: () -> Void = {}
     var onOpenSettings: () -> Void = {}
     var onClearHistory: () -> Void = {}
 
@@ -16,6 +18,15 @@ struct StatusItemView: View {
             Divider()
             Text("Last error: \(state.lastError)")
         }
+
+        Divider()
+        // The shortcuts mirror the global Carbon hotkeys (⌘⇧V / ⌃⇧V). As status
+        // menu key equivalents they only fire while this menu is open, so there's
+        // no double-trigger with the global registration.
+        Button("Search history", action: onSearchHistory)
+            .keyboardShortcut("v", modifiers: [.command, .shift])
+        Button("Transform selection", action: onTransformSelection)
+            .keyboardShortcut("v", modifiers: [.control, .shift])
 
         Divider()
         Button("Settings…", action: onOpenSettings)

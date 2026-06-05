@@ -17,7 +17,7 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 - `./scripts/make-dmg.sh` → `Recallyx-<version>-arm64.dmg` (built-in `hdiutil`, drag-to-install layout). Needs `Recallyx.app` built first; honors `RECALLYX_VERSION` for the filename.
 - `./scripts/install.sh` — killalls running, copies to `~/Applications`, launches.
 - macOS 13+, Command Line Tools only (no Xcode). SPM, zero deps.
-- `swift build` / `swift test` for the library + unit tests.
+- `swift build` for the library. **Run tests via `./scripts/test.sh`, not bare `swift test`.** The suite uses swift-testing (`import Testing`); under CLT that framework + `lib_TestingInterop.dylib` live off the default search path, so plain `swift test` fails with `no such module 'Testing'` (then dlopen errors). The wrapper adds the `-F`/rpath flags. CI has full Xcode, so its plain `swift test` works.
 
 ## CI / Releases (`.github/workflows/`)
 - `pr-checks.yml` — runs `swift test` on PRs to `main` (macos-14).
@@ -28,7 +28,8 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 ## Source layout
 - `RecallyxApp.swift` — `@main` + `NSApplicationDelegate`. **All launch wiring lives in `applicationDidFinishLaunching`** (see Lessons — MenuBarExtra content is lazy).
 - `AppState.swift` — `@MainActor ObservableObject` (status / lastError / historyCount).
-- `StatusItemView.swift` — menu-bar dropdown.
+- `StatusItemView.swift` — menu-bar dropdown. Includes **Search history** (⌘⇧V) and **Transform selection** (⌃⇧V) items; their key equivalents only fire while the menu is open, so they mirror — not double-trigger — the global Carbon hotkeys.
+- `MenuBarIconImage.swift` — the menu-bar glyph: the brand mark (stacked clips, same viewBox-24 geometry as `BrandMark`) rendered as a resolution-independent **template** `NSImage` so macOS tints it for light/dark bars. `MenuBarIcon` (in `RecallyxApp.swift`) shows it at idle and swaps in an SF Symbol for working/success/error feedback.
 - `Log.swift` — `os.Logger` (subsystem `io.github.macrosak.recallyx`) mirrored to stderr.
 - `HistoryItem.swift` — `HistoryItem` (stored record), `CapturedClip` (raw capture from the watcher), `ContentHash` (SHA-256 dedupe keys via CryptoKit).
 - `HistoryStore.swift` — `@MainActor ObservableObject` owning the on-disk history. `add` (dedupe-bump or insert) / `bump` / `delete` / `clear`. Cap eviction, atomic save (temp + `replaceItemAt`), debounced writes, reseed-on-corrupt, orphan reconciliation.
