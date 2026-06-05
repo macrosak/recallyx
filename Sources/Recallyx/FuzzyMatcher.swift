@@ -20,20 +20,14 @@ enum FuzzyMatcher {
         return subsequenceScore(c, q)
     }
 
-    /// Filter + rank history items by a query against their text/preview and
-    /// source-app name. Empty query preserves the input order (recency).
+    /// Filter history items by a fuzzy query against their text/preview and
+    /// source-app name, **preserving the input order** (recency). The query only
+    /// decides what's kept, never how it's sorted — the list always reads newest
+    /// first, matching the unfiltered view.
     static func rank(_ items: [HistoryItem], query: String) -> [HistoryItem] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return items }
-
-        let scored: [(item: HistoryItem, score: Int, index: Int)] = items.enumerated().compactMap { idx, item in
-            guard let s = bestScore(for: item, query: trimmed) else { return nil }
-            return (item, s, idx)
-        }
-        // Score descending; ties keep recency order (original index ascending).
-        return scored
-            .sorted { $0.score != $1.score ? $0.score > $1.score : $0.index < $1.index }
-            .map(\.item)
+        return items.filter { bestScore(for: $0, query: trimmed) != nil }
     }
 
     private static func bestScore(for item: HistoryItem, query: String) -> Int? {

@@ -33,14 +33,16 @@ struct FuzzyMatcherTests {
         #expect(FuzzyMatcher.score("abcdef", query: "eca") == nil) // out of order
     }
 
-    @Test func rank_ordersItemsByScore() {
+    @Test func rank_preservesInputOrder_ignoringScore() {
+        // Filter-only: matches keep their recency (input) order regardless of how
+        // strongly each one matched.
         let items = [
             item(text: "the log file"),     // substring
             item(text: "log"),              // exact
             item(text: "lemongrass"),       // scattered
         ]
         let ranked = FuzzyMatcher.rank(items, query: "log")
-        #expect(ranked.map(\.text) == ["log", "the log file", "lemongrass"])
+        #expect(ranked.map(\.text) == ["the log file", "log", "lemongrass"])
     }
 
     @Test func rank_emptyQuery_preservesOrder() {
