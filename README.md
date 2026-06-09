@@ -1,168 +1,120 @@
-# Recallyx
+<div align="center">
+  <img src="docs/recallyx-social-1280x640.png" alt="Recallyx" width="760">
 
-A macOS menu-bar **clipboard history manager**. It watches the system clipboard, keeps a searchable history of text and images on disk, and gives you a fast floating panel to find and paste anything you've copied. A second layer adds **actions** — reorderable pipelines of script/AI steps that transform a clip before pasting.
+  <h1>Recallyx</h1>
+  <p><b>Native macOS clipboard manager with script &amp; AI actions on each clip.</b></p>
 
-Successor to [AI Replace](../ai-replace) — same proven menu-bar / hotkey / paste / OpenAI machinery, generalized into a clipboard manager.
+  <p>
+    <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-111?logo=apple&logoColor=white">
+    <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
+    <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-0a84ff">
+    <img alt="Release" src="https://img.shields.io/github/v/release/macrosak/recallyx">
+  </p>
+</div>
 
-- **⌘⇧V** → history panel: fuzzy-search your clipboard, ↑/↓ to select, ↵ pastes the selected clip into wherever you were, ⇥ opens its action menu, esc closes.
-- **⌃⇧V** → grab the current selection, push it to history, and open its actions — the AI-Replace replacement (select text anywhere, transform it, paste in place).
+## What it is
 
-The panel is a frosted floating window: a search field on top, your history list on the left (with source-app icons and relative timestamps), and a detail view on the right. It follows the system light/dark appearance.
+Recallyx is a native macOS menu-bar clipboard manager. It watches the system clipboard and
+keeps a searchable history of everything you copy — text and images — on disk. A fast
+floating panel lets you find and paste anything from that history without leaving the app
+you're in. On top of that sits an **actions** layer: small pipelines that transform a clip
+before pasting it.
 
-### Actions
+## The two hotkeys
 
-Press **⇥** on a clip to open its action menu. Built-in actions are Paste, Copy, Delete (and for images Copy file path / Reveal in Finder). Below those you'll find your saved **actions** and a **Custom…** entry:
+- **⌘⇧V** — open the history panel. Fuzzy-search your clips, `↑/↓` to select, `↵` pastes the
+  selected clip into wherever you were, `⇥` opens its action menu, `esc` closes.
+- **⌃⇧V** — grab the current selection, push it to history, and open straight into its
+  actions. Select text anywhere, transform it, paste the result in place.
 
-- A **saved action** runs the clip's text through a pipeline of script (`bash` filter) and AI (OpenAI) steps and pastes the result.
+## Screenshots
+
+<p align="center">
+  <img src="docs/recallyx-history-dark.png" alt="Recallyx history panel" width="640"><br>
+  <em>⌘⇧V — fuzzy-search your clipboard history.</em>
+</p>
+
+<p align="center">
+  <img src="docs/recallyx-action-menu-dark.png" alt="Recallyx action menu" width="640"><br>
+  <em>⇥ — run a script or AI action on the selected clip.</em>
+</p>
+
+## Actions
+
+Press **⇥** on a clip to open its action menu. Built-in actions are Paste, Copy, and Delete
+(images also get Copy file path / Reveal in Finder). Below those are your saved **actions**
+and a **Custom…** entry:
+
+- A **saved action** runs the clip's text through a pipeline of **script** (`bash` filter) and
+  **AI** (OpenAI) steps and pastes the result. Steps are reorderable and individually toggled.
 - **Custom…** lets you type a one-off instruction that runs once and is then discarded.
-- **⇥ again** on a saved action lets you **edit its steps for just this run** (⇥ paginates the steps, ⌘↵ runs) without changing the saved action.
+- **⇥ again** on a saved action lets you **edit its steps for just this run** (`⇥` paginates
+  the steps, `⌘↵` runs) without changing the saved action.
 
-Build and edit actions in **Settings → Actions**. AI steps need an OpenAI API key (Settings → General).
+Build and edit actions in **Settings → Actions**. AI steps need an OpenAI API key
+(Settings → General; the key is stored in the macOS Keychain).
 
-> Privacy: a single **Capture sensitive data** toggle (Settings → General), **off by default**, makes Recallyx honor `org.nspasteboard.*` hints so password-manager and transient clips are skipped.
+> **Privacy:** the **Capture sensitive data** toggle (Settings → General) is **off by
+> default**, so Recallyx honors `org.nspasteboard.*` hints and skips password-manager and
+> transient clips.
 
-## Requirements
+## Install
 
-- macOS 13 (Ventura) or newer.
-- **Apple Silicon (arm64)** — Intel Macs are not supported.
-- Apple Command Line Tools (`xcode-select --install`). Xcode itself is **not** required.
-  (Only needed to build from source — not for the download below.)
+Requirements: **macOS 13 (Ventura) or newer** · **Apple Silicon (arm64)**.
 
-## Download
+Grab the latest DMG from the [**Releases** page](https://github.com/macrosak/recallyx/releases/latest),
+open it, and drag **Recallyx.app** onto **Applications**.
 
-Grab the latest DMG from the [**Releases** page](https://github.com/macrosak/recallyx/releases/latest), open it, and drag **Recallyx.app** onto **Applications**.
-
-Builds are currently **ad-hoc signed** (not yet notarized), so Gatekeeper blocks the first launch with *"Apple could not verify Recallyx is free of malware."* Clear the quarantine flag from a terminal, then open the app normally:
+Builds are currently **ad-hoc signed** (not yet notarized), so Gatekeeper blocks the first
+launch with *"Apple could not verify Recallyx is free of malware."* Clear the quarantine
+flag once, then open the app normally:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Recallyx.app
 ```
 
-(On macOS 15 Sequoia and later, the old right-click → Open override no longer appears for un-notarized apps, so the `xattr` command is the reliable way in.)
+(On macOS 15 Sequoia and later, the old right-click → Open override no longer appears for
+un-notarized apps, so the `xattr` command is the reliable way in.)
 
-> Versions are `0.<N>` where `N` is the commit count on `main`. A notarized build and a Homebrew cask (`brew install --cask`, which would remove this Gatekeeper step) are planned improvements.
+## Building from source
 
-## Setup on a fresh machine
-
-### 1. Create a stable code-signing identity (one-time, per machine)
-
-```bash
-./scripts/create-signing-identity.sh
-```
-
-This generates a self-signed `Recallyx Dev` certificate in your login keychain. The script prints **one more command** to trust it for code signing (it modifies keychain trust, so you run it yourself):
+Needs Apple **Command Line Tools** (`xcode-select --install`) — Xcode itself is not required.
 
 ```bash
-security add-trusted-cert -p codeSign -k ~/Library/Keychains/login.keychain-db scripts/.signing-cert.pem
+# one-time, per machine: a stable code-signing identity
+./scripts/create-signing-identity.sh        # prints one `security add-trusted-cert …` to run yourself
+
+# build + install (install.sh kills any running instance, then relaunches)
+./scripts/bundle.sh && ./scripts/install.sh
+
+# unit tests
+./scripts/test.sh
 ```
 
-Verify:
+The stable signing identity matters because ad-hoc signing produces a fresh signature on
+every rebuild, which makes macOS drop the Accessibility grant each time; a self-signed
+`Recallyx Dev` cert keeps the grant across rebuilds
+([Apple's recommendation](https://developer.apple.com/forums/thread/730043)).
 
-```bash
-security find-identity -p codesigning -v   # → "Recallyx Dev"
-```
-
-### 2. Build and install
-
-```bash
-./scripts/bundle.sh        # SPM release build → Recallyx.app (signed with Recallyx Dev)
-./scripts/install.sh       # copy to ~/Applications, kill any running instance, launch
-```
-
-`bundle.sh` falls back to ad-hoc signing with a warning if the identity is missing — fine for a quick test, but you'll re-grant Accessibility on every rebuild.
-
-### 3. Get past Gatekeeper (first launch only)
-
-The self-signed cert isn't trusted by Apple, so the first launch is blocked. **Right-click `Recallyx.app` in Finder → Open → confirm.** Subsequent launches are silent.
-
-### 4. Grant Accessibility permission (for ⌃⇧V)
-
-The clipboard history (⌘⇧V) works without any permission. **⌃⇧V** (grab selection + paste results) needs Accessibility:
-
-1. On first ⌃⇧V the app shows an alert with **Open Settings**. Click it.
-2. In **System Settings → Privacy & Security → Accessibility**, toggle **Recallyx** on.
-3. **Quit and relaunch** — TCC reads the grant only at process start.
-
-### Why a stable signing identity
-
-macOS TCC stores an app's *designated requirement* (a signature fingerprint) when you grant Accessibility, and re-validates on every access. Ad-hoc signing produces a fresh hash on every rebuild, so the grant breaks each time. A stable self-signed cert keeps the grant across rebuilds. This is [Apple's own recommendation](https://developer.apple.com/forums/thread/730043).
-
-## Dev loop
-
-```bash
-./scripts/bundle.sh && ./scripts/install.sh   # rebuild + relaunch (install.sh killalls first)
-swift build                                   # compile the library only
-./scripts/test.sh                             # unit tests (swift-testing via Command Line Tools)
-```
-
-Stream logs (os.Logger, subsystem `io.github.macrosak.recallyx`):
-
-```bash
-log stream --predicate 'subsystem == "io.github.macrosak.recallyx"' --level debug
-```
-
-Or run the binary directly for the stderr mirror:
-
-```bash
-./Recallyx.app/Contents/MacOS/Recallyx
-```
-
-Lifecycle: `applicationDidFinishLaunching` → `InstallEventHandler` → `RegisterEventHotKey ⌘⇧V/⌃⇧V ok` → `clipboard watcher started` → `clipboard captured …` / `history add` → `hotkey fired` → `history panel shown` → `paste` / `action run → step → paste`.
-
-## Manual test checklist
-
-- Copy text in any app → it appears at the top of ⌘⇧V history.
-- Copy a screenshot → it appears as an image clip with a thumbnail + dimensions.
-- Re-copy something already in history → it bumps to the top (no duplicate).
-- Copy from a password manager (with Capture sensitive data **off**) → skipped.
-- ⌘⇧V → type to search → ↵ pastes into the previously focused app.
-- ⇥ on a clip → Paste / Copy / Delete; Delete keeps the panel open.
-- ⇥ → run a saved script action (e.g. Remove extra whitespace) → result pasted.
-- With an API key set: run an AI action; try **Custom…**; try **⇥ edit-before-run**.
-- ⌃⇧V with text selected → panel opens on that clip's actions; pick one → pasted in place.
-- Lower the retention cap in Settings → oldest clips (and their image files) are evicted.
+The clipboard history (⌘⇧V) works with no special permission. **⌃⇧V** (grab selection +
+paste results) needs Accessibility: on first use the app shows an **Open Settings** alert →
+toggle **Recallyx** on under **Privacy & Security → Accessibility** → **quit and relaunch**
+(macOS reads the grant only at process start).
 
 ## Troubleshooting
 
-- **Hotkey logs `RegisterEventHotKey … failed status=-9878`** — `eventHotKeyExistsErr`; another app grabbed ⌘⇧V / ⌃⇧V globally (Alfred / Raycast / etc.). Quit it or change the combo in `HotkeyManager.swift`.
-- **"Accessibility permission missing" after granting it** — TCC is holding a stale requirement (usually from an earlier ad-hoc build). Reset and re-grant:
+- **Hotkey log shows `RegisterEventHotKey … failed status=-9878`** — another app already grabbed
+  ⌘⇧V / ⌃⇧V globally (Alfred / Raycast / etc.). Quit it or change the combo in
+  `HotkeyManager.swift`.
+- **"Accessibility permission missing" after granting it** — macOS is holding a stale
+  requirement (usually from an earlier ad-hoc build). Reset and re-grant:
   ```bash
   tccutil reset Accessibility io.github.macrosak.recallyx
   killall Recallyx && ./scripts/install.sh
   ```
-- **App blocked by Gatekeeper every launch** — repeat the right-click → Open once after replacing the bundle.
+- **App blocked by Gatekeeper after replacing the bundle** — re-run the `xattr` command above
+  on the new `Recallyx.app`.
 
-## Project layout
+## License
 
-```
-recallyx/
-├── Package.swift                  # SPM manifest, zero external deps
-├── Sources/Recallyx/
-│   ├── RecallyxApp.swift          # @main, MenuBarExtra + NSApplicationDelegate (all launch wiring)
-│   ├── AppState.swift             # menu-bar status
-│   ├── HistoryItem.swift          # record + CapturedClip + ContentHash
-│   ├── HistoryStore.swift         # on-disk index + images, dedupe/evict/atomic-save
-│   ├── ClipboardWatcher.swift     # changeCount poll → classify → store
-│   ├── PrivacyFilter.swift        # nspasteboard hints + empty-text skip
-│   ├── AppIconProvider.swift      # source-app icons
-│   ├── HotkeyManager.swift        # Carbon ⌘⇧V / ⌃⇧V
-│   ├── HistoryPanel*.swift        # panel, controller, view model, views
-│   ├── ActionMenu.swift           # Tab action menu + ad-hoc AI columns
-│   ├── FuzzyMatcher.swift         # subsequence ranking
-│   ├── Paster.swift               # clipboard + synth ⌘V
-│   ├── AccessibilityClient.swift  # ⌃⇧V selection capture
-│   ├── Action.swift / ActionRunner.swift   # step pipelines
-│   ├── ScriptRunner.swift / OpenAIClient.swift / KeychainStore.swift / Notifier.swift
-│   ├── Settings*.swift            # store + window + General/Actions tabs + chrome
-│   ├── RXTheme.swift / SharedPanelViews.swift / Icon*.swift
-│   └── Resources/                 # Info.plist, AppIcon.icns, icon.png
-├── Tests/RecallyxTests/           # swift-testing suites
-└── scripts/                       # bundle / make-dmg / install / make-icon / create-signing-identity / test
-```
-
-## Notes
-
-- The OpenAI API key is stored in the macOS Keychain (Settings → General).
-- Model: configurable; default `gpt-4o-mini`, per-AI-step override available.
-- The app icon is generated from the brand mark by `scripts/gen-icon.swift` (a blue→indigo squircle with the white stacked-clips logo); rebuild the source PNG with `swift scripts/gen-icon.swift Sources/Recallyx/Resources/icon.png` then `./scripts/make-icon.sh`.
-```
+MIT — see [LICENSE](LICENSE).
