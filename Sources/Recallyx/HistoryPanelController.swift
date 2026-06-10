@@ -110,6 +110,13 @@ final class HistoryPanelController {
         panel?.orderOut(nil)
         panel = nil
         viewModel = nil
+        // Hand focus back to where the user was: we activated ourselves to
+        // show the panel, and with it gone the previous app doesn't regain key
+        // on its own. The paste path re-activates the same app, so this
+        // doubling up is harmless. (Action callbacks read sourceApp before
+        // dismiss() runs, so nilling it here is safe.)
+        sourceApp?.activate(options: [])
+        sourceApp = nil
         Log.debug("history panel dismissed")
     }
 
