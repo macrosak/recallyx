@@ -185,15 +185,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             paste(item, into: app)
             return true
         case .copy:
-            if let text = item.text { Paster.copyText(text) }
-            watcher?.markSelfCopy(item.contentHash)
+            if let text = item.text {
+                Paster.setClipboardText(text)
+                watcher?.markSelfWrite()
+            }
             state.flash(.success)
             return true
         case .delete:
             store.delete(item.id)
             return false
         case .copyFilePath:
-            if let url = store.imageURL(for: item) { Paster.copyText(url.path) }
+            if let url = store.imageURL(for: item) { Paster.setClipboardText(url.path) }
             state.flash(.success)
             return true
         case .revealInFinder:
@@ -215,19 +217,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Paste a chosen history clip back into the source app, then bump it to the
-    /// top. The watcher's self-write guard keeps this from creating a duplicate.
+    /// top. The pasteboard write is marked as self-written (by changeCount,
+    /// after the write) so the watcher bumps rather than re-captures.
     private func paste(_ item: HistoryItem, into app: NSRunningApplication?) {
-        watcher?.markSelfCopy(item.contentHash)
         store.bump(item.id)
         Task { @MainActor in
             switch item.kind {
             case .text:
-                await Paster.pasteText(item.text ?? "", into: app)
+                Paster.setClipboardText(item.text ?? "")
             case .image:
-                if let url = store.imageURL(for: item), let image = NSImage(contentsOf: url) {
-                    await Paster.pasteImage(image, into: app)
+                guard let url = store.imageURL(for: item), let image = NSImage(contentsOf: url) else {
+                    state.flash(.error("missing image"))
+                    return
                 }
+                Paster.setClipboardImage(image)
             }
+            watcher?.markSelfWrite()
+            await Paster.activateAndPaste(sourceApp: app)
             state.flash(.success)
         }
     }
