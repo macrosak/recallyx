@@ -81,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let settingsWindow = SettingsWindowController(
             settingsStore: settingsStore,
-            clearHistory: { [weak self] in self?.store.clear() }
+            clearHistory: { [weak self] in self?.clearHistory() }
         )
         self.settingsWindow = settingsWindow
 
@@ -246,8 +246,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow?.show()
     }
 
+    /// Clearing is irreversible (the image files are deleted too) — confirm
+    /// first. Serves both the menu item and the Settings button.
     func clearHistory() {
-        store.clear()
+        guard !store.items.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Clear all clipboard history?"
+        alert.informativeText = "All \(store.items.count) clips and their stored images will be deleted. This can't be undone."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Clear History")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            store.clear()
+        }
+    }
+
+    /// Both stores debounce their writes (~250ms); flush so a quit right after
+    /// a copy or settings change doesn't lose the last mutation.
+    func applicationWillTerminate(_ notification: Notification) {
+        store.flush()
+        settingsStore.flush()
     }
 
     /// The system can silently disable us (user removed us from Login Items);
