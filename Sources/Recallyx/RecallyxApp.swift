@@ -82,7 +82,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let settingsWindow = SettingsWindowController(
             settingsStore: settingsStore,
-            clearHistory: { [weak self] in self?.clearHistory() }
+            clearHistory: { [weak self] in self?.clearHistory() },
+            shortcutActions: ShortcutActions(
+                apply: { [weak self] action, shortcut in
+                    self?.applyShortcut(action, shortcut) ?? .failed(OSStatus(eventNotHandledErr))
+                },
+                suspend: { [weak self] in self?.suspendHotkeys() },
+                resume: { [weak self] in self?.resumeHotkeys() }
+            )
         )
         self.settingsWindow = settingsWindow
 
