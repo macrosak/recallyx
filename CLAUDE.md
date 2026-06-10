@@ -28,7 +28,7 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 ## Source layout
 - `RecallyxApp.swift` — `@main` + `NSApplicationDelegate`. **All launch wiring lives in `applicationDidFinishLaunching`** (see Lessons — MenuBarExtra content is lazy).
 - `AppState.swift` — `@MainActor ObservableObject` (status / lastError / historyCount).
-- `StatusItemView.swift` — menu-bar dropdown. Includes **Search history** (⌘⇧V) and **Transform selection** (⌃⇧V) items; their key equivalents only fire while the menu is open, so they mirror — not double-trigger — the global Carbon hotkeys.
+- `StatusItemView.swift` — menu-bar dropdown. Includes **Search history** and **Transform selection** items whose key equivalents are derived live from the saved `Shortcut`s (observes `SettingsStore`; disabled hotkey → no key hint, item stays). The equivalents only fire while the menu is open, so they mirror — not double-trigger — the global Carbon hotkeys.
 - `MenuBarIconImage.swift` — the menu-bar glyph: the brand mark (stacked clips, same viewBox-24 geometry as `BrandMark`) rendered as a resolution-independent **template** `NSImage` so macOS tints it for light/dark bars. `MenuBarIcon` (in `RecallyxApp.swift`) shows it at idle and swaps in an SF Symbol for working/success/error feedback.
 - `Log.swift` — `os.Logger` (subsystem `io.github.macrosak.recallyx`) mirrored to stderr.
 - `HistoryItem.swift` — `HistoryItem` (stored record), `CapturedClip` (raw capture from the watcher), `ContentHash` (SHA-256 dedupe keys via CryptoKit).

@@ -9,6 +9,7 @@ struct RecallyxApp: App {
         MenuBarExtra {
             StatusItemView(
                 state: delegate.state,
+                settingsStore: delegate.settingsStore,
                 onSearchHistory: { delegate.searchHistory() },
                 onTransformSelection: { delegate.transformSelection() },
                 onOpenSettings: { delegate.openSettings() },
@@ -42,7 +43,7 @@ private struct MenuBarIcon: View {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let state = AppState()
-    private let settingsStore = SettingsStore()
+    let settingsStore = SettingsStore() // StatusItemView observes it for live key-equivalents
     private lazy var store = HistoryStore(cap: settingsStore.settings.retentionCap)
     private var watcher: ClipboardWatcher?
     private var hotkey: HotkeyManager?
