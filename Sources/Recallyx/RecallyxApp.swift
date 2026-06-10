@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import SwiftUI
 
 @main
@@ -104,12 +105,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.openSettings() }
         }
 
-        hotkey = HotkeyManager(registerSelection: true) { [weak self] action in
+        let hotkey = HotkeyManager { [weak self] action in
             switch action {
             case .showHistory: self?.historyPanel?.toggle()
             case .transformSelection: self?.handleTransformSelection()
             }
         }
+        self.hotkey = hotkey
+        registerAtLaunch(.showHistory, settingsStore.settings.searchHistoryShortcut)
+        registerAtLaunch(.transformSelection, settingsStore.settings.transformSelectionShortcut)
+    }
+
+    /// A saved combo can have been taken by another app since last run; the
+    /// hotkey then silently doesn't work, so surface it in the status menu.
+    private func registerAtLaunch(_ action: HotkeyAction, _ shortcut: Shortcut) {
+        if case .failed(let status) = hotkey?.apply(action, shortcut) {
+            state.lastError = "Couldn't register \(shortcut.glyphs.joined()) (\(status)) — change it in Settings."
+        }
+    }
+
+    /// Single mutation point for hotkey changes: Carbon first, settings only
+    /// on success — a failed registration never clobbers the persisted (and
+    /// still live) binding.
+    func applyShortcut(_ action: HotkeyAction, _ shortcut: Shortcut) -> HotkeyManager.ApplyResult {
+        guard let hotkey else { return .failed(OSStatus(eventNotHandledErr)) }
+        let result = hotkey.apply(action, shortcut)
+        switch result {
+        case .ok, .disabled:
+            switch action {
+            case .showHistory: settingsStore.settings.searchHistoryShortcut = shortcut
+            case .transformSelection: settingsStore.settings.transformSelectionShortcut = shortcut
+            }
+        case .failed:
+            break
+        }
+        return result
+    }
+
+    /// Recording in Settings needs the raw keyDowns — see HotkeyManager.suspend.
+    func suspendHotkeys() {
+        hotkey?.suspend()
+    }
+
+    func resumeHotkeys() {
+        hotkey?.resume(
+            searchHistory: settingsStore.settings.searchHistoryShortcut,
+            transformSelection: settingsStore.settings.transformSelectionShortcut
+        )
     }
 
     /// ⌃⇧V — grab the current selection, push it to the top of history, and open
