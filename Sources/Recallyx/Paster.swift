@@ -9,25 +9,26 @@ import AppKit
 enum Paster {
     /// Put `text` on the clipboard and paste it into `sourceApp`.
     static func pasteText(_ text: String, into sourceApp: NSRunningApplication?) async {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        setClipboardText(text)
         await activateAndPaste(sourceApp: sourceApp)
     }
 
-    /// Put an image on the clipboard (as PNG) and paste it into `sourceApp`.
-    static func pasteImage(_ image: NSImage, into sourceApp: NSRunningApplication?) async {
+    /// Put text on the clipboard without pasting (the "Copy" action; also the
+    /// first half of a paste, split out so the caller can mark the write as
+    /// self-written before the watcher's next tick).
+    static func setClipboardText(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// Image counterpart of `setClipboardText`.
+    static func setClipboardImage(_ image: NSImage) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects([image])
-        await activateAndPaste(sourceApp: sourceApp)
     }
 
-    /// Just put text on the clipboard without pasting (the "Copy" action).
-    static func copyText(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-    }
-
-    private static func activateAndPaste(sourceApp: NSRunningApplication?) async {
+    /// Activate the source app and synthesize ⌘V — the second half of a paste.
+    static func activateAndPaste(sourceApp: NSRunningApplication?) async {
         if let sourceApp {
             sourceApp.activate(options: [])
             // Let the activation settle before the keystroke, else ⌘V can land

@@ -81,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let settingsWindow = SettingsWindowController(
             settingsStore: settingsStore,
-            clearHistory: { [weak self] in self?.store.clear() }
+            clearHistory: { [weak self] in self?.clearHistory() }
         )
         self.settingsWindow = settingsWindow
 
@@ -185,15 +185,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             paste(item, into: app)
             return true
         case .copy:
-            if let text = item.text { Paster.copyText(text) }
-            watcher?.markSelfCopy(item.contentHash)
+            if let text = item.text {
+                Paster.setClipboardText(text)
+                watcher?.markSelfWrite()
+            }
             state.flash(.success)
             return true
         case .delete:
             store.delete(item.id)
             return false
         case .copyFilePath:
-            if let url = store.imageURL(for: item) { Paster.copyText(url.path) }
+            if let url = store.imageURL(for: item) { Paster.setClipboardText(url.path) }
             state.flash(.success)
             return true
         case .revealInFinder:
@@ -215,19 +217,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Paste a chosen history clip back into the source app, then bump it to the
-    /// top. The watcher's self-write guard keeps this from creating a duplicate.
+    /// top. The pasteboard write is marked as self-written (by changeCount,
+    /// after the write) so the watcher bumps rather than re-captures.
     private func paste(_ item: HistoryItem, into app: NSRunningApplication?) {
-        watcher?.markSelfCopy(item.contentHash)
         store.bump(item.id)
         Task { @MainActor in
             switch item.kind {
             case .text:
-                await Paster.pasteText(item.text ?? "", into: app)
+                Paster.setClipboardText(item.text ?? "")
             case .image:
-                if let url = store.imageURL(for: item), let image = NSImage(contentsOf: url) {
-                    await Paster.pasteImage(image, into: app)
+                guard let url = store.imageURL(for: item), let image = NSImage(contentsOf: url) else {
+                    state.flash(.error("missing image"))
+                    return
                 }
+                Paster.setClipboardImage(image)
             }
+            watcher?.markSelfWrite()
+            await Paster.activateAndPaste(sourceApp: app)
             state.flash(.success)
         }
     }
@@ -246,8 +252,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow?.show()
     }
 
+    /// Clearing is irreversible (the image files are deleted too) — confirm
+    /// first. Serves both the menu item and the Settings button.
     func clearHistory() {
-        store.clear()
+        guard !store.items.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Clear all clipboard history?"
+        alert.informativeText = "All \(store.items.count) clips and their stored images will be deleted. This can't be undone."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Clear History")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            store.clear()
+        }
+    }
+
+    /// Both stores debounce their writes (~250ms); flush so a quit right after
+    /// a copy or settings change doesn't lose the last mutation.
+    func applicationWillTerminate(_ notification: Notification) {
+        store.flush()
+        settingsStore.flush()
     }
 
     /// The system can silently disable us (user removed us from Login Items);

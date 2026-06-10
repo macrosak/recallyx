@@ -15,11 +15,14 @@ final class ClipboardWatcher {
     private let pasteboard = NSPasteboard.general
     private var timer: Timer?
     private var lastChangeCount: Int
-    /// Hashes we just wrote to the pasteboard ourselves (paste of an existing
-    /// clip). The next tick matching one of these is skipped so we don't churn
-    /// provenance or double-count. AI/script results are *not* marked, so they
-    /// re-enter history as fresh top items.
-    private var selfWrittenHashes: Set<String> = []
+    /// `changeCount`s produced by our own pasteboard writes (paste/copy of an
+    /// existing clip). A tick observing one of these is skipped so we don't
+    /// churn provenance or double-count. Keyed by changeCount, not content
+    /// hash: a re-encoded image (NSImage → TIFF → PNG) never hashes back to
+    /// the originally captured bytes, so a hash key would miss its own write
+    /// AND poison future legitimate captures of the original. AI/script
+    /// results are *not* marked, so they re-enter history as fresh top items.
+    private var selfWriteChangeCounts: Set<Int> = []
 
     init(store: HistoryStore, captureSensitive: @escaping () -> Bool) {
         self.store = store
@@ -42,10 +45,11 @@ final class ClipboardWatcher {
         timer = nil
     }
 
-    /// Tell the watcher that we just set the pasteboard to content with this hash
-    /// (a paste of an existing clip) so it doesn't re-capture it.
-    func markSelfCopy(_ hash: String) {
-        selfWrittenHashes.insert(hash)
+    /// Tell the watcher the pasteboard's current state is our own write — call
+    /// immediately AFTER setting the pasteboard, so the recorded changeCount is
+    /// the one our write produced.
+    func markSelfWrite() {
+        selfWriteChangeCounts.insert(pasteboard.changeCount)
     }
 
     // MARK: - Polling
@@ -55,6 +59,15 @@ final class ClipboardWatcher {
         guard current != lastChangeCount else { return }
         lastChangeCount = current
 
+        let isSelfWrite = selfWriteChangeCounts.contains(current)
+        // changeCount only grows — anything at or below the observed value is
+        // spent (a marked write superseded within one tick can never match).
+        selfWriteChangeCounts = selfWriteChangeCounts.filter { $0 > current }
+        if isSelfWrite {
+            Log.debug("clipboard tick: self-write, skipped changeCount=\(current)")
+            return
+        }
+
         let types = pasteboard.types ?? []
         guard PrivacyFilter.shouldCapture(types: types, captureSensitive: captureSensitive()) else {
             Log.debug("clipboard tick skipped (privacy hint) types=\(types.map(\.rawValue))")
@@ -63,11 +76,6 @@ final class ClipboardWatcher {
 
         guard let captured = classify() else {
             Log.debug("clipboard tick: nothing capturable types=\(types.map(\.rawValue))")
-            return
-        }
-
-        if selfWrittenHashes.remove(captured.contentHash) != nil {
-            Log.debug("clipboard tick: self-write, skipped hash=\(captured.contentHash.prefix(8))")
             return
         }
 

@@ -87,6 +87,19 @@ struct HistoryStoreTests {
         #expect(!FileManager.default.fileExists(atPath: imgURL!.path))
     }
 
+    @Test func loweringCap_evictsAndFiresOnChange() {
+        let (store, base) = makeStore(cap: 10)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        for i in 0..<5 { store.add(textClip("clip-\(i)")) }
+        var notified = false
+        store.onChange = { notified = true }
+
+        store.cap = 2
+        #expect(store.items.count == 2)
+        #expect(notified)   // the menu-bar count listens here
+    }
+
     @Test func ordering_byRecencyDescending_afterReload() {
         let (store, base) = makeStore()
         defer { try? FileManager.default.removeItem(at: base) }

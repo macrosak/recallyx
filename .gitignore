@@ -5,3 +5,4 @@
 DerivedData/
 scripts/.signing-cert.pem
 .DS_Store
+.idea/

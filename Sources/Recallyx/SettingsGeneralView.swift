@@ -83,10 +83,11 @@ struct SettingsGeneralView: View {
         if trimmed.isEmpty { _ = keychain.delete() } else { _ = keychain.write(trimmed) }
     }
 
+    /// Tests the key as typed in the field, WITHOUT persisting it — saving is
+    /// Save's job; testing a bad key must not overwrite a working one.
     private func testKey() async {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        persistKey()
         testResult = .testing
         do {
             _ = try await OpenAIClient().complete(apiKey: trimmed, model: ModelCatalog.default, promptTemplate: "Reply with: ok", text: "")
@@ -130,8 +131,11 @@ struct SettingsGeneralView: View {
                     desc: "Oldest clips are evicted beyond this cap.",
                     theme: theme
                 ) {
-                    SettingsField(text: $capText, mono: false, width: 64, theme: theme)
-                        .onChange(of: capText) { commitCap($0) }
+                    SettingsField(text: $capText, mono: false, width: 64, theme: theme, onEditingEnded: commitCap)
+                        .onChange(of: capText) { raw in
+                            let digits = raw.filter(\.isNumber)
+                            if digits != raw { capText = digits }
+                        }
                     Text("items").font(.system(size: 12.5)).foregroundStyle(theme.textDim)
                 }
                 SettingsRow(
@@ -181,10 +185,14 @@ struct SettingsGeneralView: View {
 
     // MARK: - Actions
 
-    private func commitCap(_ raw: String) {
-        let digits = raw.filter(\.isNumber)
-        if digits != raw { capText = digits }
-        guard let value = Int(digits), value > 0 else { return }
+    /// Apply the cap only on commit (Return / focus loss), never per keystroke —
+    /// an intermediate value like the "5" while typing "500" would immediately
+    /// evict (and delete the image files of) almost the whole history.
+    private func commitCap() {
+        guard let value = Int(capText), value > 0 else {
+            capText = String(settingsStore.settings.retentionCap)
+            return
+        }
         settingsStore.settings.retentionCap = value
     }
 
