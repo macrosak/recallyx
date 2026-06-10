@@ -18,7 +18,7 @@ final class HistoryStore: ObservableObject {
         didSet {
             guard cap != oldValue else { return }
             enforceCap()
-            scheduleSave()
+            didMutate()   // eviction must reach onChange so the menu count updates
         }
     }
 
