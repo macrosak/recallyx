@@ -183,6 +183,12 @@ struct SettingsField: View {
     var mono: Bool = false
     var width: CGFloat? = nil
     let theme: SettingsTheme
+    /// Fired when editing commits — Return or focus leaving the field. Use this
+    /// (not `onChange` of the binding) for anything with side effects, so
+    /// half-typed values are never applied.
+    var onEditingEnded: (() -> Void)? = nil
+
+    @FocusState private var focused: Bool
 
     var body: some View {
         TextField(placeholder, text: $text)
@@ -197,6 +203,9 @@ struct SettingsField: View {
                     .fill(theme.inputBg)
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.inputBorder, lineWidth: 0.5))
             )
+            .focused($focused)
+            .onSubmit { onEditingEnded?() }
+            .onChange(of: focused) { if !$0 { onEditingEnded?() } }
     }
 }
 
