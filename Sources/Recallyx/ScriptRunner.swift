@@ -33,6 +33,12 @@ struct ScriptRunner {
     static let timeoutSeconds = 30
     private static let envScriptKey = "RECALLYX_SCRIPT"
 
+    /// write(2) to a pipe whose reader is gone raises SIGPIPE, whose default
+    /// action kills the whole app — a script that exits without reading stdin
+    /// (`echo done`) must not crash us. Ignoring it turns the failed write into
+    /// a harmless EPIPE error instead.
+    private static let ignoreSIGPIPE: Void = { signal(SIGPIPE, SIG_IGN) }()
+
     static func run(script: String, input: String) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
             try runBlocking(script: script, input: input)
@@ -73,14 +79,25 @@ struct ScriptRunner {
             execute: timeoutItem
         )
 
+        let group = DispatchGroup()
+
+        // Feed stdin on a background thread: writing synchronously here would
+        // deadlock against stdout once both 64K pipe buffers fill (input
+        // > 64K + a script that writes while it reads), and a script that
+        // never reads stdin fails the write with EPIPE — both are harmless in
+        // the background with the throwing write (SIGPIPE ignored above).
+        _ = Self.ignoreSIGPIPE
         let inData = input.data(using: .utf8) ?? Data()
-        stdinPipe.fileHandleForWriting.write(inData)
-        try? stdinPipe.fileHandleForWriting.close()
+        group.enter()
+        DispatchQueue.global().async {
+            try? stdinPipe.fileHandleForWriting.write(contentsOf: inData)
+            try? stdinPipe.fileHandleForWriting.close()
+            group.leave()
+        }
 
         // Drain stderr on a background thread so a large stderr can't deadlock
         // against stdout filling its 64K pipe buffer.
         var errData = Data()
-        let group = DispatchGroup()
         group.enter()
         DispatchQueue.global().async {
             errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
