@@ -44,11 +44,18 @@ private struct MenuBarIcon: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let state = AppState()
     let settingsStore = SettingsStore() // StatusItemView observes it for live key-equivalents
-    private lazy var store = HistoryStore(cap: settingsStore.settings.retentionCap)
+    // RECALLYX_DATA_DIR redirects history to a scratch dir for debug runs
+    // (see DebugHooks.swift); settings/UserDefaults are NOT isolated.
+    private lazy var store = HistoryStore(
+        baseURL: ProcessInfo.processInfo.environment["RECALLYX_DATA_DIR"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) },
+        cap: settingsStore.settings.retentionCap
+    )
     private var watcher: ClipboardWatcher?
     private var hotkey: HotkeyManager?
     private var historyPanel: HistoryPanelController?
     private var settingsWindow: SettingsWindowController?
+    private var debugHooks: DebugHooks?
     private let notifier = Notifier()
     private let accessibility = AccessibilityClient()
     private lazy var actionRunner = ActionRunner(defaultModel: { [settingsStore] in settingsStore.settings.defaultModel })
@@ -122,6 +129,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.hotkey = hotkey
         registerAtLaunch(.showHistory, settingsStore.settings.searchHistoryShortcut)
         registerAtLaunch(.transformSelection, settingsStore.settings.transformSelectionShortcut)
+
+        if DebugHooks.isEnabled {
+            debugHooks = DebugHooks(
+                panel: historyPanel,
+                openSettings: { [weak self] in self?.openSettings() },
+                historyCount: { [store] in store.items.count }
+            )
+        }
     }
 
     /// A saved combo can have been taken by another app since last run; the

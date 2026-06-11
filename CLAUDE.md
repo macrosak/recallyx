@@ -78,6 +78,14 @@ log stream --predicate 'subsystem == "io.github.macrosak.recallyx"' --level debu
 ```
 Or run the binary directly: `./Recallyx.app/Contents/MacOS/Recallyx` (stderr mirror).
 
+## Manual UI testing (agents)
+`./scripts/debug.sh` drives a live instance over distributed notifications — `DebugHooks.swift`, active only in `RECALLYX_DEBUG=1` launches. No TCC needed to drive; screenshots need Screen Recording for the calling terminal (already granted).
+- `launch [DATA_DIR]` — killalls running instances (restore the user's app after: `open ~/Applications/Recallyx.app`), launches with hooks; `DATA_DIR` isolates history via `RECALLYX_DATA_DIR` (settings/UserDefaults are **not** isolated). Stderr → `/tmp/recallyx-debug.log`.
+- `cmd show-panel|show-actions|hide-panel|open-settings` · `cmd query <text>` · `cmd text <text>` (mode-aware: custom prompt / edit body / search) · `cmd key up|down|return|cmd-return|tab|esc` (goes through the real `handleKeyDown`, so mode routing matches real keypresses).
+- `state` — JSON dump (mode/query/cursor/counts). `shot [PATH]` — real-pixel `screencapture` of the panel window. `snap [PATH]` — app-side `cacheDisplay` render (no TCC, vibrancy unblurred).
+- Typical loop: `bundle.sh` → `debug.sh launch /tmp/rx-debug` → seed clips via `pbcopy` (sleep ~0.5s between; watcher polls ~0.3s) → `cmd show-panel` → `shot` → Read the PNG.
+- Caveats: any user click outside dismisses the panel — show + shot in one tight command when the user is active. ↵/paste actions synth ⌘V into the frontmost app — don't run them unattended. Save/restore the user's clipboard (`pbpaste`/`pbcopy`) around a session.
+
 ## Lessons carried over from AI Replace — don't relitigate
 - **MenuBarExtra content is lazy.** Use `NSApplicationDelegate.applicationDidFinishLaunching` for launch wiring, never the content's `.task`.
 - **Ad-hoc signing invalidates TCC every rebuild.** Stable identity via `scripts/create-signing-identity.sh` → grant survives rebuilds.
