@@ -66,8 +66,19 @@ struct FuzzyMatcherTests {
         // Build a string larger than the default limit; verify the prefix is bounded.
         let big = String(repeating: "a", count: FuzzyMatcher.searchPrefixLimit + 100)
         let prefix = FuzzyMatcher.boundedPrefix(big)
-        #expect(prefix.count <= FuzzyMatcher.searchPrefixLimit)
-        #expect(prefix.count > FuzzyMatcher.searchPrefixLimit - 4) // within a char boundary
+        // Limit is in bytes; ASCII chars are 1 byte each so count == utf8.count here.
+        #expect(prefix.utf8.count <= FuzzyMatcher.searchPrefixLimit)
+        #expect(prefix.utf8.count > FuzzyMatcher.searchPrefixLimit - 4)
+    }
+
+    @Test func boundedPrefix_multibyteAtBoundary_staysBounded() {
+        // Emoji are 4 UTF-8 bytes; force the 16 KB limit to land mid-emoji.
+        let head = String(repeating: "a", count: FuzzyMatcher.searchPrefixLimit - 2)
+        let big = head + "😀😀😀😀"  // boundary at -2 bytes splits the first emoji
+        let prefix = FuzzyMatcher.boundedPrefix(big)
+        #expect(prefix.utf8.count <= FuzzyMatcher.searchPrefixLimit)
+        // Must not hand back the whole string (the pre-fix bug returned s.endIndex - 1).
+        #expect(prefix.utf8.count < big.utf8.count - 4)
     }
 
     @Test func rank_matchInPrefix_syncsMatches() {

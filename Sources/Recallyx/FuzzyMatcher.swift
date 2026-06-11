@@ -59,10 +59,14 @@ enum FuzzyMatcher {
     /// Returns a view into `s` truncated to at most `searchPrefixLimit` UTF-8
     /// bytes while preserving valid `Character` boundaries.
     static func boundedPrefix(_ s: String) -> Substring {
-        guard s.utf8.count > searchPrefixLimit else { return s[s.startIndex...] }
-        let idx = s.utf8.index(s.utf8.startIndex, offsetBy: searchPrefixLimit)
-        // Step back to the nearest character boundary.
-        let charIdx = idx.samePosition(in: s) ?? s.index(before: idx.samePosition(in: s) ?? s.endIndex)
+        guard s.utf8.count > searchPrefixLimit else { return s[...] }
+        var byteIdx = s.utf8.index(s.utf8.startIndex, offsetBy: searchPrefixLimit)
+        // Walk back within the UTF-8 view until we land on a character boundary
+        // (at most 3 bytes for a 4-byte grapheme cluster).
+        while byteIdx > s.utf8.startIndex, byteIdx.samePosition(in: s) == nil {
+            byteIdx = s.utf8.index(before: byteIdx)
+        }
+        let charIdx = byteIdx.samePosition(in: s) ?? s.startIndex
         return s[s.startIndex..<charIdx]
     }
 
