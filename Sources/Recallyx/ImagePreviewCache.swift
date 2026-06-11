@@ -27,10 +27,14 @@ final class ImagePreviewCache {
     func load(filename: String, url: URL) async -> NSImage? {
         if let hit = cache.object(forKey: filename as NSString) { return hit }
 
+        // Capture scale on the main actor before hopping off-thread; NSScreen.main
+        // is a main-thread-only API and must not be called from the detached task.
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+
         // Decode off the main thread. Box wraps NSImage for the actor-boundary
         // crossing on macOS 13 where NSImage doesn't formally conform to Sendable.
         let box = await Task.detached(priority: .userInitiated) {
-            Box(Self.downsample(url: url))
+            Box(Self.downsample(url: url, scale: scale))
         }.value
 
         if let img = box.value {
@@ -40,14 +44,13 @@ final class ImagePreviewCache {
         return nil
     }
 
-    private nonisolated static func downsample(url: URL) -> NSImage? {
+    private nonisolated static func downsample(url: URL, scale: CGFloat) -> NSImage? {
         let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
         guard let source = CGImageSourceCreateWithURL(url as CFURL, options as CFDictionary) else {
             return nil
         }
 
-        // Target pixels = maxDisplayHeight × screen scale (2× for Retina).
-        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        // Target pixels = maxDisplayHeight × backing scale (captured on main actor).
         let targetPx = Int(imagePreviewMaxDisplayHeight * scale)
 
         let thumbOptions: [CFString: Any] = [
