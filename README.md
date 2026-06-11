@@ -25,7 +25,12 @@ before pasting it.
 - **⌘⇧V** — open the history panel. Fuzzy-search your clips, `↑/↓` to select, `↵` pastes the
   selected clip into wherever you were, `⇥` opens its action menu, `esc` closes.
 - **⌃⇧V** — grab the current selection, push it to history, and open straight into its
-  actions. Select text anywhere, transform it, paste the result in place.
+  actions. Select text anywhere — including browsers like Chrome — transform it, paste the
+  result in place.
+
+Both are defaults, not fixtures: in **Settings → General → Shortcuts**, click a shortcut to
+record a new combo (applied immediately, no relaunch) or **✕** to disable it. The menu-bar
+items always show the current bindings.
 
 ## Screenshots
 
@@ -103,9 +108,9 @@ toggle **Recallyx** on under **Privacy & Security → Accessibility** → **quit
 
 ## Troubleshooting
 
-- **Hotkey log shows `RegisterEventHotKey … failed status=-9878`** — another app already grabbed
-  ⌘⇧V / ⌃⇧V globally (Alfred / Raycast / etc.). Quit it or change the combo in
-  `HotkeyManager.swift`.
+- **A hotkey doesn't fire** — another app may have grabbed the combo globally
+  (Alfred / Raycast / etc.); the status menu shows an error when that happens at launch.
+  Rebind it in **Settings → General → Shortcuts**, or quit the other app.
 - **"Accessibility permission missing" after granting it** — macOS is holding a stale
   requirement (usually from an earlier ad-hoc build). Reset and re-grant:
   ```bash

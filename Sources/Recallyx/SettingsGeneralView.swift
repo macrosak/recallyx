@@ -5,10 +5,13 @@ import SwiftUI
 struct SettingsGeneralView: View {
     @ObservedObject var settingsStore: SettingsStore
     let clearHistory: () -> Void
+    let shortcutActions: ShortcutActions
     let theme: SettingsTheme
 
     @State private var capText: String = ""
     @State private var launchError: String?
+    @State private var searchShortcutError: String?
+    @State private var transformShortcutError: String?
     @State private var apiKey: String = ""
     @State private var showKey: Bool = false
     @State private var testResult: KeyTestResult = .idle
@@ -105,16 +108,34 @@ struct SettingsGeneralView: View {
         VStack(spacing: 0) {
             SectionLabel(text: "Shortcuts", theme: theme)
             SettingsCard(theme: theme) {
-                SettingsRow(label: "Search & paste history", theme: theme) {
-                    ShortcutChips(keys: ["⌘", "⇧", "V"], theme: theme)
+                SettingsRow(label: "Search & paste history", desc: searchShortcutError, theme: theme) {
+                    ShortcutRecorder(
+                        action: .showHistory,
+                        shortcut: settingsStore.settings.searchHistoryShortcut,
+                        other: settingsStore.settings.transformSelectionShortcut,
+                        otherAction: .transformSelection,
+                        otherName: "Transform selection",
+                        actions: shortcutActions,
+                        error: $searchShortcutError,
+                        theme: theme
+                    )
                 }
                 SettingsRow(
                     label: "Transform selection",
-                    desc: "Grab the current selection and open its actions.",
+                    desc: transformShortcutError ?? "Grab the current selection and open its actions.",
                     last: true,
                     theme: theme
                 ) {
-                    ShortcutChips(keys: ["⌃", "⇧", "V"], theme: theme)
+                    ShortcutRecorder(
+                        action: .transformSelection,
+                        shortcut: settingsStore.settings.transformSelectionShortcut,
+                        other: settingsStore.settings.searchHistoryShortcut,
+                        otherAction: .showHistory,
+                        otherName: "Search & paste history",
+                        actions: shortcutActions,
+                        error: $transformShortcutError,
+                        theme: theme
+                    )
                 }
             }
         }

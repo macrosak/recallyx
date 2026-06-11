@@ -12,19 +12,27 @@ struct AppSettings: Codable, Equatable {
     var defaultModel: String
     /// User-defined script/AI action pipelines shown in the Tab menu.
     var actions: [Action]
+    /// ⌘⇧V by default — opens the history panel.
+    var searchHistoryShortcut: Shortcut
+    /// ⌃⇧V by default — grabs the selection and opens its actions.
+    var transformSelectionShortcut: Shortcut
 
     init(
         retentionCap: Int = 1000,
         captureSensitive: Bool = false,
         launchAtLogin: Bool = false,
         defaultModel: String = ModelCatalog.default,
-        actions: [Action] = Action.defaults()
+        actions: [Action] = Action.defaults(),
+        searchHistoryShortcut: Shortcut = .searchHistoryDefault,
+        transformSelectionShortcut: Shortcut = .transformSelectionDefault
     ) {
         self.retentionCap = retentionCap
         self.captureSensitive = captureSensitive
         self.launchAtLogin = launchAtLogin
         self.defaultModel = defaultModel
         self.actions = actions
+        self.searchHistoryShortcut = searchHistoryShortcut
+        self.transformSelectionShortcut = transformSelectionShortcut
     }
 
     init(from decoder: Decoder) throws {
@@ -34,6 +42,8 @@ struct AppSettings: Codable, Equatable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         defaultModel = try c.decodeIfPresent(String.self, forKey: .defaultModel) ?? ModelCatalog.default
         actions = try c.decodeIfPresent([Action].self, forKey: .actions) ?? Action.defaults()
+        searchHistoryShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .searchHistoryShortcut) ?? .searchHistoryDefault
+        transformSelectionShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .transformSelectionShortcut) ?? .transformSelectionDefault
     }
 }
 

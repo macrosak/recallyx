@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import SwiftUI
 
 @main
@@ -8,6 +9,7 @@ struct RecallyxApp: App {
         MenuBarExtra {
             StatusItemView(
                 state: delegate.state,
+                settingsStore: delegate.settingsStore,
                 onSearchHistory: { delegate.searchHistory() },
                 onTransformSelection: { delegate.transformSelection() },
                 onOpenSettings: { delegate.openSettings() },
@@ -41,7 +43,7 @@ private struct MenuBarIcon: View {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let state = AppState()
-    private let settingsStore = SettingsStore()
+    let settingsStore = SettingsStore() // StatusItemView observes it for live key-equivalents
     private lazy var store = HistoryStore(cap: settingsStore.settings.retentionCap)
     private var watcher: ClipboardWatcher?
     private var hotkey: HotkeyManager?
@@ -81,7 +83,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let settingsWindow = SettingsWindowController(
             settingsStore: settingsStore,
-            clearHistory: { [weak self] in self?.clearHistory() }
+            clearHistory: { [weak self] in self?.clearHistory() },
+            shortcutActions: ShortcutActions(
+                apply: { [weak self] action, shortcut in
+                    self?.applyShortcut(action, shortcut) ?? .failed(OSStatus(eventNotHandledErr))
+                },
+                suspend: { [weak self] in self?.suspendHotkeys() },
+                resume: { [weak self] in self?.resumeHotkeys() }
+            )
         )
         self.settingsWindow = settingsWindow
 
@@ -104,46 +113,104 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.openSettings() }
         }
 
-        hotkey = HotkeyManager(registerSelection: true) { [weak self] action in
+        let hotkey = HotkeyManager { [weak self] action in
             switch action {
             case .showHistory: self?.historyPanel?.toggle()
             case .transformSelection: self?.handleTransformSelection()
             }
         }
+        self.hotkey = hotkey
+        registerAtLaunch(.showHistory, settingsStore.settings.searchHistoryShortcut)
+        registerAtLaunch(.transformSelection, settingsStore.settings.transformSelectionShortcut)
     }
 
-    /// ⌃⇧V — grab the current selection, push it to the top of history, and open
-    /// the panel already on that clip's action menu (the AI-Replace replacement).
+    /// A saved combo can have been taken by another app since last run; the
+    /// hotkey then silently doesn't work, so surface it in the status menu.
+    private func registerAtLaunch(_ action: HotkeyAction, _ shortcut: Shortcut) {
+        if case .failed(let status) = hotkey?.apply(action, shortcut) {
+            state.lastError = "Couldn't register \(shortcut.glyphs.joined()) (\(status)) — change it in Settings."
+        }
+    }
+
+    /// Single mutation point for hotkey changes: Carbon first, settings only
+    /// on success — a failed registration never clobbers the persisted (and
+    /// still live) binding.
+    func applyShortcut(_ action: HotkeyAction, _ shortcut: Shortcut) -> HotkeyManager.ApplyResult {
+        guard let hotkey else { return .failed(OSStatus(eventNotHandledErr)) }
+        let result = hotkey.apply(action, shortcut)
+        switch result {
+        case .ok, .disabled:
+            switch action {
+            case .showHistory: settingsStore.settings.searchHistoryShortcut = shortcut
+            case .transformSelection: settingsStore.settings.transformSelectionShortcut = shortcut
+            }
+        case .failed:
+            break
+        }
+        return result
+    }
+
+    /// Recording in Settings needs the raw keyDowns — see HotkeyManager.suspend.
+    func suspendHotkeys() {
+        hotkey?.suspend()
+    }
+
+    func resumeHotkeys() {
+        hotkey?.resume(
+            searchHistory: settingsStore.settings.searchHistoryShortcut,
+            transformSelection: settingsStore.settings.transformSelectionShortcut
+        )
+    }
+
+    /// Transform-selection hotkey (⌃⇧V default) — grab the current selection,
+    /// push it to the top of history, and open the panel already on that clip's
+    /// action menu (the AI-Replace replacement).
     private func handleTransformSelection() {
         if historyPanel?.isVisible == true { historyPanel?.dismiss(); return }
         guard accessibility.ensureTrustedOrPrompt() else { return }
 
-        let captured: (text: String, sourceApp: NSRunningApplication?)
-        do {
-            captured = try accessibility.captureSelection()
-        } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
-            Log.info("⌃⇧V: no selection")
-            notifier.notify(body: "Select some text first, then press ⌃⇧V.")
-            return
-        } catch {
-            Log.error("⌃⇧V capture failed: \(error.localizedDescription)")
-            notifier.notify(body: error.localizedDescription)
-            return
-        }
+        Task { @MainActor in
+            let captured: (text: String, sourceApp: NSRunningApplication?)
+            do {
+                captured = try await captureSelectionWithFallback()
+            } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
+                Log.info("transform: no selection")
+                let combo = settingsStore.settings.transformSelectionShortcut.glyphs.joined()
+                notifier.notify(body: "Select some text first, then press \(combo).")
+                return
+            } catch {
+                Log.error("transform capture failed: \(error.localizedDescription)")
+                notifier.notify(body: error.localizedDescription)
+                return
+            }
 
-        let app = captured.sourceApp
-        let clip = CapturedClip(
-            kind: .text, text: captured.text, imageData: nil,
-            preview: String(captured.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280)),
-            byteSize: captured.text.utf8.count,
-            sourceAppBundleID: app?.bundleIdentifier,
-            sourceAppName: app?.localizedName,
-            sourceAppPath: app?.bundleURL?.path,
-            contentHash: ContentHash.of(text: captured.text), imageDimensions: nil
-        )
-        store.add(clip)
-        Log.info("⌃⇧V captured selection len=\(captured.text.count) — opening actions")
-        historyPanel?.showOnTopActions()
+            let app = captured.sourceApp
+            let clip = CapturedClip(
+                kind: .text, text: captured.text, imageData: nil,
+                preview: String(captured.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280)),
+                byteSize: captured.text.utf8.count,
+                sourceAppBundleID: app?.bundleIdentifier,
+                sourceAppName: app?.localizedName,
+                sourceAppPath: app?.bundleURL?.path,
+                contentHash: ContentHash.of(text: captured.text), imageDimensions: nil
+            )
+            store.add(clip)
+            Log.info("transform captured selection len=\(captured.text.count) — opening actions")
+            historyPanel?.showOnTopActions()
+        }
+    }
+
+    /// AX read first (instant where it works); Chromium/Gmail don't expose
+    /// `kAXSelectedText`, so any read miss falls back to a synthesized ⌘C and
+    /// the pasteboard. The watcher's next tick sees that copy too and
+    /// dedupe-bumps against the item added above — no duplicate.
+    private func captureSelectionWithFallback() async throws -> (text: String, sourceApp: NSRunningApplication?) {
+        do {
+            return try accessibility.captureSelection()
+        } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
+            Log.info("transform: AX selection read missed — trying ⌘C fallback")
+            return try await accessibility.captureSelectionViaCopy()
+        }
     }
 
     /// Run a saved (or transient) action over a clip's text and paste the result

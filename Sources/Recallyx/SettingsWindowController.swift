@@ -9,11 +9,13 @@ import SwiftUI
 final class SettingsWindowController {
     private let settingsStore: SettingsStore
     private let clearHistory: () -> Void
+    private let shortcutActions: ShortcutActions
     private var window: NSWindow?
 
-    init(settingsStore: SettingsStore, clearHistory: @escaping () -> Void) {
+    init(settingsStore: SettingsStore, clearHistory: @escaping () -> Void, shortcutActions: ShortcutActions) {
         self.settingsStore = settingsStore
         self.clearHistory = clearHistory
+        self.shortcutActions = shortcutActions
     }
 
     func show(tab: SettingsTab = .general) {
@@ -23,7 +25,7 @@ final class SettingsWindowController {
             return
         }
 
-        let view = SettingsView(settingsStore: settingsStore, clearHistory: clearHistory, initialTab: tab)
+        let view = SettingsView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, initialTab: tab)
         let hosting = NSHostingController(rootView: view)
 
         let window = NSWindow(contentViewController: hosting)

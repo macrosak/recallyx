@@ -45,5 +45,7 @@ struct SettingsStoreTests {
         let store = SettingsStore(defaults: defaults)
         #expect(store.settings.retentionCap == 500)
         #expect(store.settings.captureSensitive == false)
+        #expect(store.settings.searchHistoryShortcut == .searchHistoryDefault)
+        #expect(store.settings.transformSelectionShortcut == .transformSelectionDefault)
     }
 }
