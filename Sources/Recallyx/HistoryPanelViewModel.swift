@@ -62,6 +62,10 @@ final class HistoryPanelViewModel: ObservableObject {
     private let onRunAction: (Action, HistoryItem) -> Void
     private let onDismiss: () -> Void
 
+    /// In-flight async deep-search task; cancelled on each new keystroke.
+    /// Internal (not private) so tests can await it via `searchTask?.value`.
+    var searchTask: Task<Void, Never>?
+
     init(
         items: [HistoryItem],
         actions: [Action] = [],
@@ -269,6 +273,8 @@ final class HistoryPanelViewModel: ObservableObject {
 
     /// Return from an action state to the list, restoring the stashed clip search.
     private func returnToList() {
+        searchTask?.cancel()
+        searchTask = nil
         actionItem = nil
         menuItems = []
         filteredMenuItems = []
@@ -291,8 +297,65 @@ final class HistoryPanelViewModel: ObservableObject {
     }
 
     private func refreshClips() {
-        filtered = FuzzyMatcher.rank(allItems, query: query)
+        searchTask?.cancel()
+        searchTask = nil
+
+        let q = query
+        // Sync pass: instant result from bounded prefix.
+        let syncResult = FuzzyMatcher.rank(allItems, query: q)
+        filtered = syncResult
         selectedIndex = 0
+
+        guard !q.isEmpty else { return }
+
+        // Async deep pass: scan full text of long clips that didn't sync-match.
+        // Task.detached is required — an unqualified Task { } inherits @MainActor
+        // and would block the main thread for the entire scan.
+        let syncIDs = Set(syncResult.map(\.id))
+        let deepCandidates = allItems.filter { item in
+            guard !syncIDs.contains(item.id),
+                  let text = item.text,
+                  text.utf8.count > FuzzyMatcher.searchPrefixLimit else { return false }
+            return true
+        }
+        guard !deepCandidates.isEmpty else { return }
+
+        let allItemsSnapshot = allItems
+        searchTask = Task.detached(priority: .userInitiated) { [weak self] in
+            var deepMatchIDs = Set<UUID>()
+            for item in deepCandidates {
+                if Task.isCancelled { return }
+                // range(of:options:) avoids allocating a lowercased copy of the
+                // full multi-MB string; substring-only (not subsequence) for precision.
+                if let text = item.text,
+                   text.range(of: q, options: .caseInsensitive) != nil {
+                    deepMatchIDs.insert(item.id)
+                }
+            }
+            if Task.isCancelled || deepMatchIDs.isEmpty { return }
+            guard let self else { return }
+            await self.mergeDeepResults(
+                deepMatchIDs: deepMatchIDs, syncIDs: syncIDs,
+                snapshot: allItemsSnapshot, capturedQuery: q
+            )
+        }
+    }
+
+    /// Called on the main actor after the off-actor deep scan completes. Validates
+    /// that the query hasn't changed since the scan started, then merges results.
+    @MainActor
+    private func mergeDeepResults(
+        deepMatchIDs: Set<UUID>, syncIDs: Set<UUID>,
+        snapshot: [HistoryItem], capturedQuery: String
+    ) {
+        guard capturedQuery == query, !Task.isCancelled else { return }
+        let allMatchIDs = syncIDs.union(deepMatchIDs)
+        let selectedID = selectedItem?.id
+        // Rebuild in recency order; re-find cursor by ID so selection doesn't jump.
+        filtered = snapshot.filter { allMatchIDs.contains($0.id) }
+        if let id = selectedID, let newIdx = filtered.firstIndex(where: { $0.id == id }) {
+            selectedIndex = newIdx
+        }
     }
 
     /// Filter the menu in place (preserving the built-ins → saved order so the

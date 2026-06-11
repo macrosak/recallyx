@@ -262,12 +262,32 @@ struct DetailPaneView: View {
     let theme: RXTheme
     let imageURL: URL?
 
+    /// Holds the asynchronously loaded preview image for image clips.
+    /// Cache hit in `imagePreview` renders synchronously; this state is only
+    /// set on a cache miss so navigation back to the same clip is instant.
+    @State private var asyncImage: NSImage?
+    @State private var imageFailed: Bool = false
+
     var body: some View {
         VStack(spacing: 0) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 18)
+                .task(id: item.id) {
+                    guard item.kind == .image else { return }
+                    asyncImage = nil
+                    imageFailed = false
+                    guard let url = imageURL, let filename = item.imageFilename else {
+                        imageFailed = true
+                        return
+                    }
+                    if let img = await ImagePreviewCache.shared.load(filename: filename, url: url) {
+                        asyncImage = img
+                    } else {
+                        imageFailed = true
+                    }
+                }
             footer
         }
     }
@@ -287,30 +307,30 @@ struct DetailPaneView: View {
                 }
             }
         } else {
-            ScrollView {
-                Text(item.text ?? "")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(theme.text)
-                    .lineSpacing(4)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
+            LargeTextView(text: item.text ?? "", itemID: item.id, theme: theme)
         }
     }
 
     @ViewBuilder
     private var imagePreview: some View {
-        if let imageURL, let nsImage = NSImage(contentsOf: imageURL) {
-            Image(nsImage: nsImage)
+        // Cache hit → synchronous render, no flicker on arrow-key navigation back.
+        let cached = item.imageFilename.flatMap { ImagePreviewCache.shared.image(for: $0) }
+        if let img = cached ?? asyncImage {
+            Image(nsImage: img)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: 200, alignment: .center)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-        } else {
+        } else if imageFailed || imageURL == nil {
             RoundedRectangle(cornerRadius: 10)
                 .fill(theme.chip)
                 .frame(height: 184)
                 .overlay(Text("missing image").font(.system(size: 11, design: .monospaced)).foregroundStyle(theme.textFaint))
+        } else {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(theme.chip)
+                .frame(height: 184)
+                .overlay(ProgressView().controlSize(.small))
         }
     }
 
@@ -386,9 +406,11 @@ struct NoMatchesView: View {
 
 extension HistoryItem {
     /// Code/shell-ish clips render monospaced in the list snippet.
+    /// Bounded to the search prefix so row rendering stays O(1) for large clips.
     var isMono: Bool {
         guard kind == .text, let text else { return false }
-        return text.contains("{") || text.contains(";") || text.contains("func ") || text.hasPrefix("$")
+        let prefix = FuzzyMatcher.boundedPrefix(text)
+        return prefix.contains("{") || prefix.contains(";") || prefix.contains("func ") || prefix.hasPrefix("$")
     }
 }
 

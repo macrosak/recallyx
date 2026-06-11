@@ -5,6 +5,13 @@ import Foundation
 /// exact > prefix > contiguous substring > scattered subsequence. Returns `nil`
 /// when there's no match at all.
 enum FuzzyMatcher {
+    /// Maximum bytes of `HistoryItem.text` scanned during a synchronous search pass.
+    /// Items with text longer than this are still matched — via a bounded prefix
+    /// here, and full-text async in `HistoryPanelViewModel.refreshClips` — so no
+    /// match is ever permanently dropped; this bound only controls how much is
+    /// scanned on the main thread per keystroke.
+    static let searchPrefixLimit = 16 * 1024  // 16 KB
+
     static func score(_ candidate: String, query: String) -> Int? {
         let q = query.lowercased()
         guard !q.isEmpty else { return 0 }
@@ -24,6 +31,11 @@ enum FuzzyMatcher {
     /// source-app name, **preserving the input order** (recency). The query only
     /// decides what's kept, never how it's sorted — the list always reads newest
     /// first, matching the unfiltered view.
+    ///
+    /// Text is matched against a bounded prefix (`searchPrefixLimit` bytes) to
+    /// keep main-thread cost O(1) per item regardless of clip size. Items where
+    /// only the tail (beyond the prefix) matches are surfaced by the async
+    /// deep-search pass in `HistoryPanelViewModel`.
     static func rank(_ items: [HistoryItem], query: String) -> [HistoryItem] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return items }
@@ -32,12 +44,30 @@ enum FuzzyMatcher {
 
     private static func bestScore(for item: HistoryItem, query: String) -> Int? {
         var best: Int?
-        for field in [item.text, item.preview, item.sourceAppName].compactMap({ $0 }) {
+        // preview and sourceAppName are already short; text is bounded to prefix.
+        var candidates: [String] = [item.preview]
+        if let text = item.text { candidates.append(String(boundedPrefix(text))) }
+        if let name = item.sourceAppName { candidates.append(name) }
+        for field in candidates {
             if let s = score(field, query: query) {
                 best = max(best ?? Int.min, s)
             }
         }
         return best
+    }
+
+    /// Returns a view into `s` truncated to at most `searchPrefixLimit` UTF-8
+    /// bytes while preserving valid `Character` boundaries.
+    static func boundedPrefix(_ s: String) -> Substring {
+        guard s.utf8.count > searchPrefixLimit else { return s[...] }
+        var byteIdx = s.utf8.index(s.utf8.startIndex, offsetBy: searchPrefixLimit)
+        // Walk back within the UTF-8 view until we land on a character boundary
+        // (at most 3 bytes for a 4-byte grapheme cluster).
+        while byteIdx > s.utf8.startIndex, byteIdx.samePosition(in: s) == nil {
+            byteIdx = s.utf8.index(before: byteIdx)
+        }
+        let charIdx = byteIdx.samePosition(in: s) ?? s.startIndex
+        return s[s.startIndex..<charIdx]
     }
 
     /// All query chars appear in order, with a penalty for gaps and a bonus for
