@@ -7,6 +7,7 @@ import SwiftUI
 /// when the top clip is large.
 struct LargeTextView: NSViewRepresentable {
     let text: String
+    let itemID: UUID
     let theme: RXTheme
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -20,6 +21,12 @@ struct LargeTextView: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
+        // Initial frame width prevents a 0-width first layout pass (TextKit 2 /
+        // macOS 13 is sensitive to this — 0-width container causes wrong wrap until
+        // the first resize event arrives from SwiftUI).
+        textView.minSize = .zero
+        textView.maxSize = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.frame = CGRect(x: 0, y: 0, width: 380, height: 0)
 
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
@@ -29,22 +36,25 @@ struct LargeTextView: NSViewRepresentable {
         scrollView.documentView = textView
 
         applyAttributes(to: textView, theme: theme)
+        // Stamp coordinator so the first updateNSView doesn't re-materialize.
+        context.coordinator.lastTheme = theme
+        context.coordinator.lastItemID = itemID
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        let currentStr = textView.string
-        let currentTheme = context.coordinator.lastTheme
 
-        let textChanged = currentStr != text
-        let themeChanged = currentTheme?.isDark != theme.isDark
+        let itemChanged = context.coordinator.lastItemID != itemID
+        let themeChanged = context.coordinator.lastTheme?.isDark != theme.isDark
 
-        guard textChanged || themeChanged else { return }
+        guard itemChanged || themeChanged else { return }
+
         context.coordinator.lastTheme = theme
+        context.coordinator.lastItemID = itemID
 
         applyAttributes(to: textView, theme: theme)
-        if textChanged {
+        if itemChanged {
             textView.scrollToBeginningOfDocument(nil)
         }
     }
@@ -53,6 +63,7 @@ struct LargeTextView: NSViewRepresentable {
 
     final class Coordinator {
         var lastTheme: RXTheme?
+        var lastItemID: UUID?
     }
 
     private func applyAttributes(to textView: NSTextView, theme: RXTheme) {
@@ -64,7 +75,6 @@ struct LargeTextView: NSViewRepresentable {
             .foregroundColor: NSColor(theme.text),
             .paragraphStyle: paragraphStyle,
         ]
-        let attributed = NSAttributedString(string: text, attributes: attrs)
-        textView.textStorage?.setAttributedString(attributed)
+        textView.textStorage?.setAttributedString(NSAttributedString(string: text, attributes: attrs))
     }
 }

@@ -287,7 +287,7 @@ struct DetailPaneView: View {
                 }
             }
         } else {
-            LargeTextView(text: item.text ?? "", theme: theme)
+            LargeTextView(text: item.text ?? "", itemID: item.id, theme: theme)
         }
     }
 
