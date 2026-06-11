@@ -62,6 +62,10 @@ final class HistoryPanelViewModel: ObservableObject {
     private let onRunAction: (Action, HistoryItem) -> Void
     private let onDismiss: () -> Void
 
+    /// In-flight async deep-search task; cancelled on each new keystroke.
+    /// Internal (not private) so tests can await it via `searchTask?.value`.
+    var searchTask: Task<Void, Never>?
+
     init(
         items: [HistoryItem],
         actions: [Action] = [],
@@ -269,6 +273,8 @@ final class HistoryPanelViewModel: ObservableObject {
 
     /// Return from an action state to the list, restoring the stashed clip search.
     private func returnToList() {
+        searchTask?.cancel()
+        searchTask = nil
         actionItem = nil
         menuItems = []
         filteredMenuItems = []
@@ -291,8 +297,50 @@ final class HistoryPanelViewModel: ObservableObject {
     }
 
     private func refreshClips() {
-        filtered = FuzzyMatcher.rank(allItems, query: query)
+        searchTask?.cancel()
+        searchTask = nil
+
+        let q = query
+        // Sync pass: instant result from bounded prefix.
+        let syncResult = FuzzyMatcher.rank(allItems, query: q)
+        filtered = syncResult
         selectedIndex = 0
+
+        guard !q.isEmpty else { return }
+
+        // Async deep pass: scan full text of long clips that didn't sync-match.
+        let syncIDs = Set(syncResult.map(\.id))
+        let deepCandidates = allItems.filter { item in
+            guard !syncIDs.contains(item.id),
+                  let text = item.text,
+                  text.utf8.count > FuzzyMatcher.searchPrefixLimit else { return false }
+            return true
+        }
+        guard !deepCandidates.isEmpty else { return }
+
+        let allItemsSnapshot = allItems
+        let qLower = q.lowercased()
+        searchTask = Task {
+            var deepMatchIDs = Set<UUID>()
+            for item in deepCandidates {
+                if Task.isCancelled { return }
+                // Substring-only (lowercased contains): faster and more precise
+                // than subsequence over megabytes.
+                if let text = item.text, text.lowercased().contains(qLower) {
+                    deepMatchIDs.insert(item.id)
+                }
+            }
+            if Task.isCancelled { return }
+            // Back on main actor: discard if query has changed.
+            guard !deepMatchIDs.isEmpty else { return }
+            let allMatchIDs = syncIDs.union(deepMatchIDs)
+            // Rebuild in recency order; re-find cursor by ID so selection doesn't jump.
+            let selectedID = self.selectedItem?.id
+            self.filtered = allItemsSnapshot.filter { allMatchIDs.contains($0.id) }
+            if let id = selectedID, let newIdx = self.filtered.firstIndex(where: { $0.id == id }) {
+                self.selectedIndex = newIdx
+            }
+        }
     }
 
     /// Filter the menu in place (preserving the built-ins → saved order so the

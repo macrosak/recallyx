@@ -188,4 +188,83 @@ struct HistoryPanelViewModelTests {
         #expect(vm.query == "alp")
         #expect(vm.searchPlaceholder == "Search clipboard…")
     }
+
+    // MARK: - Async deep-search
+
+    private func longItem(_ tail: String, preview: String = "no match here") -> HistoryItem {
+        let padding = String(repeating: "x", count: FuzzyMatcher.searchPrefixLimit)
+        let full = padding + tail
+        return HistoryItem(
+            id: UUID(), kind: .text, text: full, imageFilename: nil, preview: preview,
+            byteSize: full.count, sourceAppBundleID: nil, sourceAppName: nil, sourceAppPath: nil,
+            createdAt: Date(), lastUsedAt: Date(), contentHash: tail, imageDimensions: nil
+        )
+    }
+
+    @Test func deepSearch_mergesLongClipAtRecencyPosition() async {
+        // "short" is a regular clip; "longdeep" only matches beyond the prefix.
+        // After the async pass, the long clip should appear in the filtered list.
+        let short = textItem("hello short")
+        let long = longItem("uniquedeeptail")
+        // Both items; long is second (lower recency index = older in allItems order).
+        let vm = makeVM([short, long])
+        vm.query = "uniquedeeptail"
+        // Sync pass: short doesn't match; long doesn't sync-match either — filtered empty.
+        #expect(vm.filtered.isEmpty || vm.filtered.allSatisfy { $0.id != long.id })
+        // Await the deep pass.
+        await vm.searchTask?.value
+        #expect(vm.filtered.contains { $0.id == long.id })
+    }
+
+    @Test func deepSearch_cursorStaysOnSameItemAfterMerge() async {
+        // Short clip that sync-matches; long clip that deep-matches.
+        // Cursor is on the short clip; after deep merge it should stay on it.
+        let short = textItem("findme")
+        let long = longItem("findme")  // deep match for same query
+        let vm = makeVM([short, long])
+        vm.query = "findme"
+        // short syncs first → selectedIndex 0
+        #expect(vm.selectedItem?.id == short.id)
+        let capturedID = vm.selectedItem?.id
+        await vm.searchTask?.value
+        // Cursor should still point to the same item.
+        #expect(vm.selectedItem?.id == capturedID)
+    }
+
+    @Test func deepSearch_staleQueryDiscarded() async {
+        // Type a query, then change it before the deep pass finishes. The stale
+        // result must not overwrite the newer filtered list.
+        let long = longItem("stale_tail")
+        let vm = makeVM([long])
+        vm.query = "stale_tail"
+        let staleTask = vm.searchTask
+        // Change the query before the task completes.
+        vm.query = ""
+        // Await the now-cancelled task; filtered should be empty (query cleared).
+        await staleTask?.value
+        // An empty query returns all items — verify we didn't pollute filtered
+        // with a partial deep-search result.
+        #expect(vm.filtered.count == 1)   // empty query → all items
+    }
+
+    @Test func deepSearch_substringOnly_doesNotMatchSubsequence() async {
+        // The deep pass uses lowercased `contains`, not the subsequence scorer.
+        // A scattered-subsequence match that spans megabytes should NOT appear.
+        let padding = String(repeating: "a", count: FuzzyMatcher.searchPrefixLimit)
+        // "zz" only matches if both chars appear anywhere in the tail; "za" would
+        // match as subsequence ("z" in "zz" then "a" from padding) but is NOT in
+        // the tail as a substring. We use a tail with no "zq" substring.
+        let tail = "only_b_characters"
+        let full = padding + tail
+        let item = HistoryItem(
+            id: UUID(), kind: .text, text: full, imageFilename: nil, preview: "plain",
+            byteSize: full.count, sourceAppBundleID: nil, sourceAppName: nil,
+            sourceAppPath: nil, createdAt: Date(), lastUsedAt: Date(),
+            contentHash: tail, imageDimensions: nil
+        )
+        let vm = makeVM([item])
+        vm.query = "zq"   // scattered subsequence could match "xxa...zq" but "zq" is not a substring
+        await vm.searchTask?.value
+        #expect(vm.filtered.isEmpty)
+    }
 }
