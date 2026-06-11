@@ -287,14 +287,7 @@ struct DetailPaneView: View {
                 }
             }
         } else {
-            ScrollView {
-                Text(item.text ?? "")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(theme.text)
-                    .lineSpacing(4)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
+            LargeTextView(text: item.text ?? "", theme: theme)
         }
     }
 
