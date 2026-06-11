@@ -379,9 +379,11 @@ struct NoMatchesView: View {
 
 extension HistoryItem {
     /// Code/shell-ish clips render monospaced in the list snippet.
+    /// Bounded to the search prefix so row rendering stays O(1) for large clips.
     var isMono: Bool {
         guard kind == .text, let text else { return false }
-        return text.contains("{") || text.contains(";") || text.contains("func ") || text.hasPrefix("$")
+        let prefix = FuzzyMatcher.boundedPrefix(text)
+        return prefix.contains("{") || prefix.contains(";") || prefix.contains("func ") || prefix.hasPrefix("$")
     }
 }
 
