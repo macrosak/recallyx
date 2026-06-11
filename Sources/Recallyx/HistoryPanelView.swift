@@ -262,12 +262,32 @@ struct DetailPaneView: View {
     let theme: RXTheme
     let imageURL: URL?
 
+    /// Holds the asynchronously loaded preview image for image clips.
+    /// Cache hit in `imagePreview` renders synchronously; this state is only
+    /// set on a cache miss so navigation back to the same clip is instant.
+    @State private var asyncImage: NSImage?
+    @State private var imageFailed: Bool = false
+
     var body: some View {
         VStack(spacing: 0) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 18)
+                .task(id: item.id) {
+                    guard item.kind == .image else { return }
+                    asyncImage = nil
+                    imageFailed = false
+                    guard let url = imageURL, let filename = item.imageFilename else {
+                        imageFailed = true
+                        return
+                    }
+                    if let img = await ImagePreviewCache.shared.load(filename: filename, url: url) {
+                        asyncImage = img
+                    } else {
+                        imageFailed = true
+                    }
+                }
             footer
         }
     }
@@ -293,17 +313,24 @@ struct DetailPaneView: View {
 
     @ViewBuilder
     private var imagePreview: some View {
-        if let imageURL, let nsImage = NSImage(contentsOf: imageURL) {
-            Image(nsImage: nsImage)
+        // Cache hit → synchronous render, no flicker on arrow-key navigation back.
+        let cached = item.imageFilename.flatMap { ImagePreviewCache.shared.image(for: $0) }
+        if let img = cached ?? asyncImage {
+            Image(nsImage: img)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: 200, alignment: .center)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-        } else {
+        } else if imageFailed || imageURL == nil {
             RoundedRectangle(cornerRadius: 10)
                 .fill(theme.chip)
                 .frame(height: 184)
                 .overlay(Text("missing image").font(.system(size: 11, design: .monospaced)).foregroundStyle(theme.textFaint))
+        } else {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(theme.chip)
+                .frame(height: 184)
+                .overlay(ProgressView().controlSize(.small))
         }
     }
 
