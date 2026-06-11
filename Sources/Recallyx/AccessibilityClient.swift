@@ -57,6 +57,33 @@ final class AccessibilityClient {
         return (text, NSWorkspace.shared.frontmostApplication)
     }
 
+    /// Fallback for apps whose AX tree doesn't expose `kAXSelectedText` reads
+    /// (Chromium/Gmail — same family as the silent-write-drop lesson):
+    /// synthesize ⌘C and watch the pasteboard's `changeCount`. No bump within
+    /// the window ⇒ nothing was selected. The pasteboard intentionally keeps
+    /// the selection afterwards — ⌃⇧V's contract is to push the selection to
+    /// the top of history anyway, and here it got there via a genuine copy.
+    func captureSelectionViaCopy() async throws -> (text: String, sourceApp: NSRunningApplication?) {
+        guard isTrusted() else { throw AccessibilityError.notTrusted }
+        let sourceApp = NSWorkspace.shared.frontmostApplication
+
+        let pasteboard = NSPasteboard.general
+        let before = pasteboard.changeCount
+        Paster.synthesizeCopyShortcut()
+
+        // Apps commit the copy asynchronously; poll briefly (~500ms worst case).
+        for _ in 0..<10 {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard pasteboard.changeCount != before else { continue }
+            guard let text = pasteboard.string(forType: .string), !text.isEmpty else {
+                throw AccessibilityError.noSelection // copied, but not text
+            }
+            Log.info("⌘C fallback captured len=\(text.count)")
+            return (text, sourceApp)
+        }
+        throw AccessibilityError.noSelection
+    }
+
     private func showAlert() {
         let alert = NSAlert()
         alert.messageText = "Recallyx needs Accessibility permission"

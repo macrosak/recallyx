@@ -38,9 +38,18 @@ enum Paster {
         synthesizePasteShortcut()
     }
 
+    /// Synthesize ⌘C in the frontmost app — the capture-side counterpart of the
+    /// ⌘V paste, for selections AX can't read (Chromium/Gmail).
+    static func synthesizeCopyShortcut() {
+        synthesizeCommandShortcut(0x08) // kVK_ANSI_C
+    }
+
     private static func synthesizePasteShortcut() {
+        synthesizeCommandShortcut(0x09) // kVK_ANSI_V
+    }
+
+    private static func synthesizeCommandShortcut(_ vKey: CGKeyCode) {
         let source = CGEventSource(stateID: .hidSystemState)
-        let vKey: CGKeyCode = 0x09 // kVK_ANSI_V
         let down = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
         down?.flags = .maskCommand

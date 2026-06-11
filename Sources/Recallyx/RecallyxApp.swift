@@ -162,38 +162,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    /// ⌃⇧V — grab the current selection, push it to the top of history, and open
-    /// the panel already on that clip's action menu (the AI-Replace replacement).
+    /// Transform-selection hotkey (⌃⇧V default) — grab the current selection,
+    /// push it to the top of history, and open the panel already on that clip's
+    /// action menu (the AI-Replace replacement).
     private func handleTransformSelection() {
         if historyPanel?.isVisible == true { historyPanel?.dismiss(); return }
         guard accessibility.ensureTrustedOrPrompt() else { return }
 
-        let captured: (text: String, sourceApp: NSRunningApplication?)
-        do {
-            captured = try accessibility.captureSelection()
-        } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
-            Log.info("⌃⇧V: no selection")
-            notifier.notify(body: "Select some text first, then press ⌃⇧V.")
-            return
-        } catch {
-            Log.error("⌃⇧V capture failed: \(error.localizedDescription)")
-            notifier.notify(body: error.localizedDescription)
-            return
-        }
+        Task { @MainActor in
+            let captured: (text: String, sourceApp: NSRunningApplication?)
+            do {
+                captured = try await captureSelectionWithFallback()
+            } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
+                Log.info("transform: no selection")
+                let combo = settingsStore.settings.transformSelectionShortcut.glyphs.joined()
+                notifier.notify(body: "Select some text first, then press \(combo).")
+                return
+            } catch {
+                Log.error("transform capture failed: \(error.localizedDescription)")
+                notifier.notify(body: error.localizedDescription)
+                return
+            }
 
-        let app = captured.sourceApp
-        let clip = CapturedClip(
-            kind: .text, text: captured.text, imageData: nil,
-            preview: String(captured.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280)),
-            byteSize: captured.text.utf8.count,
-            sourceAppBundleID: app?.bundleIdentifier,
-            sourceAppName: app?.localizedName,
-            sourceAppPath: app?.bundleURL?.path,
-            contentHash: ContentHash.of(text: captured.text), imageDimensions: nil
-        )
-        store.add(clip)
-        Log.info("⌃⇧V captured selection len=\(captured.text.count) — opening actions")
-        historyPanel?.showOnTopActions()
+            let app = captured.sourceApp
+            let clip = CapturedClip(
+                kind: .text, text: captured.text, imageData: nil,
+                preview: String(captured.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280)),
+                byteSize: captured.text.utf8.count,
+                sourceAppBundleID: app?.bundleIdentifier,
+                sourceAppName: app?.localizedName,
+                sourceAppPath: app?.bundleURL?.path,
+                contentHash: ContentHash.of(text: captured.text), imageDimensions: nil
+            )
+            store.add(clip)
+            Log.info("transform captured selection len=\(captured.text.count) — opening actions")
+            historyPanel?.showOnTopActions()
+        }
+    }
+
+    /// AX read first (instant where it works); Chromium/Gmail don't expose
+    /// `kAXSelectedText`, so any read miss falls back to a synthesized ⌘C and
+    /// the pasteboard. The watcher's next tick sees that copy too and
+    /// dedupe-bumps against the item added above — no duplicate.
+    private func captureSelectionWithFallback() async throws -> (text: String, sourceApp: NSRunningApplication?) {
+        do {
+            return try accessibility.captureSelection()
+        } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
+            Log.info("transform: AX selection read missed — trying ⌘C fallback")
+            return try await accessibility.captureSelectionViaCopy()
+        }
     }
 
     /// Run a saved (or transient) action over a clip's text and paste the result

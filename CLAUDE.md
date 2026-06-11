@@ -60,7 +60,7 @@ Successor to **AI Replace** (`../ai-replace`). Bundle ID `io.github.macrosak.rec
 - **Ad-hoc AI in the panel.** The vm gains `.custom` and `.edit` modes. The action menu's **Custom…** entry (text clips) opens a one-off prompt column → ↵ runs a transient single-`ai`-step action. **Edit-before-run**: ⇥ on a highlighted saved action enters `.edit`, showing step 1's body editable; ⇥ paginates steps; ⌘↵ runs the modified *transient copy* (the saved action is untouched). Both go through the same `onRunAction` → `ActionRunner`. `CustomPromptColumn`/`EditStepsColumn` match the design. Focus moves to the editor in custom/edit modes, to the search field in list/actions.
 - **The search field retargets by mode.** List mode filters clips ("Search clipboard…" / "N clips"); entering any action state clears it and switches to "Search actions…" / "N actions", filtering the menu (`filteredMenuItems`, order-preserving so the Saved-actions divider still groups). The clip query is stashed on ⇥ and restored on esc; `query`'s `didSet` routes to the active domain via `onQueryChanged`.
 
-- `AccessibilityClient.swift` — trimmed copy of AI Replace's (read-only: selection capture + one-prompt-per-session permission flow; no write-back, since results paste via synth ⌘V). ⌃⇧V is registered (`HotkeyManager(registerSelection: true)`): `handleTransformSelection` captures the selection, `store.add`s it to the top, and `historyPanel.showOnTopActions()` opens the panel already on that clip's action menu.
+- `AccessibilityClient.swift` — trimmed copy of AI Replace's (read-only: selection capture + one-prompt-per-session permission flow; no write-back, since results paste via synth ⌘V). `captureSelection` reads `kAXSelectedText`; `captureSelectionViaCopy` is the Chromium/Gmail fallback — synth ⌘C, poll the pasteboard `changeCount` (~500ms), no bump ⇒ no selection. `handleTransformSelection` tries AX then the fallback, `store.add`s the clip to the top (the watcher's tick dedupe-bumps the copy), and `historyPanel.showOnTopActions()` opens the panel already on that clip's action menu.
 
 **Phase 2 complete** — the full clipboard manager + actions/AI, ⌘⇧V and ⌃⇧V. Recallyx now supersedes AI Replace.
 
@@ -83,6 +83,7 @@ Or run the binary directly: `./Recallyx.app/Contents/MacOS/Recallyx` (stderr mir
 - **`open` doesn't relaunch a running app** — it foregrounds. `install.sh` does `killall` first.
 - **Carbon `RegisterEventHotKey`** returns `eventHotKeyExistsErr=-9878` if the combo is taken globally.
 - **Chromium/Electron silently drop `kAXSelectedText` writes** — re-read to verify, fall back to synthesized ⌘V at `.cghidEventTap`. (Phase 2 paste path.)
+- **Chromium/Gmail don't expose `kAXSelectedText` reads either** (error or empty even with a selection) — fall back to synthesized ⌘C + pasteboard `changeCount` polling. AI Replace dodged this with a separate manual-copy hotkey (⌘⌥V); Recallyx synthesizes the copy itself.
 - **OpenSSL 3 PBES2 p12 is rejected by macOS Security** — `create-signing-identity.sh` uses `/usr/bin/openssl` (LibreSSL).
 
 ## When the user reports a problem
