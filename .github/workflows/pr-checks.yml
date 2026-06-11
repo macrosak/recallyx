@@ -12,6 +12,8 @@ jobs:
   test:
     name: swift test
     runs-on: macos-15
+    # A hung test run should fail fast, not burn six hours of runner time.
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -22,4 +24,8 @@ jobs:
           xcode-version: latest-stable
 
       - name: Run tests
-        run: swift test
+        # script(1) gives swift test a pty: output is line-buffered, so if a
+        # run hangs and times out, the log still shows which test was running
+        # (raw pipe output dies unflushed with the process). Exit status is
+        # propagated.
+        run: script -q /dev/null swift test
