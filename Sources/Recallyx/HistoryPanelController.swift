@@ -157,7 +157,7 @@ final class HistoryPanelController {
     /// Intercept navigation keys; everything else flows to the focused control
     /// (search field, or the ad-hoc AI text editor). Branches on mode so arrows
     /// reach the text editor for cursor movement in custom/edit modes.
-    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+    fileprivate func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         guard let vm = viewModel else { return event }
         let isReturn = event.keyCode == 0x24 || event.keyCode == 0x4C
         let isEsc = event.keyCode == 0x35
@@ -191,5 +191,62 @@ final class HistoryPanelController {
             if isTab { vm.tab(); return nil }
             return event
         }
+    }
+}
+
+// MARK: - Debug hooks (RECALLYX_DEBUG=1 launches only — see DebugHooks.swift)
+
+extension HistoryPanelController {
+    func debugSetQuery(_ text: String) {
+        viewModel?.query = text
+    }
+
+    /// Sets whatever text input the current mode focuses: the custom-prompt
+    /// editor, the edit-step body, or the search field.
+    func debugSetText(_ text: String) {
+        guard let vm = viewModel else { return }
+        switch vm.mode {
+        case .custom: vm.customText = text
+        case .edit: vm.editBody = text
+        case .list, .actions: vm.query = text
+        }
+    }
+
+    /// Routes a named key through the same handler the local monitor uses, so
+    /// mode-dependent behavior (list vs actions vs custom vs edit) matches a
+    /// real keypress exactly.
+    func debugKey(_ name: String) {
+        let keys: [String: (code: UInt16, flags: NSEvent.ModifierFlags)] = [
+            "up": (0x7E, []), "down": (0x7D, []), "return": (0x24, []),
+            "cmd-return": (0x24, .command), "tab": (0x30, []), "esc": (0x35, []),
+        ]
+        guard let key = keys[name] else {
+            Log.error("debug: unknown key '\(name)' — use \(keys.keys.sorted().joined(separator: "|"))")
+            return
+        }
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: key.flags,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: panel?.windowNumber ?? 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: key.code
+        ) else { return }
+        if handleKeyDown(event) != nil {
+            Log.info("debug: key '\(name)' not handled in current mode")
+        }
+    }
+
+    var debugState: [String: Any] {
+        guard let vm = viewModel else { return ["visible": isVisible] }
+        return [
+            "visible": isVisible,
+            "mode": "\(vm.mode)",
+            "query": vm.query,
+            "selectedIndex": vm.selectedIndex,
+            "filteredCount": vm.filtered.count,
+            "actionIndex": vm.actionIndex,
+            "menuItemCount": vm.filteredMenuItems.count,
+            "editStepIndex": vm.editStepIndex,
+        ]
     }
 }
