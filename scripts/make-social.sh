@@ -84,10 +84,14 @@ ctx.interpolationQuality = .high
 
 // Screenshot under, template over: the hole's rounded edge clips the shot.
 // Aspect-fill crops a sliver of the screenshot's wallpaper margin; the
-// overflow is hidden by the opaque template around the hole.
-let scale = max(slot.width / CGFloat(shot.width), slot.height / CGFloat(shot.height))
+// overflow is hidden by the opaque template around the hole. Fill 6px past
+// the detected slot: the hole's anti-aliased rim is semi-transparent, and a
+// shot that stops at the fully-transparent boundary leaves those rim pixels
+// blending onto nothing — a hairline that renders white on GitHub's page.
+let fill = slot.insetBy(dx: -6, dy: -6)
+let scale = max(fill.width / CGFloat(shot.width), fill.height / CGFloat(shot.height))
 let drawW = CGFloat(shot.width) * scale, drawH = CGFloat(shot.height) * scale
-ctx.draw(shot, in: CGRect(x: slot.midX - drawW / 2, y: slot.midY - drawH / 2,
+ctx.draw(shot, in: CGRect(x: fill.midX - drawW / 2, y: fill.midY - drawH / 2,
                           width: drawW, height: drawH))
 ctx.draw(template, in: CGRect(x: 0, y: 0, width: W, height: H))
 
