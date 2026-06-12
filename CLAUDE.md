@@ -85,6 +85,7 @@ Or run the binary directly: `./Recallyx.app/Contents/MacOS/Recallyx` (stderr mir
 - `state` — JSON dump (mode/query/cursor/counts). `shot [PATH]` — real-pixel `screencapture` of the panel window. `snap [PATH]` — app-side `cacheDisplay` render (no TCC, vibrancy unblurred).
 - Typical loop: `bundle.sh` → `debug.sh launch /tmp/rx-debug` → seed clips via `pbcopy` (sleep ~0.5s between; watcher polls ~0.3s) → `cmd show-panel` → `shot` → Read the PNG.
 - Caveats: any user click outside dismisses the panel — show + shot in one tight command when the user is active. ↵/paste actions synth ⌘V into the frontmost app — don't run them unattended. Save/restore the user's clipboard (`pbpaste`/`pbcopy`) around a session.
+- `./scripts/screenshots.sh [history|actions|all]` re-records the README screenshots into `docs/` from a staged demo instance (injected `history.json` + demo actions; real settings backed up/restored). Needs a clear desktop on the mouse display, Dark appearance, and hands off for ~15 s — ask the user first.
 
 ## Lessons carried over from AI Replace — don't relitigate
 - **MenuBarExtra content is lazy.** Use `NSApplicationDelegate.applicationDidFinishLaunching` for launch wiring, never the content's `.task`.
