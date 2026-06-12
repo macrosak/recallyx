@@ -60,7 +60,7 @@ stage = os.environ["STAGE"]
 os.makedirs(stage + "/images", exist_ok=True)
 
 img_id = str(uuid.uuid4()).upper()
-shutil.copyfile("docs/recallyx-social-1280x640.png", f"{stage}/images/{img_id}.png")
+shutil.copyfile("docs/recallyx-social.png", f"{stage}/images/{img_id}.png")
 img_bytes = open(f"{stage}/images/{img_id}.png", "rb").read()
 
 code = '''func bump(_ id: UUID) {
@@ -91,12 +91,12 @@ items = [
               "IntelliJ IDEA", "com.jetbrains.intellij", "/Applications/IntelliJ IDEA.app", 122),
     {
         "id": img_id, "kind": "image", "imageFilename": f"{img_id}.png",
-        "preview": "Image · 1280 × 640", "byteSize": len(img_bytes),
+        "preview": "Image · 2560 × 1280", "byteSize": len(img_bytes),
         "sourceAppBundleID": "com.apple.Preview", "sourceAppName": "Preview",
         "sourceAppPath": "/System/Applications/Preview.app",
         "createdAt": now - 242, "lastUsedAt": now - 242,
         "contentHash": hashlib.sha256(img_bytes).hexdigest(),
-        "imageDimensions": "1280 × 640",
+        "imageDimensions": "2560 × 1280",
     },
     text_item("Retention caps history at 1000 items by default — older clips are evicted oldest-first.",
               "Notes", "com.apple.Notes", "/System/Applications/Notes.app", 712),
