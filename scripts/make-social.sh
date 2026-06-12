@@ -3,7 +3,9 @@
 #
 #   ./scripts/make-social.sh [SCREENSHOT]   (default: docs/recallyx-history-dark.png)
 #
-# → docs/recallyx-social.png (2560×1280)
+# → docs/recallyx-social.png (2560×1280, referenced by the README)
+# → docs/recallyx-social-1280x640.png (for GitHub's social-preview upload,
+#   which rejects files over ~1 MB)
 #
 # The template (docs/recallyx-banner-template-2560x1280.png) carries a
 # transparent rounded-rect hole; the script finds it by scanning for long
@@ -17,11 +19,12 @@ cd "$(dirname "$0")/.."
 SHOT="${1:-docs/recallyx-history-dark.png}"
 TEMPLATE=docs/recallyx-banner-template-2560x1280.png
 OUT=docs/recallyx-social.png
+OUT_SMALL=docs/recallyx-social-1280x640.png
 
 [[ -f "$SHOT" ]] || { echo "screenshot not found: $SHOT" >&2; exit 1; }
 [[ -f "$TEMPLATE" ]] || { echo "template not found: $TEMPLATE" >&2; exit 1; }
 
-swift - "$TEMPLATE" "$SHOT" "$OUT" <<'EOF'
+swift - "$TEMPLATE" "$SHOT" "$OUT" "$OUT_SMALL" <<'EOF'
 import AppKit
 
 let args = CommandLine.arguments
@@ -89,10 +92,22 @@ ctx.draw(shot, in: CGRect(x: slot.midX - drawW / 2, y: slot.midY - drawH / 2,
 ctx.draw(template, in: CGRect(x: 0, y: 0, width: W, height: H))
 
 let out = ctx.makeImage()!
-let dest = CGImageDestinationCreateWithURL(
-    URL(fileURLWithPath: args[3]) as CFURL, "public.png" as CFString, 1, nil)!
-CGImageDestinationAddImage(dest, out, nil)
-guard CGImageDestinationFinalize(dest) else { fputs("PNG write failed\n", stderr); exit(1) }
+func writePNG(_ image: CGImage, to path: String) {
+    let dest = CGImageDestinationCreateWithURL(
+        URL(fileURLWithPath: path) as CFURL, "public.png" as CFString, 1, nil)!
+    CGImageDestinationAddImage(dest, image, nil)
+    guard CGImageDestinationFinalize(dest) else { fputs("PNG write failed: \(path)\n", stderr); exit(1) }
+}
+writePNG(out, to: args[3])
+
+// Half-size variant for GitHub's social-preview upload (~1 MB cap).
+let small = CGContext(data: nil, width: W / 2, height: H / 2, bitsPerComponent: 8,
+                      bytesPerRow: W / 2 * 4, space: cs,
+                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+small.interpolationQuality = .high
+small.draw(out, in: CGRect(x: 0, y: 0, width: W / 2, height: H / 2))
+writePNG(small.makeImage()!, to: args[4])
 EOF
 
 echo "$OUT"
+echo "$OUT_SMALL"
