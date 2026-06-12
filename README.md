@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/recallyx-social-1280x640.png" alt="Recallyx" width="760">
+  <img src="docs/recallyx-social.png" alt="Recallyx" width="760">
 
   <h1>Recallyx</h1>
   <p><b>Native macOS clipboard manager with script &amp; AI actions on each clip.</b></p>
@@ -35,12 +35,12 @@ items always show the current bindings.
 ## Screenshots
 
 <p align="center">
-  <img src="docs/recallyx-history-dark.png" alt="Recallyx history panel" width="640"><br>
+  <img src="docs/recallyx-history-dark.png" alt="Recallyx history panel" width="760"><br>
   <em>⌘⇧V — fuzzy-search your clipboard history.</em>
 </p>
 
 <p align="center">
-  <img src="docs/recallyx-action-menu-dark.png" alt="Recallyx action menu" width="640"><br>
+  <img src="docs/recallyx-action-menu-dark.png" alt="Recallyx action menu" width="760"><br>
   <em>⇥ — run a script or AI action on the selected clip.</em>
 </p>
 
