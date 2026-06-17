@@ -316,11 +316,15 @@ struct DetailPaneView: View {
         // Cache hit → synchronous render, no flicker on arrow-key navigation back.
         let cached = item.imageFilename.flatMap { ImagePreviewCache.shared.image(for: $0) }
         if let img = cached ?? asyncImage {
+            // Cap at the image's native point size (1pt = 1 device px, see
+            // ImagePreviewCache) so small images render crisp instead of
+            // being upscaled to fill the pane.
             Image(nsImage: img)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: .infinity, maxHeight: 200, alignment: .center)
+                .frame(maxWidth: img.size.width, maxHeight: min(200, img.size.height))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .frame(maxWidth: .infinity, alignment: .center)
         } else if imageFailed || imageURL == nil {
             RoundedRectangle(cornerRadius: 10)
                 .fill(theme.chip)
