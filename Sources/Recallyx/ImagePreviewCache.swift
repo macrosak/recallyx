@@ -2,9 +2,12 @@ import AppKit
 import Foundation
 import ImageIO
 
-/// Maximum display height for a preview image (points). Kept at file scope so
-/// `downsample` can read it without a main-actor hop.
-private let imagePreviewMaxDisplayHeight: CGFloat = 200
+/// Maximum displayed extent of a preview image (points). The detail pane is
+/// 380pt wide, so a landscape preview can be ~340pt across even though its
+/// height is capped at 200pt — the decode target must cover the longest
+/// displayed side or Retina rendering upscales the thumbnail into blur.
+/// Kept at file scope so `downsample` can read it without a main-actor hop.
+private let imagePreviewMaxDisplayDimension: CGFloat = 340
 
 /// Loads and caches downsampled image previews for clipboard clips.
 /// Cache hit → synchronous render (no flicker on arrow-key navigation).
@@ -50,8 +53,8 @@ final class ImagePreviewCache {
             return nil
         }
 
-        // Target pixels = maxDisplayHeight × backing scale (captured on main actor).
-        let targetPx = Int(imagePreviewMaxDisplayHeight * scale)
+        // Target pixels = maxDisplayDimension × backing scale (captured on main actor).
+        let targetPx = Int(imagePreviewMaxDisplayDimension * scale)
 
         let thumbOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -62,7 +65,12 @@ final class ImagePreviewCache {
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else {
             return nil
         }
-        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        // Point size = pixels / backing scale, so the view can cap the displayed
+        // frame at `img.size` to render pixel-for-pixel — never upscaled blur.
+        return NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: CGFloat(cgImage.width) / scale, height: CGFloat(cgImage.height) / scale)
+        )
     }
 }
 
