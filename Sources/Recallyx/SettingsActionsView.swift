@@ -30,8 +30,8 @@ struct SettingsActionsView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 1) {
-                    ForEach(actions) { action in
-                        actionRow(action)
+                    ForEach(Array(actions.enumerated()), id: \.element.id) { idx, action in
+                        actionRow(action, idx: idx)
                     }
                 }
                 .padding(8)
@@ -47,7 +47,7 @@ struct SettingsActionsView: View {
         .background(theme.isDark ? Color(white: 0, opacity: 0.12) : Color(white: 0, opacity: 0.02))
     }
 
-    private func actionRow(_ action: Action) -> some View {
+    private func actionRow(_ action: Action, idx: Int) -> some View {
         let on = action.id == selectedID
         return HStack(spacing: 9) {
             Image(systemName: action.icon)
@@ -59,12 +59,32 @@ struct SettingsActionsView: View {
                 .foregroundStyle(on ? .white : theme.text)
                 .lineLimit(1)
             Spacer(minLength: 0)
+            if on && actions.count > 1 {
+                actionReorder(idx: idx)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 7).fill(on ? theme.accent : .clear))
         .contentShape(Rectangle())
         .onTapGesture { selectedID = action.id }
+    }
+
+    private func actionReorder(idx: Int) -> some View {
+        let canMoveUp = idx > 0
+        let canMoveDown = idx < actions.count - 1
+        return HStack(spacing: 1) {
+            Button { moveAction(from: idx, to: idx - 1) } label: {
+                Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.plain).disabled(!canMoveUp)
+            .foregroundStyle(canMoveUp ? Color.white : Color.white.opacity(0.35))
+            Button { moveAction(from: idx, to: idx + 1) } label: {
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.plain).disabled(!canMoveDown)
+            .foregroundStyle(canMoveDown ? Color.white : Color.white.opacity(0.35))
+        }
     }
 
     private func toolbarButton(_ symbol: String, action: @escaping () -> Void) -> some View {
@@ -171,6 +191,14 @@ struct SettingsActionsView: View {
         guard let id = selectedID else { return }
         settingsStore.settings.actions.removeAll { $0.id == id }
         selectedID = settingsStore.settings.actions.first?.id
+    }
+
+    private func moveAction(from: Int, to: Int) {
+        var list = settingsStore.settings.actions
+        guard list.indices.contains(from), list.indices.contains(to) else { return }
+        let action = list.remove(at: from)
+        list.insert(action, at: to)
+        settingsStore.settings.actions = list
     }
 
     private func addStep(to action: Binding<Action>) {
