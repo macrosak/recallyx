@@ -15,8 +15,12 @@ struct SettingsGeneralView: View {
     @State private var apiKey: String = ""
     @State private var showKey: Bool = false
     @State private var testResult: KeyTestResult = .idle
+    @State private var anthropicApiKey: String = ""
+    @State private var showAnthropicKey: Bool = false
+    @State private var anthropicTestResult: KeyTestResult = .idle
 
     private let keychain = KeychainStore.openAIKey
+    private let anthropicKeychain = KeychainStore.anthropicKey
 
     private enum KeyTestResult: Equatable {
         case idle, testing, ok, failed(String)
@@ -25,6 +29,7 @@ struct SettingsGeneralView: View {
     var body: some View {
         VStack(spacing: 17) {
             openAISection
+            anthropicSection
             shortcutsSection
             historySection
             startupSection
@@ -32,6 +37,7 @@ struct SettingsGeneralView: View {
         .onAppear {
             capText = String(settingsStore.settings.retentionCap)
             apiKey = keychain.read() ?? ""
+            anthropicApiKey = anthropicKeychain.read() ?? ""
         }
     }
 
@@ -63,12 +69,75 @@ struct SettingsGeneralView: View {
                         get: { settingsStore.settings.defaultModel },
                         set: { settingsStore.settings.defaultModel = $0 }
                     )) {
-                        ForEach(ModelCatalog.all, id: \.self) { Text($0).tag($0) }
+                        Section("OpenAI") {
+                            ForEach(ModelCatalog.openAI, id: \.self) { Text($0).tag($0) }
+                        }
+                        Section("Anthropic") {
+                            ForEach(ModelCatalog.anthropic, id: \.self) { Text($0).tag($0) }
+                        }
                     }
                     .labelsHidden()
                     .frame(width: 150)
                 }
             }
+        }
+    }
+
+    // MARK: - Anthropic
+
+    private var anthropicSection: some View {
+        VStack(spacing: 0) {
+            SectionLabel(text: "Anthropic", theme: theme)
+            SettingsCard(theme: theme) {
+                SettingsRow(label: "API key", desc: anthropicApiKeyDesc, last: true, theme: theme) {
+                    if showAnthropicKey {
+                        SettingsField(text: $anthropicApiKey, placeholder: "sk-ant-…", mono: true, width: 150, theme: theme)
+                    } else {
+                        SecureField("sk-ant-…", text: $anthropicApiKey)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12.5, design: .monospaced))
+                            .foregroundStyle(theme.text)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .frame(width: 150)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(theme.inputBg)
+                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.inputBorder, lineWidth: 0.5)))
+                    }
+                    SettingsButton(title: showAnthropicKey ? "Hide" : "Show", theme: theme) { showAnthropicKey.toggle() }
+                    SettingsButton(title: "Test", theme: theme) { Task { await testAnthropicKey() } }
+                    SettingsButton(title: "Save", kind: .primary, theme: theme) { persistAnthropicKey() }
+                }
+            }
+        }
+    }
+
+    private var anthropicApiKeyDesc: String {
+        switch anthropicTestResult {
+        case .idle: return "Stored in your macOS Keychain."
+        case .testing: return "Testing key against \(ModelCatalog.anthropic.first ?? "claude-haiku-4-5")…"
+        case .ok: return "✓ API key is valid."
+        case .failed(let msg): return "✗ \(msg)"
+        }
+    }
+
+    private func persistAnthropicKey() {
+        let trimmed = anthropicApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { _ = anthropicKeychain.delete() } else { _ = anthropicKeychain.write(trimmed) }
+    }
+
+    /// Tests the key as typed in the field, WITHOUT persisting it (mirrors the
+    /// OpenAI Test). Uses the cheapest Claude model with a trivial prompt.
+    private func testAnthropicKey() async {
+        let trimmed = anthropicApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        anthropicTestResult = .testing
+        let model = ModelCatalog.anthropic.first ?? "claude-haiku-4-5"
+        do {
+            _ = try await AnthropicClient().complete(apiKey: trimmed, model: model, promptTemplate: "Reply with: ok", text: "")
+            anthropicTestResult = .ok
+        } catch AnthropicError.emptyResponse {
+            anthropicTestResult = .ok
+        } catch {
+            anthropicTestResult = .failed(error.localizedDescription)
         }
     }
 

@@ -81,14 +81,23 @@ struct OpenAIClient {
     }
 }
 
-/// OpenAI chat models exposed in Settings.
+/// AI models exposed in Settings, grouped by provider. The default stays an
+/// OpenAI model (backward compatible); Claude models route to `AnthropicClient`
+/// by model-id prefix (see `AIProvider`).
 enum ModelCatalog {
-    static let all: [String] = [
+    static let openAI: [String] = [
         "gpt-4o-mini",
         "gpt-4o",
         "gpt-5.4-nano",
         "gpt-5.4-mini",
         "gpt-5.4",
     ]
+    static let anthropic: [String] = [
+        "claude-haiku-4-5",
+        "claude-sonnet-4-6",
+        "claude-opus-4-8",
+    ]
+    /// Existing call sites that iterate every model keep working.
+    static let all: [String] = openAI + anthropic
     static let `default` = "gpt-4o-mini"
 }

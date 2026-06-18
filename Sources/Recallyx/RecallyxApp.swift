@@ -252,12 +252,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let result = try await actionRunner.run(action, on: text)
                 await Paster.pasteText(result, into: app)
                 state.flash(.success)
-            } catch ActionError.missingApiKey {
+            } catch let ActionError.missingApiKey(provider) {
                 state.flash(.error("no key"))
-                notifier.notify(body: "Set your OpenAI API key in Settings.", action: .openSettings)
+                notifier.notify(body: "Set your \(provider.displayName) API key in Settings.", action: .openSettings)
             } catch OpenAIError.invalidApiKey {
                 state.flash(.error("invalid key"))
                 notifier.notify(body: "OpenAI rejected the API key (401). Update it in Settings.", action: .openSettings)
+            } catch AnthropicError.invalidApiKey {
+                state.flash(.error("invalid key"))
+                notifier.notify(body: "Anthropic rejected the API key (401). Update it in Settings.", action: .openSettings)
             } catch {
                 Log.error("action failed: \(error.localizedDescription)")
                 state.lastError = error.localizedDescription

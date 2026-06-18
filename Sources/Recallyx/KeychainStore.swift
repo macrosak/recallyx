@@ -12,6 +12,11 @@ struct KeychainStore {
         account: "openai-api-key"
     )
 
+    static let anthropicKey = KeychainStore(
+        service: "io.github.macrosak.recallyx",
+        account: "anthropic-api-key"
+    )
+
     func read() -> String? {
         var query: [String: Any] = baseQuery
         query[kSecMatchLimit as String] = kSecMatchLimitOne
