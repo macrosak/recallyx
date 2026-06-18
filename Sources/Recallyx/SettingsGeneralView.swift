@@ -30,6 +30,7 @@ struct SettingsGeneralView: View {
         VStack(spacing: 17) {
             openAISection
             anthropicSection
+            ollamaSection
             shortcutsSection
             historySection
             startupSection
@@ -74,6 +75,9 @@ struct SettingsGeneralView: View {
                         }
                         Section("Anthropic") {
                             ForEach(ModelCatalog.anthropic, id: \.self) { Text($0).tag($0) }
+                        }
+                        Section("Ollama (local)") {
+                            ForEach(ModelCatalog.ollama, id: \.self) { Text($0).tag($0) }
                         }
                     }
                     .labelsHidden()
@@ -138,6 +142,33 @@ struct SettingsGeneralView: View {
             anthropicTestResult = .ok
         } catch {
             anthropicTestResult = .failed(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Ollama
+
+    private var ollamaSection: some View {
+        VStack(spacing: 0) {
+            SectionLabel(text: "Ollama (local)", theme: theme)
+            SettingsCard(theme: theme) {
+                SettingsRow(
+                    label: "Server URL",
+                    desc: "Local Ollama server for ollama:… models. No API key needed.",
+                    last: true,
+                    theme: theme
+                ) {
+                    SettingsField(
+                        text: Binding(
+                            get: { settingsStore.settings.ollamaBaseURL },
+                            set: { settingsStore.settings.ollamaBaseURL = $0 }
+                        ),
+                        placeholder: AppSettings.defaultOllamaBaseURL,
+                        mono: true,
+                        width: 200,
+                        theme: theme
+                    )
+                }
+            }
         }
     }
 
