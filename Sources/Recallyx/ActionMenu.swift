@@ -5,6 +5,8 @@ import SwiftUI
 enum BuiltinAction: String, Identifiable, CaseIterable {
     case paste
     case copy
+    case pin
+    case unpin
     case delete
     case copyFilePath
     case revealInFinder
@@ -16,6 +18,8 @@ enum BuiltinAction: String, Identifiable, CaseIterable {
         switch self {
         case .paste: return "Paste"
         case .copy: return "Copy"
+        case .pin: return "Pin"
+        case .unpin: return "Unpin"
         case .delete: return "Delete from history"
         case .copyFilePath: return "Copy file path"
         case .revealInFinder: return "Reveal in Finder"
@@ -34,6 +38,8 @@ enum BuiltinAction: String, Identifiable, CaseIterable {
         switch self {
         case .paste: return "doc.on.clipboard"
         case .copy: return "doc.on.doc"
+        case .pin: return "pin"
+        case .unpin: return "pin.slash"
         case .delete: return "trash"
         case .copyFilePath: return "link"
         case .revealInFinder: return "folder"

@@ -73,12 +73,26 @@ final class HistoryPanelViewModel: ObservableObject {
         onRunAction: @escaping (Action, HistoryItem) -> Void = { _, _ in },
         onDismiss: @escaping () -> Void
     ) {
-        self.allItems = items
-        self.filtered = items
+        let ordered = Self.ordered(items)
+        self.allItems = ordered
+        self.filtered = ordered
         self.actions = actions
         self.onBuiltin = onBuiltin
         self.onRunAction = onRunAction
         self.onDismiss = onDismiss
+    }
+
+    /// Display order: pinned clips first, then by recency (newest first). Applied
+    /// where items enter the vm; the store keeps pure recency order internally.
+    static func ordered(_ items: [HistoryItem]) -> [HistoryItem] {
+        // Stable: enumerated index breaks ties so equal-recency items keep their
+        // incoming (store recency) order rather than being shuffled by an
+        // unstable sort.
+        items.enumerated().sorted { a, b in
+            if a.element.isPinned != b.element.isPinned { return a.element.isPinned }  // pinned first
+            if a.element.recency != b.element.recency { return a.element.recency > b.element.recency }  // then newest
+            return a.offset < b.offset
+        }.map(\.element)
     }
 
     var selectedItem: HistoryItem? {
@@ -163,11 +177,18 @@ final class HistoryPanelViewModel: ObservableObject {
         }
     }
 
-    /// Built-ins for the clip kind, then Custom… + the saved actions. Image
-    /// clips offer these too: a saved/custom AI step takes the image as input
-    /// (first step must be AI — enforced by `ActionRunner`).
+    /// Built-ins for the clip kind, plus the per-item Pin/Unpin entry (inserted
+    /// before Delete), then Custom… + the saved actions. Image clips offer these
+    /// too: a saved/custom AI step takes the image as input (first step must be
+    /// AI — enforced by `ActionRunner`).
     private func buildMenu(for item: HistoryItem) -> [ActionMenuItem] {
         var entries: [ActionMenuItem] = BuiltinAction.entries(for: item.kind).map { .builtin($0) }
+        let pin: ActionMenuItem = .builtin(item.isPinned ? .unpin : .pin)
+        if let deleteIdx = entries.firstIndex(where: { $0.id == "builtin.delete" }) {
+            entries.insert(pin, at: deleteIdx)
+        } else {
+            entries.append(pin)
+        }
         entries.append(.custom)
         entries += actions.map { .saved($0) }
         return entries
@@ -185,6 +206,16 @@ final class HistoryPanelViewModel: ObservableObject {
         case .builtin(.delete):
             onBuiltin(.delete, item)
             allItems.removeAll { $0.id == item.id }
+            returnToList()
+        case .builtin(.pin), .builtin(.unpin):
+            // Act locally + stay open (like Delete), then re-sort so the pin
+            // jumps to the top of the list.
+            let nowPinned = (entry.id == "builtin.pin")
+            onBuiltin(nowPinned ? .pin : .unpin, item)
+            if let i = allItems.firstIndex(where: { $0.id == item.id }) {
+                allItems[i].pinned = nowPinned
+            }
+            allItems = Self.ordered(allItems)
             returnToList()
         case .builtin(let action):
             // Controller performs the action and dismisses the panel.
@@ -301,12 +332,18 @@ final class HistoryPanelViewModel: ObservableObject {
         searchTask = nil
 
         let q = query
+        // Empty query: show all in pinned-first order (don't run through the
+        // fuzzy ranker, which would rank by match quality and interleave pins).
+        guard !q.isEmpty else {
+            filtered = allItems
+            selectedIndex = 0
+            return
+        }
+
         // Sync pass: instant result from bounded prefix.
         let syncResult = FuzzyMatcher.rank(allItems, query: q)
         filtered = syncResult
         selectedIndex = 0
-
-        guard !q.isEmpty else { return }
 
         // Async deep pass: scan full text of long clips that didn't sync-match.
         // Task.detached is required — an unqualified Task { } inherits @MainActor
