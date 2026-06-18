@@ -26,6 +26,11 @@ struct HistoryItem: Codable, Identifiable, Equatable {
     var contentHash: String
     /// Image pixel dimensions, e.g. "1920 × 1080". Nil for text.
     var imageDimensions: String?
+    /// User-pinned: sticks to the top of the list and is exempt from cap eviction.
+    /// Optional for backward-compatible decode (missing in pre-pin blobs → nil → not pinned).
+    var pinned: Bool?
+
+    var isPinned: Bool { pinned ?? false }
 
     /// Recency key used for ordering — a bump updates `lastUsedAt`, a fresh
     /// capture sets both, so the larger of the two always reflects "most recent".

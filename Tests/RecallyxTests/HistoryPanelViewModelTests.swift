@@ -5,11 +5,15 @@ import Testing
 @MainActor
 @Suite("HistoryPanelViewModel")
 struct HistoryPanelViewModelTests {
-    private func textItem(_ s: String) -> HistoryItem {
-        HistoryItem(
+    /// Items default to "now"; tests that build a multi-item list pass `age` to
+    /// encode a real recency order (the vm sorts incoming items newest-first,
+    /// pinned-first). `age` is seconds in the past — higher = older.
+    private func textItem(_ s: String, age: TimeInterval = 0) -> HistoryItem {
+        let t = Date().addingTimeInterval(-age)
+        return HistoryItem(
             id: UUID(), kind: .text, text: s, imageFilename: nil, preview: s, byteSize: s.count,
             sourceAppBundleID: nil, sourceAppName: nil, sourceAppPath: nil,
-            createdAt: Date(), lastUsedAt: Date(), contentHash: ContentHash.of(text: s), imageDimensions: nil
+            createdAt: t, lastUsedAt: t, contentHash: ContentHash.of(text: s), imageDimensions: nil
         )
     }
 
@@ -29,13 +33,13 @@ struct HistoryPanelViewModelTests {
         let vm = makeVM([textItem("hi")])
         vm.tab()
         #expect(vm.mode == .actions)
-        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.copy", "builtin.delete", "custom"])
+        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.copy", "builtin.pin", "builtin.delete", "custom"])
     }
 
     @Test func tab_imageClip_includesImageActions() {
         let vm = makeVM([imageItem()])
         vm.tab()
-        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.openInPreview", "builtin.copyFilePath", "builtin.revealInFinder", "builtin.delete"])
+        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.openInPreview", "builtin.copyFilePath", "builtin.revealInFinder", "builtin.pin", "builtin.delete"])
     }
 
     @Test func tab_textClip_appendsSavedActions() {
@@ -68,11 +72,11 @@ struct HistoryPanelViewModelTests {
 
     @Test func deleteAction_removesLocallyAndReturnsToList() {
         var deleted: HistoryItem?
-        let vm = makeVM([textItem("a"), textItem("b")]) { action, item in
+        let vm = makeVM([textItem("a", age: 0), textItem("b", age: 1)]) { action, item in
             if action == .delete { deleted = item }
         }
         vm.tab()                       // open actions on "a"
-        vm.actionIndex = 2             // Delete
+        vm.actionIndex = vm.menuItems.firstIndex { $0.id == "builtin.delete" }!
         vm.confirm()
         #expect(deleted?.text == "a")
         #expect(vm.mode == .list)
@@ -130,7 +134,7 @@ struct HistoryPanelViewModelTests {
         // selection reset (e.g. the search field re-firing its binding) must NOT
         // make the action apply to the first item.
         var pasted: HistoryItem?
-        let vm = makeVM([textItem("a"), textItem("b"), textItem("c")]) { action, item in
+        let vm = makeVM([textItem("a", age: 0), textItem("b", age: 1), textItem("c", age: 2)]) { action, item in
             if action == .paste { pasted = item }
         }
         vm.moveDown(); vm.moveDown()      // cursor on "c"
@@ -144,7 +148,7 @@ struct HistoryPanelViewModelTests {
 
     @Test func listEnter_pastesSelected() {
         var pasted: HistoryItem?
-        let vm = makeVM([textItem("a"), textItem("b")]) { action, item in
+        let vm = makeVM([textItem("a", age: 0), textItem("b", age: 1)]) { action, item in
             if action == .paste { pasted = item }
         }
         vm.moveDown()
@@ -187,6 +191,79 @@ struct HistoryPanelViewModelTests {
         #expect(vm.mode == .list)
         #expect(vm.query == "alp")
         #expect(vm.searchPlaceholder == "Search clipboard…")
+    }
+
+    // MARK: - Pinning
+
+    private func pinnedTextItem(_ s: String) -> HistoryItem {
+        var item = textItem(s)
+        item.pinned = true
+        return item
+    }
+
+    @Test func ordered_putsPinnedFirstThenRecency() {
+        let older = textItem("older")
+        // Make "newer" genuinely more recent.
+        var newer = textItem("newer")
+        newer.lastUsedAt = older.lastUsedAt.addingTimeInterval(60)
+        var pinnedOld = textItem("pinned-old")
+        pinnedOld.pinned = true
+        pinnedOld.lastUsedAt = older.lastUsedAt.addingTimeInterval(-60)
+
+        let result = HistoryPanelViewModel.ordered([older, newer, pinnedOld])
+        // Pinned first (despite being oldest), then newest unpinned.
+        #expect(result.map(\.text) == ["pinned-old", "newer", "older"])
+    }
+
+    @Test func buildMenu_unpinForPinnedClip_textKind() {
+        let vm = makeVM([pinnedTextItem("hi")])
+        vm.tab()
+        #expect(vm.menuItems.contains { $0.id == "builtin.unpin" })
+        #expect(!vm.menuItems.contains { $0.id == "builtin.pin" })
+    }
+
+    @Test func buildMenu_pinForUnpinnedClip_imageKind() {
+        let vm = makeVM([imageItem()])
+        vm.tab()
+        #expect(vm.menuItems.contains { $0.id == "builtin.pin" })
+        #expect(!vm.menuItems.contains { $0.id == "builtin.unpin" })
+    }
+
+    @Test func emptyQueryFiltered_isPinnedFirst() {
+        // "a" is older+unpinned, "b" is newest+unpinned, "p" is pinned (oldest).
+        var older = textItem("a")
+        var newest = textItem("b")
+        var pinned = pinnedTextItem("p")
+        let base = Date()
+        older.lastUsedAt = base
+        newest.lastUsedAt = base.addingTimeInterval(60)
+        pinned.lastUsedAt = base.addingTimeInterval(-60)
+        let vm = makeVM([older, newest, pinned])
+        #expect(vm.filtered.map(\.text) == ["p", "b", "a"])
+    }
+
+    @Test func pinAction_togglesAndReordersAllItems() {
+        var pinnedFlag: Bool?
+        // "a" oldest, "b" newest, cursor on "a".
+        var a = textItem("a")
+        var b = textItem("b")
+        a.lastUsedAt = Date()
+        b.lastUsedAt = a.lastUsedAt.addingTimeInterval(60)
+        let vm = makeVM([a, b]) { action, item in
+            if action == .pin { pinnedFlag = true }
+            if action == .unpin { pinnedFlag = false }
+        }
+        // List order: b (newest), a.
+        #expect(vm.filtered.map(\.text) == ["b", "a"])
+        vm.moveDown()                  // cursor on "a"
+        vm.tab()                       // actions on "a"
+        vm.actionIndex = vm.menuItems.firstIndex { $0.id == "builtin.pin" }!
+        vm.confirm()
+        #expect(pinnedFlag == true)
+        #expect(vm.mode == .list)
+        // "a" now pinned → sorts to the top.
+        #expect(vm.filtered.first?.text == "a")
+        #expect(vm.filtered.first?.isPinned == true)
     }
 
     // MARK: - Async deep-search

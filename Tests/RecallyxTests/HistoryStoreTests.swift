@@ -140,6 +140,77 @@ struct HistoryStoreTests {
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
+    @Test func setPinned_flipsFlagAndPersists() {
+        let (store, base) = makeStore()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let id = store.add(textClip("keep me"))
+        #expect(store.items.first?.isPinned == false)
+
+        store.setPinned(id, true)
+        #expect(store.items.first?.isPinned == true)
+        store.flush()
+
+        let reloaded = HistoryStore(baseURL: base)
+        #expect(reloaded.items.first(where: { $0.id == id })?.isPinned == true)
+    }
+
+    @Test func eviction_exemptsPinnedAndDropsOldestUnpinned() {
+        let (store, base) = makeStore(cap: 2)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // Oldest is an image clip; pin it so it survives despite being oldest.
+        let pinnedImgId = store.add(imageClip([1, 2, 3, 4]))
+        store.setPinned(pinnedImgId, true)
+        let pinnedURL = store.items.first { $0.id == pinnedImgId }.flatMap { store.imageURL(for: $0) }!
+
+        // An older-but-unpinned image clip that should be evicted (and its PNG deleted).
+        let evictImgId = store.add(imageClip([5, 6, 7, 8]))
+        let evictURL = store.items.first { $0.id == evictImgId }.flatMap { store.imageURL(for: $0) }!
+
+        // Push past cap of 2 with two fresh text clips.
+        store.add(textClip("a"))
+        store.add(textClip("b"))
+
+        // Pinned item is exempt; count may exceed cap because of it.
+        #expect(store.items.contains { $0.id == pinnedImgId })
+        #expect(FileManager.default.fileExists(atPath: pinnedURL.path))
+        // The oldest unpinned image was evicted and its file deleted.
+        #expect(!store.items.contains { $0.id == evictImgId })
+        #expect(!FileManager.default.fileExists(atPath: evictURL.path))
+    }
+
+    @Test func eviction_allPinnedKeepsThemAllAboveCap() {
+        let (store, base) = makeStore(cap: 10)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let ids = (0..<3).map { store.add(textClip("clip-\($0)")) }
+        for id in ids { store.setPinned(id, true) }
+
+        // Lower the cap below the pinned count — all pinned, none evicted.
+        store.cap = 1
+        #expect(store.items.count == 3)
+        #expect(ids.allSatisfy { id in store.items.contains { $0.id == id } })
+    }
+
+    @Test func decode_missingPinnedKey_defaultsToUnpinned() throws {
+        let (_, base) = makeStore()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // A pre-pin blob: a valid HistoryItem JSON with no "pinned" key.
+        let json = """
+        [{"id":"\(UUID().uuidString)","kind":"text","text":"legacy","preview":"legacy",\
+        "byteSize":6,"createdAt":\(Date().timeIntervalSinceReferenceDate),\
+        "lastUsedAt":\(Date().timeIntervalSinceReferenceDate),"contentHash":"abc"}]
+        """
+        let indexURL = base.appendingPathComponent("history.json")
+        try Data(json.utf8).write(to: indexURL)
+
+        let reloaded = HistoryStore(baseURL: base)
+        #expect(reloaded.items.count == 1)   // decoded cleanly (no reseed)
+        #expect(reloaded.items.first?.isPinned == false)
+    }
+
     @Test func reconcileOrphans_deletesUnreferencedImageFiles() throws {
         let (store, base) = makeStore()
         defer { try? FileManager.default.removeItem(at: base) }

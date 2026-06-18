@@ -124,6 +124,15 @@ final class HistoryStore: ObservableObject {
         didMutate()
     }
 
+    /// Toggle a clip's pinned flag. Pinned clips sort to the top of the panel
+    /// list and are exempt from cap eviction. `items` stays in pure recency
+    /// order internally — pinned-first ordering is applied at the panel layer.
+    func setPinned(_ id: UUID, _ pinned: Bool) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        items[idx].pinned = pinned
+        didMutate()
+    }
+
     func delete(_ id: UUID) {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let item = items.remove(at: idx)
@@ -207,11 +216,18 @@ final class HistoryStore: ObservableObject {
         onChange?()
     }
 
+    /// Evict the oldest *unpinned* items until within cap. Pinned clips stay put
+    /// even if that leaves the store above cap.
     private func enforceCap() {
         guard items.count > cap else { return }
-        let overflow = items[cap...]
-        for item in overflow { deleteImageFile(for: item) }
-        items.removeLast(items.count - cap)
+        var i = items.count - 1
+        while items.count > cap && i >= 0 {
+            if !items[i].isPinned {
+                deleteImageFile(for: items[i])
+                items.remove(at: i)
+            }
+            i -= 1
+        }
         Log.info("history evicted to cap=\(cap)")
     }
 
