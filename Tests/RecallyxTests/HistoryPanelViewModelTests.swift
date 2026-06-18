@@ -156,6 +156,36 @@ struct HistoryPanelViewModelTests {
         #expect(pasted?.text == "b")
     }
 
+    @Test func pasteItem_pastesClipAtIndex() {
+        var pasted: HistoryItem?
+        let vm = makeVM([textItem("a", age: 0), textItem("b", age: 1), textItem("c", age: 2)]) { action, item in
+            if action == .paste { pasted = item }
+        }
+        // List order: a (newest), b, c. ⌘2 → index 1 → "b".
+        vm.pasteItem(at: 1)
+        #expect(pasted?.text == "b")
+    }
+
+    @Test func pasteItem_outOfRange_isNoOp() {
+        var pasted: HistoryItem?
+        let vm = makeVM([textItem("a"), textItem("b")]) { action, item in
+            if action == .paste { pasted = item }
+        }
+        vm.pasteItem(at: 5)
+        #expect(pasted == nil)
+    }
+
+    @Test func pasteItem_nonListMode_isNoOp() {
+        var pasted: HistoryItem?
+        let vm = makeVM([textItem("a"), textItem("b")]) { action, item in
+            if action == .paste { pasted = item }
+        }
+        vm.tab()                       // enter actions mode
+        #expect(vm.mode == .actions)
+        vm.pasteItem(at: 0)
+        #expect(pasted == nil)
+    }
+
     @Test func tab_clearsQueryAndSwitchesSearchDomain() {
         let vm = makeVM([textItem("alpha"), textItem("beta")])
         vm.query = "alp"

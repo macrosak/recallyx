@@ -142,6 +142,13 @@ final class HistoryPanelViewModel: ObservableObject {
         }
     }
 
+    /// Paste the clip at `index` in the filtered list (1-based positions map to
+    /// index-1 by the caller). Used by ⌘1–9 quick-paste. No-op if out of range.
+    func pasteItem(at index: Int) {
+        guard mode == .list, filtered.indices.contains(index) else { return }
+        onBuiltin(.paste, filtered[index])
+    }
+
     /// esc — actions/custom/edit: step back; list: close the panel.
     func cancel() {
         switch mode {
