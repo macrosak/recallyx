@@ -83,7 +83,8 @@ struct OpenAIClient {
 
 /// AI models exposed in Settings, grouped by provider. The default stays an
 /// OpenAI model (backward compatible); Claude models route to `AnthropicClient`
-/// by model-id prefix (see `AIProvider`).
+/// and `ollama:*` models to the local `OllamaClient`, by model-id prefix (see
+/// `AIProvider`).
 enum ModelCatalog {
     static let openAI: [String] = [
         "gpt-4o-mini",
@@ -97,7 +98,14 @@ enum ModelCatalog {
         "claude-sonnet-4-6",
         "claude-opus-4-8",
     ]
+    /// Local models served by Ollama — addressed `ollama:<name>` so they route
+    /// to `OllamaClient`. Users can also type a custom `ollama:<model>` override.
+    static let ollama: [String] = [
+        "ollama:llama3.2",
+        "ollama:qwen2.5",
+        "ollama:mistral",
+    ]
     /// Existing call sites that iterate every model keep working.
-    static let all: [String] = openAI + anthropic
+    static let all: [String] = openAI + anthropic + ollama
     static let `default` = "gpt-4o-mini"
 }

@@ -58,7 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var debugHooks: DebugHooks?
     private let notifier = Notifier()
     private let accessibility = AccessibilityClient()
-    private lazy var actionRunner = ActionRunner(defaultModel: { [settingsStore] in settingsStore.settings.defaultModel })
+    private lazy var actionRunner = ActionRunner(
+        defaultModel: { [settingsStore] in settingsStore.settings.defaultModel },
+        ollamaBaseURL: { [settingsStore] in settingsStore.settings.ollamaBaseURL }
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.info("applicationDidFinishLaunching")

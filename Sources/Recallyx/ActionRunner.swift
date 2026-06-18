@@ -28,14 +28,16 @@ final class ActionRunner {
 
     init(
         defaultModel: @escaping () -> String,
+        ollamaBaseURL: @escaping () -> String = { AppSettings.defaultOllamaBaseURL },
         runScript: ((String, String) async throws -> String)? = nil,
         runAI: ((String, String?, String) async throws -> String)? = nil
     ) {
         self.runScript = runScript ?? { try await ScriptRunner.run(script: $0, input: $1) }
-        let aiClient = AIClient()
+        let aiClient = AIClient(ollamaBaseURL: ollamaBaseURL)
         self.runAI = runAI ?? { prompt, model, input in
-            // Route by model id: `claude*` → Anthropic, else OpenAI. The facade
-            // reads the matching provider's keychain key.
+            // Route by model id: `ollama:*` → local Ollama, `claude*` →
+            // Anthropic, else OpenAI. The facade reads the matching provider's
+            // keychain key (cloud only); local needs none.
             try await aiClient.complete(prompt: prompt, model: model ?? defaultModel(), input: input)
         }
     }
