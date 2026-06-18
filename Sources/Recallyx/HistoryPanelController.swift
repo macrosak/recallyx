@@ -17,6 +17,11 @@ final class HistoryPanelController {
 
     private let panelSize = NSSize(width: 760, height: 562)
 
+    /// US-keyboard keyCodes for digits 1…9, mapped to the quick-paste position.
+    private static let digitKeyCodes: [UInt16: Int] = [
+        0x12: 1, 0x13: 2, 0x14: 3, 0x15: 4, 0x17: 5, 0x16: 6, 0x1A: 7, 0x1C: 8, 0x19: 9,
+    ]
+
     private let itemsProvider: () -> [HistoryItem]
     private let actionsProvider: () -> [Action]
     private let defaultModelProvider: () -> String
@@ -168,6 +173,14 @@ final class HistoryPanelController {
 
         switch vm.mode {
         case .list, .actions:
+            // ⌘1–9 quick-paste the Nth visible clip (list mode only). Only
+            // ⌘-modified digits are intercepted — plain digit typing falls
+            // through to the search field.
+            if vm.mode == .list, event.modifierFlags.contains(.command),
+               let digit = Self.digitKeyCodes[event.keyCode] {
+                vm.pasteItem(at: digit - 1)
+                return nil
+            }
             switch event.keyCode {
             case 0x7E: vm.moveUp(); return nil
             case 0x7D: vm.moveDown(); return nil
