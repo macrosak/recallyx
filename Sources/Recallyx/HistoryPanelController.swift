@@ -109,6 +109,9 @@ final class HistoryPanelController {
         uninstallEventMonitors()
         panel?.orderOut(nil)
         panel = nil
+        // Cancel any in-flight deep-search scan so a multi-MB substring pass
+        // doesn't keep running (and retaining the view model) after dismiss.
+        viewModel?.searchTask?.cancel()
         viewModel = nil
         // Hand focus back to where the user was: we activated ourselves to
         // show the panel, and with it gone the previous app doesn't regain key
