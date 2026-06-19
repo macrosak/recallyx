@@ -60,10 +60,36 @@ struct AIProviderTests {
         let runner = ActionRunner(
             defaultModel: { "claude-opus-4-8" },
             runScript: { script, input in "\(input)|\(script)" },
-            runAI: { prompt, model, input in "\(input)|ai(\(model ?? "default"):\(prompt))" }
+            runAI: { prompt, model, input, _ in "\(input)|ai(\(model ?? "default"):\(prompt))" }
         )
         let action = Action(name: "A", icon: "x", steps: [Step(type: .ai, prompt: "fix")])
         let out = try await runner.run(action, on: "seed")
         #expect(out == "seed|ai(default:fix)")
+    }
+
+    /// Cloud providers can take image input; a non-vision provider would not.
+    /// `AIClient.complete` rejects `imageData` only for non-vision providers.
+    @Test func cloudProvidersSupportVision() {
+        #expect(AIProvider.openai.supportsVision == true)
+        #expect(AIProvider.anthropic.supportsVision == true)
+    }
+
+    /// The image run path carries `imageData` into the AI step's seam for the
+    /// first step and clears it for subsequent (text) steps.
+    @MainActor
+    @Test func imagePath_routesImageDataThroughSeam() async throws {
+        var firstHadImage = false
+        let runner = ActionRunner(
+            defaultModel: { "gpt-4o-mini" },
+            runScript: { script, input in "\(input)|\(script)" },
+            runAI: { prompt, _, _, imageData in
+                if prompt == "ocr" { firstHadImage = imageData != nil; return "text" }
+                return "done"
+            }
+        )
+        let action = Action(name: "A", icon: "x", steps: [Step(type: .ai, prompt: "ocr")])
+        let out = try await runner.run(action, onImageData: Data([0xFF]))
+        #expect(firstHadImage == true)
+        #expect(out == "text")
     }
 }
