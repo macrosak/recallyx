@@ -25,11 +25,15 @@ struct OpenAIClient {
     private static let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
     private static let maxTokens = 1000
 
+    /// `imageData` (PNG bytes) opt-in: when non-nil, the user message `content`
+    /// becomes a vision array `[{text}, {image_url: data:image/png;base64,…}]`;
+    /// otherwise the existing plain-text shape (unchanged).
     func complete(
         apiKey: String,
         model: String,
         promptTemplate: String,
-        text: String
+        text: String,
+        imageData: Data? = nil
     ) async throws -> String {
         guard !apiKey.isEmpty else { throw OpenAIError.missingApiKey }
 
@@ -41,9 +45,20 @@ struct OpenAIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
+        let content: Any
+        if let imageData {
+            let dataURL = "data:image/png;base64,\(imageData.base64EncodedString())"
+            content = [
+                ["type": "text", "text": fullPrompt],
+                ["type": "image_url", "image_url": ["url": dataURL]],
+            ]
+        } else {
+            content = fullPrompt
+        }
+
         let body: [String: Any] = [
             "model": model,
-            "messages": [["role": "user", "content": fullPrompt]],
+            "messages": [["role": "user", "content": content]],
             "max_completion_tokens": Self.maxTokens
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

@@ -34,6 +34,16 @@ enum AIProvider {
         case .ollama: return "Ollama"
         }
     }
+
+    /// Whether this provider can take image input. Cloud providers (OpenAI,
+    /// Anthropic) do; a future local provider (e.g. `ollama:`) would not in v1 —
+    /// `AIClient.complete` throws `ActionError.imageNotSupported` for those.
+    var supportsVision: Bool {
+        switch self {
+        case .openai, .anthropic: return true
+        case .ollama: return false
+        }
+    }
 }
 
 /// Provider-routing facade: picks the provider by model id, reads that
@@ -52,8 +62,14 @@ struct AIClient {
         self.ollamaBaseURL = ollamaBaseURL
     }
 
-    func complete(prompt: String, model: String, input: String) async throws -> String {
+    /// `imageData` (PNG bytes) opt-in: when non-nil the prompt runs as a vision
+    /// request. Providers that can't do vision (v1: a future local provider)
+    /// throw `ActionError.imageNotSupported`; cloud providers pass it through.
+    func complete(prompt: String, model: String, input: String, imageData: Data? = nil) async throws -> String {
         let provider = AIProvider.provider(for: model)
+        if imageData != nil, !provider.supportsVision {
+            throw ActionError.imageNotSupported
+        }
         switch provider {
         case .ollama:
             return try await ollama.complete(baseURL: ollamaBaseURL(), model: model, promptTemplate: prompt, text: input)
@@ -62,9 +78,9 @@ struct AIClient {
                 throw ActionError.missingApiKey(provider)
             }
             if provider == .openai {
-                return try await openAI.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input)
+                return try await openAI.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData)
             } else {
-                return try await anthropic.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input)
+                return try await anthropic.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData)
             }
         }
     }

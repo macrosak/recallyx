@@ -65,6 +65,14 @@ struct Action: Codable, Identifiable, Equatable {
             Action(name: "Pretty-print JSON", icon: "scroll", steps: [
                 Step(type: .script, script: "python3 -m json.tool"),
             ]),
+            // Image-friendly AI actions: run on image clips (first step AI →
+            // receives the image), and harmlessly on text clips too.
+            Action(name: "Extract text", icon: "text.viewfinder", steps: [
+                Step(type: .ai, prompt: "Extract all text from this image, verbatim. Return only the text, no commentary."),
+            ]),
+            Action(name: "Describe image", icon: "eye", steps: [
+                Step(type: .ai, prompt: "Describe this image concisely. Return only the description."),
+            ]),
         ]
     }
 }

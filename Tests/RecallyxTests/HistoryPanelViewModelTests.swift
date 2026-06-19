@@ -35,7 +35,16 @@ struct HistoryPanelViewModelTests {
     @Test func tab_imageClip_includesImageActions() {
         let vm = makeVM([imageItem()])
         vm.tab()
-        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.openInPreview", "builtin.copyFilePath", "builtin.revealInFinder", "builtin.delete"])
+        // Image built-ins, then Custom… (image clips now run AI actions too).
+        #expect(vm.menuItems.map(\.id) == ["builtin.paste", "builtin.openInPreview", "builtin.copyFilePath", "builtin.revealInFinder", "builtin.delete", "custom"])
+    }
+
+    @Test func tab_imageClip_appendsCustomAndSavedActions() {
+        let actions = [Action(name: "Extract text", icon: "text.viewfinder", steps: [Step(type: .ai, prompt: "ocr")])]
+        let vm = HistoryPanelViewModel(items: [imageItem()], actions: actions, onBuiltin: { _, _ in }, onDismiss: {})
+        vm.tab()
+        #expect(vm.menuItems.contains { $0.id == "custom" })
+        #expect(vm.menuItems.contains { $0.id.hasPrefix("saved.") })
     }
 
     @Test func tab_textClip_appendsSavedActions() {
