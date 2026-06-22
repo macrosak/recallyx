@@ -157,10 +157,15 @@ struct HistoryStoreTests {
         #expect(!FileManager.default.fileExists(atPath: orphan.path))
     }
 
-    @Test func corruptIndex_backsUpAndReseeds() throws {
+    @Test func corruptIndex_backsUpAndReseedsAndKeepsImagePayloads() throws {
         let (store, base) = makeStore()
+        defer { try? FileManager.default.removeItem(at: base) }
         store.add(textClip("x"))
         store.flush()
+
+        // Seed an image payload on disk (as if referenced by the index).
+        let png = base.appendingPathComponent("images/keep.png")
+        try Data([0, 1, 2, 3]).write(to: png)
 
         // Corrupt the index file.
         let indexURL = base.appendingPathComponent("history.json")
@@ -168,7 +173,28 @@ struct HistoryStoreTests {
 
         let reloaded = HistoryStore(baseURL: base)
         #expect(reloaded.items.isEmpty) // reseeded empty, didn't crash
-        try? FileManager.default.removeItem(at: base)
+
+        // The bad JSON was backed up.
+        let backup = try FileManager.default
+            .contentsOfDirectory(atPath: base.path)
+            .first { $0.hasPrefix("history.json.corrupt-") }
+        #expect(backup != nil)
+
+        // The PNG payload survives — reconciliation is skipped on the corrupt path.
+        #expect(FileManager.default.fileExists(atPath: png.path))
+    }
+
+    @Test func loweringCapEvictsOnLoad() {
+        let (store, base) = makeStore(cap: 10)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        for i in 0..<5 { store.add(textClip("clip-\(i)")) }
+        store.flush()
+
+        // A new store over the same dir with a lower cap evicts on load,
+        // not waiting for the next add().
+        let reloaded = HistoryStore(baseURL: base, cap: 2)
+        #expect(reloaded.items.count == 2)
     }
 }
 

@@ -7,7 +7,8 @@ import Foundation
 ///
 /// Robustness mirrors AI Replace's `SettingsStore`: atomic writes (temp file +
 /// rename), debounced saves, reseed-on-corrupt (the bad file is backed up), and
-/// orphan reconciliation on launch.
+/// orphan reconciliation on launch (skipped on the corrupt-reseed path so the
+/// backed-up index's PNGs survive). The retention cap is also enforced on load.
 @MainActor
 final class HistoryStore: ObservableObject {
     @Published private(set) var items: [HistoryItem] = []
@@ -43,8 +44,17 @@ final class HistoryStore: ObservableObject {
         self.indexURL = base.appendingPathComponent("history.json")
 
         try? fm.createDirectory(at: imagesURL, withIntermediateDirectories: true)
-        load()
-        reconcileOrphans()
+        let reseededFromCorrupt = load()
+        // Skip reconciliation when we just reseeded from a corrupt index: with
+        // `items` empty, reconcileOrphans() would delete every PNG, destroying the
+        // payloads the `.corrupt-*` backup still names. Leaving the orphans on disk
+        // next to the backup keeps the data recoverable — a small disk leak in the
+        // rare corruption case is preferable to unrecoverable image loss.
+        if !reseededFromCorrupt { reconcileOrphans() }
+        // `cap`'s didSet doesn't fire during init, so enforce the cap here in case
+        // it was lowered between launches. In-memory trim only — don't fire
+        // onChange (listeners aren't wired yet); the next mutation persists.
+        enforceCap()
     }
 
     static func defaultBaseURL() -> URL {
@@ -135,21 +145,28 @@ final class HistoryStore: ObservableObject {
 
     // MARK: - Persistence
 
-    private func load() {
+    /// Loads the index into `items`. Returns `true` only when it took the
+    /// reseed-on-corrupt branch (so `init` can skip orphan reconciliation and
+    /// preserve the PNGs the `.corrupt-*` backup still references); `false` for a
+    /// successful load and for the normal empty/fresh case.
+    @discardableResult
+    private func load() -> Bool {
         guard let data = try? Data(contentsOf: indexURL) else {
             items = []
-            return
+            return false
         }
         do {
             let decoded = try JSONDecoder().decode([HistoryItem].self, from: data)
             // Defensive re-sort: trust max(createdAt, lastUsedAt) over file order.
             items = decoded.sorted { $0.recency > $1.recency }
             Log.info("history loaded count=\(items.count)")
+            return false
         } catch {
             Log.error("history decode failed: \(error.localizedDescription) — backing up and reseeding")
             let backup = indexURL.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))")
             try? fm.moveItem(at: indexURL, to: backup)
             items = []
+            return true
         }
     }
 
