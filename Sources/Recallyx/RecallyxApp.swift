@@ -236,9 +236,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sourceAppPath: app?.bundleURL?.path,
                 contentHash: ContentHash.of(text: captured.text), imageDimensions: nil
             )
-            store.add(clip)
+            let id = store.add(clip)
             Log.info("transform captured selection len=\(captured.text.count) — opening actions")
-            historyPanel?.showOnTopActions()
+            historyPanel?.showOnTopActions(focusing: id)
         }
     }
 

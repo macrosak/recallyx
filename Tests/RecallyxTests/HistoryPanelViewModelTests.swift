@@ -468,4 +468,39 @@ struct HistoryPanelViewModelTests {
         let keys = menu.indices.map { HistoryPanelViewModel.actionQuickKey(forRowAt: $0, in: menu) }
         #expect(keys == [nil, 1, 2, 3, 4, 5, 6, 7, 8, 9, nil])
     }
+
+    // MARK: - openActionsOnTop (⌃⇧V targets the captured clip by id)
+
+    @Test func openActionsOnTop_targetsCapturedClip_notPinnedFirst() {
+        // Regression: ⌃⇧V must open the action menu on the just-captured
+        // selection, not the first PINNED clip (which sorts first in `filtered`).
+        let pinned = pinnedTextItem("pinned")          // sorts first (pinned-first)
+        let target = textItem("target")               // the captured selection
+        let vm = makeVM([target, pinned])
+        #expect(vm.filtered.first?.id == pinned.id)    // precondition: pin leads
+
+        vm.openActionsOnTop(focusId: target.id)
+        #expect(vm.mode == .actions)
+        #expect(vm.actionItem?.id == target.id)        // NOT the pinned clip
+    }
+
+    @Test func openActionsOnTop_nilFocus_targetsFirstFiltered() {
+        let pinned = pinnedTextItem("pinned")
+        let target = textItem("target")
+        let vm = makeVM([target, pinned])
+
+        vm.openActionsOnTop(focusId: nil)
+        #expect(vm.mode == .actions)
+        #expect(vm.actionItem?.id == pinned.id)        // falls back to filtered[0]
+    }
+
+    @Test func openActionsOnTop_unknownFocus_fallsBackToFirstFiltered() {
+        let pinned = pinnedTextItem("pinned")
+        let target = textItem("target")
+        let vm = makeVM([target, pinned])
+
+        vm.openActionsOnTop(focusId: UUID())           // not in the list
+        #expect(vm.mode == .actions)
+        #expect(vm.actionItem?.id == pinned.id)        // falls back to filtered[0]
+    }
 }

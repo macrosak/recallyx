@@ -62,12 +62,12 @@ final class HistoryPanelController {
 
     /// ⌃⇧V entry point: open the panel already showing the top clip's action
     /// menu (the just-captured selection), so the user lands straight on actions.
-    func showOnTopActions() {
+    func showOnTopActions(focusing id: UUID? = nil) {
         if isVisible { dismiss() }
-        show(openActionsOnTop: true)
+        show(openActionsOnTop: true, focusId: id)
     }
 
-    func show(openActionsOnTop: Bool = false) {
+    func show(openActionsOnTop: Bool = false, focusId: UUID? = nil) {
         guard !isVisible else { return }
         // Capture the app to paste back into BEFORE we activate ourselves.
         sourceApp = NSWorkspace.shared.frontmostApplication
@@ -108,11 +108,9 @@ final class HistoryPanelController {
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
 
-        // ⌃⇧V: jump straight to the top clip's action menu.
-        if openActionsOnTop, !viewModel.filtered.isEmpty {
-            viewModel.selectedIndex = 0
-            viewModel.tab()
-        }
+        // ⌃⇧V: jump straight to the captured clip's action menu (by id, so
+        // pinned-first ordering doesn't hijack the selection).
+        if openActionsOnTop { viewModel.openActionsOnTop(focusId: focusId) }
         log("panel_open", ["mode": openActionsOnTop ? "transform" : "history"])
         Log.info("history panel shown items=\(viewModel.filtered.count) actionsOnTop=\(openActionsOnTop)")
     }
