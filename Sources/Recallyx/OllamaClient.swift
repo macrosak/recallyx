@@ -36,11 +36,17 @@ struct OllamaClient {
         return String(model.dropFirst(prefix.count))
     }
 
+    /// `imageData` (PNG bytes) opt-in: when non-nil the model is sent Ollama's
+    /// multimodal `images` field — raw standard base64 of the bytes, NO `data:`
+    /// URL prefix (that's an OpenAI-ism). Only vision-capable local models
+    /// (llava, moondream, …) accept it; the facade gates non-vision models out
+    /// before we get here. Text-only path (nil) is unchanged.
     func complete(
         baseURL: String,
         model: String,
         promptTemplate: String,
-        text: String
+        text: String,
+        imageData: Data? = nil
     ) async throws -> String {
         let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let base = trimmedBase.hasSuffix("/") ? String(trimmedBase.dropLast()) : trimmedBase
@@ -55,11 +61,15 @@ struct OllamaClient {
         request.timeoutInterval = Self.timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": name,
             "prompt": fullPrompt,
             "stream": false
         ]
+        if let imageData {
+            // Ollama multimodal: raw standard base64, no `data:` URL prefix.
+            body["images"] = [imageData.base64EncodedString()]
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let data: Data

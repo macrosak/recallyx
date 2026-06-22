@@ -101,6 +101,86 @@ struct AIProviderTests {
         }
     }
 
+    /// Model-aware vision gate. Cloud + on-device routing is per-provider;
+    /// Ollama is per-model — only the multimodal locals report `true`.
+    @Test func supportsVisionForModel_isModelAware() {
+        // Cloud providers: always vision-capable.
+        #expect(AIProvider.supportsVision(forModel: "gpt-4o") == true)
+        #expect(AIProvider.supportsVision(forModel: "claude-opus-4-8") == true)
+        // On-device Apple: text-only in v1.
+        #expect(AIProvider.supportsVision(forModel: "apple:on-device") == false)
+        // Ollama vision models (substring allowlist).
+        #expect(AIProvider.supportsVision(forModel: "ollama:llava") == true)
+        #expect(AIProvider.supportsVision(forModel: "ollama:llava-llama3") == true)
+        #expect(AIProvider.supportsVision(forModel: "ollama:llama3.2-vision") == true)
+        #expect(AIProvider.supportsVision(forModel: "ollama:moondream") == true)
+        #expect(AIProvider.supportsVision(forModel: "ollama:bakllava") == true)
+        #expect(AIProvider.supportsVision(forModel: "ollama:minicpm-v") == true)
+        // A custom tag still matches by substring.
+        #expect(AIProvider.supportsVision(forModel: "ollama:llava:13b") == true)
+        // Ollama text-only models: NOT vision-capable.
+        #expect(AIProvider.supportsVision(forModel: "ollama:llama3.2") == false)
+        #expect(AIProvider.supportsVision(forModel: "ollama:qwen2.5") == false)
+        #expect(AIProvider.supportsVision(forModel: "ollama:mistral") == false)
+    }
+
+    /// `isOllamaVisionModel` matches the allowlist on the prefix-stripped name
+    /// (case-insensitive, substring), and never matches text-only locals.
+    @Test func isOllamaVisionModel_substringAllowlist() {
+        #expect(AIProvider.isOllamaVisionModel("ollama:llava") == true)
+        #expect(AIProvider.isOllamaVisionModel("OLLAMA:LLaVA") == true)
+        #expect(AIProvider.isOllamaVisionModel("ollama:llama3.2-vision") == true)
+        #expect(AIProvider.isOllamaVisionModel("ollama:llama3.2") == false)
+        #expect(AIProvider.isOllamaVisionModel("ollama:qwen2.5") == false)
+    }
+
+    /// The facade's model-aware gate rejects `imageData` for a text-only local
+    /// model before any network dispatch — `imageNotSupported`, no server hit.
+    @Test func facadeRejectsImageForTextOnlyOllamaModel() async throws {
+        // Point at an unused port: if the gate ever let this through we'd get an
+        // Ollama network error instead, which the case check below would catch.
+        let client = AIClient(ollamaBaseURL: { "http://127.0.0.1:1" })
+        do {
+            _ = try await client.complete(
+                prompt: "describe",
+                model: "ollama:llama3.2",
+                input: "",
+                imageData: Data([0xFF])
+            )
+            Issue.record("expected imageNotSupported, but complete returned")
+        } catch let error as ActionError {
+            guard case .imageNotSupported = error else {
+                Issue.record("expected .imageNotSupported, got \(error)")
+                return
+            }
+        }
+    }
+
+    /// A vision-capable local model passes the gate: the facade dispatches to
+    /// `OllamaClient` (which, with no server, throws `OllamaError.notRunning`).
+    /// The point is it does NOT throw the `imageNotSupported` gate.
+    @Test func facadePassesGateForOllamaVisionModel() async throws {
+        // Point at an unused port so the dispatch fails fast without a server.
+        let client = AIClient(ollamaBaseURL: { "http://127.0.0.1:1" })
+        do {
+            _ = try await client.complete(
+                prompt: "ocr",
+                model: "ollama:llava",
+                input: "",
+                imageData: Data([0xFF])
+            )
+            // No server, so a successful return isn't expected — but if it did,
+            // the gate still wasn't the blocker.
+        } catch let error as ActionError {
+            // The only ActionError we must not see here is the vision gate.
+            if case .imageNotSupported = error {
+                Issue.record("vision gate blocked a vision-capable Ollama model")
+            }
+        } catch {
+            // Network/Ollama errors are fine — the gate was passed.
+        }
+    }
+
     /// The image run path carries `imageData` into the AI step's seam for the
     /// first step and clears it for subsequent (text) steps.
     @MainActor
