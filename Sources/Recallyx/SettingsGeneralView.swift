@@ -24,6 +24,11 @@ struct SettingsGeneralView: View {
     @State private var geminiApiKey: String = ""
     @State private var showGeminiKey: Bool = false
     @State private var geminiTestResult: KeyTestResult = .idle
+    /// Bumped whenever a stored API key is written or cleared. The pickers'
+    /// `ModelCatalog.availableGroups()` reads the Keychain directly, so SwiftUI
+    /// has no other signal to re-evaluate `body`; tagging the default-model
+    /// picker with `.id(keychainRevision)` forces it to refresh after Save.
+    @State private var keychainRevision = 0
 
     private let keychain = KeychainStore.openAIKey
     private let anthropicKeychain = KeychainStore.anthropicKey
@@ -105,6 +110,9 @@ struct SettingsGeneralView: View {
                     }
                     .labelsHidden()
                     .frame(width: 150)
+                    // `availableGroups()` reads the Keychain, so re-key the Picker
+                    // on every key save/clear to refresh the provider list.
+                    .id(keychainRevision)
                 }
             }
         }
@@ -149,6 +157,7 @@ struct SettingsGeneralView: View {
     private func persistAnthropicKey() {
         let trimmed = anthropicApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { _ = anthropicKeychain.delete() } else { _ = anthropicKeychain.write(trimmed) }
+        keychainRevision += 1
     }
 
     /// Tests the key as typed in the field, WITHOUT persisting it (mirrors the
@@ -207,6 +216,7 @@ struct SettingsGeneralView: View {
     private func persistGeminiKey() {
         let trimmed = geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { _ = geminiKeychain.delete() } else { _ = geminiKeychain.write(trimmed) }
+        keychainRevision += 1
     }
 
     /// Tests the key as typed in the field, WITHOUT persisting it (mirrors the
@@ -265,6 +275,7 @@ struct SettingsGeneralView: View {
     private func persistKey() {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { _ = keychain.delete() } else { _ = keychain.write(trimmed) }
+        keychainRevision += 1
     }
 
     /// Tests the key as typed in the field, WITHOUT persisting it — saving is
