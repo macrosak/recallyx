@@ -79,6 +79,9 @@ struct SettingsGeneralView: View {
                         Section("Ollama (local)") {
                             ForEach(ModelCatalog.ollama, id: \.self) { Text($0).tag($0) }
                         }
+                        Section("Apple Intelligence (on-device)") {
+                            ForEach(ModelCatalog.apple, id: \.self) { Text($0).tag($0) }
+                        }
                     }
                     .labelsHidden()
                     .frame(width: 150)

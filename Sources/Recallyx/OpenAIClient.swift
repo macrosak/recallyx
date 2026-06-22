@@ -120,7 +120,11 @@ enum ModelCatalog {
         "ollama:qwen2.5",
         "ollama:mistral",
     ]
+    /// On-device Apple Intelligence — addressed `apple:…` so it routes to
+    /// `AppleClient`. The suffix is ignored (the OS picks the model); no key,
+    /// no URL, macOS 26+ only.
+    static let apple: [String] = ["apple:on-device"]
     /// Existing call sites that iterate every model keep working.
-    static let all: [String] = openAI + anthropic + ollama
+    static let all: [String] = openAI + anthropic + ollama + apple
     static let `default` = "gpt-4o-mini"
 }

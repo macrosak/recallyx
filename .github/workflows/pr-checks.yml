@@ -11,7 +11,7 @@ concurrency:
 jobs:
   test:
     name: swift test
-    runs-on: macos-15
+    runs-on: macos-26
     # A hung test run should fail fast, not burn six hours of runner time.
     timeout-minutes: 5
     steps:

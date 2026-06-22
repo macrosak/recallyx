@@ -4,8 +4,8 @@ import Testing
 
 @Suite("ModelCatalog")
 struct ModelCatalogTests {
-    @Test func allIsOpenAIPlusAnthropicPlusOllama() {
-        #expect(ModelCatalog.all == ModelCatalog.openAI + ModelCatalog.anthropic + ModelCatalog.ollama)
+    @Test func allIsOpenAIPlusAnthropicPlusOllamaPlusApple() {
+        #expect(ModelCatalog.all == ModelCatalog.openAI + ModelCatalog.anthropic + ModelCatalog.ollama + ModelCatalog.apple)
     }
 
     @Test func defaultStaysOpenAI() {
@@ -37,5 +37,13 @@ struct ModelCatalogTests {
         for model in ModelCatalog.ollama {
             #expect(AIProvider.provider(for: model) == .ollama)
         }
+    }
+
+    @Test func appleModelsPresentAndRouteToApple() {
+        #expect(ModelCatalog.apple == ["apple:on-device"])
+        for model in ModelCatalog.apple {
+            #expect(AIProvider.provider(for: model) == .apple)
+        }
+        #expect(ModelCatalog.all.contains("apple:on-device"))
     }
 }
