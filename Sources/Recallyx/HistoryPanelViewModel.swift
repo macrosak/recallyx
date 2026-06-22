@@ -280,10 +280,13 @@ final class HistoryPanelViewModel: ObservableObject {
 
     // MARK: - Ad-hoc AI
 
-    /// Build the prompt for a one-off Custom… run: honor `{{TEXT}}` if present,
-    /// else append the clip after the instruction. (Ported from AI Replace.)
-    static func buildCustomPrompt(_ userInput: String) -> String {
+    /// Build the prompt for a one-off Custom… run. For text clips: honor
+    /// `{{TEXT}}` if present, else append the clip after the instruction
+    /// (ported from AI Replace). For image clips there is no text to splice —
+    /// the image is fed to the AI directly — so the instruction is used as-is.
+    static func buildCustomPrompt(_ userInput: String, isImage: Bool = false) -> String {
         let trimmed = userInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isImage { return trimmed }
         if trimmed.contains("{{TEXT}}") { return trimmed }
         return "\(trimmed)\n\nText: {{TEXT}}"
     }
@@ -299,7 +302,7 @@ final class HistoryPanelViewModel: ObservableObject {
         let trimmed = customText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let transient = Action(name: "Custom", icon: "sparkle", steps: [
-            Step(type: .ai, prompt: Self.buildCustomPrompt(trimmed)),
+            Step(type: .ai, prompt: Self.buildCustomPrompt(trimmed, isImage: item.kind == .image)),
         ])
         onRunAction(transient, item)
     }
