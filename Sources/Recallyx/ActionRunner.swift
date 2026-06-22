@@ -2,12 +2,12 @@ import Foundation
 
 enum ActionError: LocalizedError {
     case imageNotSupported
-    case missingApiKey
+    case missingApiKey(AIProvider)
 
     var errorDescription: String? {
         switch self {
         case .imageNotSupported: return "Actions run on text only (v1)"
-        case .missingApiKey: return "Set your OpenAI API key in Settings"
+        case .missingApiKey(let provider): return "Set your \(provider.displayName) API key in Settings"
         }
     }
 }
@@ -27,21 +27,16 @@ final class ActionRunner {
     private let runAI: (_ prompt: String, _ model: String?, _ input: String) async throws -> String
 
     init(
-        keychain: KeychainStore = .openAIKey,
         defaultModel: @escaping () -> String,
         runScript: ((String, String) async throws -> String)? = nil,
         runAI: ((String, String?, String) async throws -> String)? = nil
     ) {
         self.runScript = runScript ?? { try await ScriptRunner.run(script: $0, input: $1) }
-        let openAI = OpenAIClient()
+        let aiClient = AIClient()
         self.runAI = runAI ?? { prompt, model, input in
-            guard let apiKey = keychain.read(), !apiKey.isEmpty else { throw ActionError.missingApiKey }
-            return try await openAI.complete(
-                apiKey: apiKey,
-                model: model ?? defaultModel(),
-                promptTemplate: prompt,
-                text: input
-            )
+            // Route by model id: `claude*` → Anthropic, else OpenAI. The facade
+            // reads the matching provider's keychain key.
+            try await aiClient.complete(prompt: prompt, model: model ?? defaultModel(), input: input)
         }
     }
 

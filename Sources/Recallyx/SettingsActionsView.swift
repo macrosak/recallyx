@@ -294,7 +294,12 @@ struct StepCard: View {
                         set: { step.model = $0.isEmpty ? nil : $0 }
                     )) {
                         Text("Use default").tag("")
-                        ForEach(ModelCatalog.all, id: \.self) { Text($0).tag($0) }
+                        Section("OpenAI") {
+                            ForEach(ModelCatalog.openAI, id: \.self) { Text($0).tag($0) }
+                        }
+                        Section("Anthropic") {
+                            ForEach(ModelCatalog.anthropic, id: \.self) { Text($0).tag($0) }
+                        }
                     }
                     .labelsHidden().frame(width: 150)
                 }
