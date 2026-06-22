@@ -303,6 +303,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             state.flash(.success)
             return true
+        case .pin:
+            store.setPinned(item.id, true)
+            return false
+        case .unpin:
+            store.setPinned(item.id, false)
+            return false
         case .delete:
             store.delete(item.id)
             return false

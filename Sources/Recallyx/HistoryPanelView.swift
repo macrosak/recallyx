@@ -215,6 +215,12 @@ struct HistoryRowView: View {
         HStack(alignment: .center, spacing: 11) {
             AppIconView(item: item, size: 20)
             snippet
+            if item.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(faint)
+                    .fixedSize()
+            }
             Text(ClipTime.relative(item.recency))
                 .font(.system(size: 11.5))
                 .foregroundStyle(faint)
