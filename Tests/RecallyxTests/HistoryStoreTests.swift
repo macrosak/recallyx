@@ -229,22 +229,29 @@ struct HistoryStoreTests {
         #expect(!FileManager.default.fileExists(atPath: orphan.path))
     }
 
-    @Test func corruptIndex_backsUpAndReseedsAndKeepsImagePayloads() throws {
-        let (store, base) = makeStore()
+    /// Corrupt-tolerance now lives on the JSON → Core Data migration path: a bad
+    /// legacy `history.json` on first launch is backed up to `.corrupt-*`, the
+    /// store stays empty (no crash), and on-disk image payloads survive
+    /// (reconciliation is skipped on the reseed/empty-migration path).
+    @Test func corruptLegacyJSON_backsUpAndStaysEmptyAndKeepsImagePayloads() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recallyx-tests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
-        store.add(textClip("x"))
-        store.flush()
+        try FileManager.default.createDirectory(
+            at: base.appendingPathComponent("images", isDirectory: true),
+            withIntermediateDirectories: true
+        )
 
-        // Seed an image payload on disk (as if referenced by the index).
+        // Seed an image payload on disk (as if referenced by the legacy index).
         let png = base.appendingPathComponent("images/keep.png")
         try Data([0, 1, 2, 3]).write(to: png)
 
-        // Corrupt the index file.
+        // A corrupt legacy index — no Core Data store exists yet (fresh dir).
         let indexURL = base.appendingPathComponent("history.json")
         try Data("not json".utf8).write(to: indexURL)
 
-        let reloaded = HistoryStore(baseURL: base)
-        #expect(reloaded.items.isEmpty) // reseeded empty, didn't crash
+        let store = HistoryStore(baseURL: base)
+        #expect(store.items.isEmpty) // import failed → empty, didn't crash
 
         // The bad JSON was backed up.
         let backup = try FileManager.default
@@ -252,7 +259,7 @@ struct HistoryStoreTests {
             .first { $0.hasPrefix("history.json.corrupt-") }
         #expect(backup != nil)
 
-        // The PNG payload survives — reconciliation is skipped on the corrupt path.
+        // The PNG payload survives — reconciliation is skipped on the empty path.
         #expect(FileManager.default.fileExists(atPath: png.path))
     }
 
@@ -267,6 +274,105 @@ struct HistoryStoreTests {
         // not waiting for the next add().
         let reloaded = HistoryStore(baseURL: base, cap: 2)
         #expect(reloaded.items.count == 2)
+    }
+
+    @Test func inMemoryStore_isUsable() {
+        // The hermetic in-memory variant: add/dedupe/order work without a
+        // SQLite file on disk.
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recallyx-tests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let store = HistoryStore(baseURL: base, inMemory: true)
+
+        store.add(textClip("a"))
+        store.add(textClip("b"))
+        store.add(textClip("a")) // dedupe-bump
+        #expect(store.items.count == 2)
+        #expect(store.items.first?.text == "a")
+        // No SQLite file was written.
+        #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("Recallyx.sqlite").path))
+    }
+}
+
+/// JSON → Core Data one-time migration on first launch of the Core Data build.
+@MainActor
+@Suite("HistoryStore migration")
+struct HistoryStoreMigrationTests {
+    private func makeBase() -> URL {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recallyx-mig-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: base.appendingPathComponent("images", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        return base
+    }
+
+    private func legacyItem(_ text: String, pinned: Bool = false, ago: TimeInterval = 0) -> HistoryItem {
+        let t = Date(timeIntervalSinceNow: -ago)
+        return HistoryItem(
+            id: UUID(), kind: .text, text: text, imageFilename: nil, preview: text,
+            byteSize: text.utf8.count, createdAt: t, lastUsedAt: t,
+            contentHash: ContentHash.of(text: text), pinned: pinned
+        )
+    }
+
+    @Test func importsLegacyJSON_preservesFieldsAndRenamesToBak() throws {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let pinnedItem = legacyItem("pinned", pinned: true, ago: 100)
+        let recentItem = legacyItem("recent", ago: 1)
+        let seed = [pinnedItem, recentItem]
+        let indexURL = base.appendingPathComponent("history.json")
+        try JSONEncoder().encode(seed).write(to: indexURL)
+
+        let store = HistoryStore(baseURL: base)
+
+        // Both items imported, recency-ordered (recent first).
+        #expect(store.items.count == 2)
+        #expect(store.items.first?.text == "recent")
+        // Ids / pins / timestamps preserved.
+        let importedPinned = store.items.first { $0.id == pinnedItem.id }
+        #expect(importedPinned?.text == "pinned")
+        #expect(importedPinned?.isPinned == true)
+        #expect(importedPinned?.createdAt == pinnedItem.createdAt)
+
+        // history.json renamed to .bak (not deleted, not left in place).
+        #expect(!FileManager.default.fileExists(atPath: indexURL.path))
+        #expect(FileManager.default.fileExists(atPath: base.appendingPathComponent("history.json.bak").path))
+    }
+
+    @Test func secondLaunch_isNoOp() throws {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let seed = [legacyItem("one"), legacyItem("two")]
+        let indexURL = base.appendingPathComponent("history.json")
+        try JSONEncoder().encode(seed).write(to: indexURL)
+
+        let first = HistoryStore(baseURL: base)
+        #expect(first.items.count == 2)
+        first.flush()
+
+        // Drop a fresh history.json that should NOT be re-imported (store is
+        // non-empty, and the original was already renamed to .bak).
+        try JSONEncoder().encode([legacyItem("should-not-import")]).write(to: indexURL)
+
+        let second = HistoryStore(baseURL: base)
+        #expect(second.items.count == 2) // still just the two original clips
+        #expect(!second.items.contains { $0.text == "should-not-import" })
+        // The just-written history.json is left untouched (store wasn't empty).
+        #expect(FileManager.default.fileExists(atPath: indexURL.path))
+    }
+
+    @Test func noLegacyJSON_freshStoreStaysEmpty() {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base)
+        #expect(store.items.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("history.json.bak").path))
     }
 }
 
