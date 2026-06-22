@@ -97,6 +97,12 @@ struct HistoryPanelViewModelTests {
         #expect(HistoryPanelViewModel.buildCustomPrompt("Summarize") == "Summarize\n\nText: {{TEXT}}")
     }
 
+    @Test func buildCustomPrompt_imageUsesInstructionAsIs() {
+        // Image clips feed the image to the AI directly — no {{TEXT}} splice.
+        #expect(HistoryPanelViewModel.buildCustomPrompt("Extract the text", isImage: true) == "Extract the text")
+        #expect(HistoryPanelViewModel.buildCustomPrompt("Describe {{TEXT}}", isImage: true) == "Describe {{TEXT}}")
+    }
+
     @Test func custom_runsTransientSingleAIStep() {
         var ran: Action?
         let vm = HistoryPanelViewModel(items: [textItem("hello")], actions: [],

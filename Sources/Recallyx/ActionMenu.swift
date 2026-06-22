@@ -160,15 +160,21 @@ struct CustomPromptColumn: View {
                     .foregroundStyle(theme.textDim)
                 PanelEditField(text: $text, theme: theme, minHeight: 92)
                     .focused(focus, equals: .editor)
-                HStack(alignment: .top, spacing: 8) {
-                    Text("{{TEXT}}")
-                        .font(.system(size: 11.5, design: .monospaced))
-                        .foregroundStyle(theme.textDim)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(RoundedRectangle(cornerRadius: 4).fill(theme.chip))
-                    Text("is replaced with the clip. Omit it and the clip is appended to your instruction.")
+                if item.kind == .image {
+                    Text("The image is sent to the AI along with your instruction.")
                         .font(.system(size: 11.5))
                         .foregroundStyle(theme.textFaint)
+                } else {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("{{TEXT}}")
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .foregroundStyle(theme.textDim)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(RoundedRectangle(cornerRadius: 4).fill(theme.chip))
+                        Text("is replaced with the clip. Omit it and the clip is appended to your instruction.")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(theme.textFaint)
+                    }
                 }
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
