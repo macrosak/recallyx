@@ -19,6 +19,8 @@ struct SettingsView: View {
     @ObservedObject var settingsStore: SettingsStore
     let clearHistory: () -> Void
     let shortcutActions: ShortcutActions
+    let revealUsageJournal: () -> Void
+    let clearUsageJournal: () -> Void
     @State private var tab: SettingsTab
 
     private let tabs: [SettingsTab] = [.general, .actions]
@@ -26,10 +28,19 @@ struct SettingsView: View {
     @Environment(\.colorScheme) private var colorScheme
     private var theme: SettingsTheme { SettingsTheme.current(colorScheme) }
 
-    init(settingsStore: SettingsStore, clearHistory: @escaping () -> Void, shortcutActions: ShortcutActions, initialTab: SettingsTab = .general) {
+    init(
+        settingsStore: SettingsStore,
+        clearHistory: @escaping () -> Void,
+        shortcutActions: ShortcutActions,
+        revealUsageJournal: @escaping () -> Void = {},
+        clearUsageJournal: @escaping () -> Void = {},
+        initialTab: SettingsTab = .general
+    ) {
         self.settingsStore = settingsStore
         self.clearHistory = clearHistory
         self.shortcutActions = shortcutActions
+        self.revealUsageJournal = revealUsageJournal
+        self.clearUsageJournal = clearUsageJournal
         self._tab = State(initialValue: initialTab)
     }
 
@@ -39,7 +50,7 @@ struct SettingsView: View {
             switch tab {
             case .general:
                 ScrollView {
-                    SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, theme: theme)
+                    SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, revealUsageJournal: revealUsageJournal, clearUsageJournal: clearUsageJournal, theme: theme)
                         .padding(.horizontal, 22)
                         .padding(.vertical, 20)
                 }

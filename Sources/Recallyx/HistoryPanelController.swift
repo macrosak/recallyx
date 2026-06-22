@@ -32,6 +32,9 @@ final class HistoryPanelController {
     private let onBuiltin: (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool
     /// Run a saved action against a clip, then paste the result into `sourceApp`.
     private let onRunAction: (Action, HistoryItem, NSRunningApplication?) -> Void
+    /// Emit a usage-journal event (no-op when the journal is off). Only
+    /// non-sensitive fields ever flow through here.
+    private let log: (String, [String: Any]) -> Void
 
     init(
         itemsProvider: @escaping () -> [HistoryItem],
@@ -39,7 +42,8 @@ final class HistoryPanelController {
         defaultModelProvider: @escaping () -> String = { ModelCatalog.default },
         imageURLResolver: @escaping (HistoryItem) -> URL?,
         onBuiltin: @escaping (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool,
-        onRunAction: @escaping (Action, HistoryItem, NSRunningApplication?) -> Void = { _, _, _ in }
+        onRunAction: @escaping (Action, HistoryItem, NSRunningApplication?) -> Void = { _, _, _ in },
+        log: @escaping (String, [String: Any]) -> Void = { _, _ in }
     ) {
         self.itemsProvider = itemsProvider
         self.actionsProvider = actionsProvider
@@ -47,6 +51,7 @@ final class HistoryPanelController {
         self.imageURLResolver = imageURLResolver
         self.onBuiltin = onBuiltin
         self.onRunAction = onRunAction
+        self.log = log
     }
 
     var isVisible: Bool { panel?.isVisible == true }
@@ -82,7 +87,8 @@ final class HistoryPanelController {
                 self.dismiss()
                 self.onRunAction(action, item, app)
             },
-            onDismiss: { [weak self] in self?.dismiss() }
+            onDismiss: { [weak self] in self?.dismiss() },
+            log: { [weak self] event, fields in self?.log(event, fields) }
         )
         self.viewModel = viewModel
 
@@ -107,6 +113,7 @@ final class HistoryPanelController {
             viewModel.selectedIndex = 0
             viewModel.tab()
         }
+        log("panel_open", ["mode": openActionsOnTop ? "transform" : "history"])
         Log.info("history panel shown items=\(viewModel.filtered.count) actionsOnTop=\(openActionsOnTop)")
     }
 

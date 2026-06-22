@@ -10,12 +10,22 @@ final class SettingsWindowController {
     private let settingsStore: SettingsStore
     private let clearHistory: () -> Void
     private let shortcutActions: ShortcutActions
+    private let revealUsageJournal: () -> Void
+    private let clearUsageJournal: () -> Void
     private var window: NSWindow?
 
-    init(settingsStore: SettingsStore, clearHistory: @escaping () -> Void, shortcutActions: ShortcutActions) {
+    init(
+        settingsStore: SettingsStore,
+        clearHistory: @escaping () -> Void,
+        shortcutActions: ShortcutActions,
+        revealUsageJournal: @escaping () -> Void = {},
+        clearUsageJournal: @escaping () -> Void = {}
+    ) {
         self.settingsStore = settingsStore
         self.clearHistory = clearHistory
         self.shortcutActions = shortcutActions
+        self.revealUsageJournal = revealUsageJournal
+        self.clearUsageJournal = clearUsageJournal
     }
 
     func show(tab: SettingsTab = .general) {
@@ -25,7 +35,14 @@ final class SettingsWindowController {
             return
         }
 
-        let view = SettingsView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, initialTab: tab)
+        let view = SettingsView(
+            settingsStore: settingsStore,
+            clearHistory: clearHistory,
+            shortcutActions: shortcutActions,
+            revealUsageJournal: revealUsageJournal,
+            clearUsageJournal: clearUsageJournal,
+            initialTab: tab
+        )
         let hosting = NSHostingController(rootView: view)
 
         let window = NSWindow(contentViewController: hosting)

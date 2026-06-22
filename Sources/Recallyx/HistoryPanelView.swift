@@ -177,8 +177,7 @@ struct HistoryPanelView: View {
                             .id(item.id)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                viewModel.selectedIndex = idx
-                                viewModel.confirm()
+                                viewModel.clickPaste(at: idx)
                             }
                     }
                 }

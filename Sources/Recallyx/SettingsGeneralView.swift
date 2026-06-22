@@ -6,6 +6,8 @@ struct SettingsGeneralView: View {
     @ObservedObject var settingsStore: SettingsStore
     let clearHistory: () -> Void
     let shortcutActions: ShortcutActions
+    var revealUsageJournal: () -> Void = {}
+    var clearUsageJournal: () -> Void = {}
     let theme: SettingsTheme
 
     @State private var capText: String = ""
@@ -272,6 +274,25 @@ struct SettingsGeneralView: View {
                         set: { settingsStore.settings.captureSensitive = $0 }
                     ))
                     .toggleStyle(.switch).labelsHidden().tint(theme.accent)
+                }
+                SettingsRow(
+                    label: "Usage journal (local only)",
+                    desc: "Records anonymous usage events to this Mac to help improve Recallyx. Never includes clipboard contents and is never sent anywhere.",
+                    theme: theme
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { settingsStore.settings.usageJournalEnabled },
+                        set: { settingsStore.settings.usageJournalEnabled = $0 }
+                    ))
+                    .toggleStyle(.switch).labelsHidden().tint(theme.accent)
+                }
+                SettingsRow(
+                    label: "Usage journal data",
+                    desc: "Inspect or delete the local journal file.",
+                    theme: theme
+                ) {
+                    SettingsButton(title: "Reveal in Finder", theme: theme, action: revealUsageJournal)
+                    SettingsButton(title: "Clear", kind: .danger, theme: theme, action: clearUsageJournal)
                 }
                 SettingsRow(
                     label: "Clear history",

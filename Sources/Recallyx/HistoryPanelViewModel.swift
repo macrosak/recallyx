@@ -67,17 +67,26 @@ final class HistoryPanelViewModel: ObservableObject {
     private let onBuiltin: (BuiltinAction, HistoryItem) -> Void
     private let onRunAction: (Action, HistoryItem) -> Void
     private let onDismiss: () -> Void
+    /// Emit a usage-journal event (no-op when the journal is disabled). Only
+    /// non-sensitive fields — for search the *length*, never the query text.
+    private let log: (String, [String: Any]) -> Void
 
     /// In-flight async deep-search task; cancelled on each new keystroke.
     /// Internal (not private) so tests can await it via `searchTask?.value`.
     var searchTask: Task<Void, Never>?
+
+    /// Debounce for the `search` usage event — log on a short pause, not on
+    /// every keystroke, so a fast typist produces one event per query, not one
+    /// per character.
+    private var searchLogTask: Task<Void, Never>?
 
     init(
         items: [HistoryItem],
         actions: [Action] = [],
         onBuiltin: @escaping (BuiltinAction, HistoryItem) -> Void,
         onRunAction: @escaping (Action, HistoryItem) -> Void = { _, _ in },
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        log: @escaping (String, [String: Any]) -> Void = { _, _ in }
     ) {
         let ordered = Self.ordered(items)
         self.allItems = ordered
@@ -86,6 +95,7 @@ final class HistoryPanelViewModel: ObservableObject {
         self.onBuiltin = onBuiltin
         self.onRunAction = onRunAction
         self.onDismiss = onDismiss
+        self.log = log
     }
 
     /// Display order: pinned clips first, then by recency (newest first). Applied
@@ -138,6 +148,7 @@ final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list:
             guard let item = selectedItem else { return }
+            logPaste(item, via: "return")
             onBuiltin(.paste, item)
         case .actions:
             runSelectedAction()
@@ -152,7 +163,23 @@ final class HistoryPanelViewModel: ObservableObject {
     /// index-1 by the caller). Used by ⌘1–9 quick-paste. No-op if out of range.
     func pasteItem(at index: Int) {
         guard mode == .list, filtered.indices.contains(index) else { return }
+        logPaste(filtered[index], via: "quickKey")
         onBuiltin(.paste, filtered[index])
+    }
+
+    /// Paste from a list-row click (distinct `via` from the keyboard ↵ path,
+    /// which routes through `confirm()`).
+    func clickPaste(at index: Int) {
+        guard mode == .list, filtered.indices.contains(index) else { return }
+        selectedIndex = index
+        logPaste(filtered[index], via: "click")
+        onBuiltin(.paste, filtered[index])
+    }
+
+    /// Record a `paste` usage event (no-op when the journal is off). Logs only
+    /// the paste method and the clip *kind* — never the clip contents.
+    private func logPaste(_ item: HistoryItem, via: String) {
+        log("paste", ["via": via, "clipKind": item.kind.rawValue])
     }
 
     /// Run the Nth saved action (0-based) among the currently visible menu items —
@@ -391,6 +418,9 @@ final class HistoryPanelViewModel: ObservableObject {
         guard !q.isEmpty else {
             filtered = allItems
             selectedIndex = 0
+            // Don't journal the empty query (clearing the field / opening the panel).
+            searchLogTask?.cancel()
+            searchLogTask = nil
             return
         }
 
@@ -398,6 +428,7 @@ final class HistoryPanelViewModel: ObservableObject {
         let syncResult = FuzzyMatcher.rank(allItems, query: q)
         filtered = syncResult
         selectedIndex = 0
+        scheduleSearchLog(queryLength: q.count, resultCount: syncResult.count)
 
         // Async deep pass: scan full text of long clips that didn't sync-match.
         // Task.detached is required — an unqualified Task { } inherits @MainActor
@@ -429,6 +460,18 @@ final class HistoryPanelViewModel: ObservableObject {
                 deepMatchIDs: deepMatchIDs, syncIDs: syncIDs,
                 snapshot: allItemsSnapshot, capturedQuery: q
             )
+        }
+    }
+
+    /// Record one `search` usage event per settled query (≈400ms debounce so a
+    /// fast typist produces one event per query, not one per keystroke). Logs the
+    /// query *length* and the result count — **never the query characters**.
+    private func scheduleSearchLog(queryLength: Int, resultCount: Int) {
+        searchLogTask?.cancel()
+        searchLogTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            self?.log("search", ["queryLength": queryLength, "resultCount": resultCount])
         }
     }
 

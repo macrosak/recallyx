@@ -51,6 +51,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .map { URL(fileURLWithPath: $0, isDirectory: true) },
         cap: settingsStore.settings.retentionCap
     )
+    // Opt-in, off-by-default, local-only usage journal. Honors RECALLYX_DATA_DIR
+    // (like the history store) so debug runs write to the scratch dir.
+    private lazy var journal = UsageJournal(
+        enabled: settingsStore.settings.usageJournalEnabled,
+        fileURL: ProcessInfo.processInfo.environment["RECALLYX_DATA_DIR"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent("usage.jsonl") }
+    )
     private var watcher: ClipboardWatcher?
     private var hotkey: HotkeyManager?
     private var historyPanel: HistoryPanelController?
@@ -81,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Push live settings changes into the stores.
         settingsStore.onChange = { [weak self] settings in
             self?.store.cap = settings.retentionCap
+            self?.journal.enabled = settings.usageJournalEnabled
         }
 
         // The watcher reads the "Capture sensitive data" flag live from settings.
@@ -100,7 +108,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 suspend: { [weak self] in self?.suspendHotkeys() },
                 resume: { [weak self] in self?.resumeHotkeys() }
-            )
+            ),
+            revealUsageJournal: { [weak self] in self?.revealUsageJournal() },
+            clearUsageJournal: { [weak self] in self?.journal.clear() }
         )
         self.settingsWindow = settingsWindow
 
@@ -114,7 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onRunAction: { [weak self] action, item, app in
                 self?.runAction(action, item: item, into: app)
-            }
+            },
+            log: { [weak self] event, fields in self?.journal.log(event, fields) }
         )
         self.historyPanel = historyPanel
 
@@ -203,15 +214,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 captured = try await captureSelectionWithFallback()
             } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
                 Log.info("transform: no selection")
+                journal.log("transform_selection", ["captured": false])
                 let combo = settingsStore.settings.transformSelectionShortcut.glyphs.joined()
                 notifier.notify(body: "Select some text first, then press \(combo).")
                 return
             } catch {
                 Log.error("transform capture failed: \(error.localizedDescription)")
+                journal.log("transform_selection", ["captured": false])
                 notifier.notify(body: error.localizedDescription)
                 return
             }
 
+            journal.log("transform_selection", ["captured": true])
             let app = captured.sourceApp
             let clip = CapturedClip(
                 kind: .text, text: captured.text, imageData: nil,
@@ -259,6 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         state.status = .working
+        journal.log("action_run", actionRunFields(action, item: item))
         Task { @MainActor in
             do {
                 let result: String
@@ -270,20 +285,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await Paster.pasteText(result, into: app)
                 state.flash(.success)
             } catch let ActionError.missingApiKey(provider) {
+                journal.log("action_error", ["name": action.name, "category": "missingApiKey"])
                 state.flash(.error("no key"))
                 notifier.notify(body: "Set your \(provider.displayName) API key in Settings.", action: .openSettings)
             } catch OpenAIError.invalidApiKey {
+                journal.log("action_error", ["name": action.name, "category": "invalidApiKey"])
                 state.flash(.error("invalid key"))
                 notifier.notify(body: "OpenAI rejected the API key (401). Update it in Settings.", action: .openSettings)
             } catch AnthropicError.invalidApiKey {
+                journal.log("action_error", ["name": action.name, "category": "invalidApiKey"])
                 state.flash(.error("invalid key"))
                 notifier.notify(body: "Anthropic rejected the API key (401). Update it in Settings.", action: .openSettings)
             } catch {
+                // Category from the error TYPE only — never the raw message,
+                // which can echo user text / script output.
+                journal.log("action_error", ["name": action.name, "category": Self.errorCategory(error)])
                 Log.error("action failed: \(error.localizedDescription)")
                 state.lastError = error.localizedDescription
                 state.flash(.error("action failed"))
                 notifier.notify(body: error.localizedDescription)
             }
+        }
+    }
+
+    /// Build the non-sensitive `action_run` event fields. Never includes the
+    /// clip contents — only the action name (local-only, so a user-named action
+    /// is fine), its kind/step types, the resolved provider, the clip kind, and
+    /// whether it was the one-off Custom… run.
+    private func actionRunFields(_ action: Action, item: HistoryItem) -> [String: Any] {
+        let stepTypes = action.steps.filter(\.enabled).map { $0.type.rawValue }
+        let provider = resolvedProvider(for: action)
+        return [
+            "name": action.name,
+            "kind": action.kindTag,
+            "stepTypes": stepTypes,
+            "provider": provider.map { $0 as Any } ?? NSNull(),
+            "clipKind": item.kind.rawValue,
+            "custom": action.name == "Custom",
+        ]
+    }
+
+    /// The AI provider an action would use, or nil if it has no enabled AI step.
+    /// Resolves the first enabled AI step's per-step model, falling back to the
+    /// default model. Mirrors `AIProvider.provider(for:)`.
+    private func resolvedProvider(for action: Action) -> String? {
+        guard let aiStep = action.steps.first(where: { $0.enabled && $0.type == .ai }) else { return nil }
+        let model = aiStep.model ?? settingsStore.settings.defaultModel
+        switch AIProvider.provider(for: model) {
+        case .openai: return "openai"
+        case .anthropic: return "anthropic"
+        case .ollama: return "ollama"
+        case .apple: return "apple"
+        }
+    }
+
+    /// Map an error to a short category string (from the error TYPE, never the
+    /// raw message — messages can contain user text / script output).
+    private static func errorCategory(_ error: Error) -> String {
+        switch error {
+        case ActionError.imageNotSupported: return "imageNotSupported"
+        case ActionError.scriptFirstOnImage: return "scriptFirstOnImage"
+        case ActionError.missingApiKey: return "missingApiKey"
+        case is ScriptError: return "script"
+        case let urlError as URLError: return "network(\(urlError.code.rawValue))"
+        case is OpenAIError, is AnthropicError, is OllamaError: return "ai"
+        default: return "other"
         }
     }
 
@@ -368,6 +434,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func openSettings() {
         settingsWindow?.show()
+    }
+
+    /// Reveal the usage-journal file in Finder. If it doesn't exist yet (journal
+    /// never enabled, or just cleared), open the containing folder instead.
+    private func revealUsageJournal() {
+        let url = journal.url
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            NSWorkspace.shared.open(url.deletingLastPathComponent())
+        }
     }
 
     /// Clearing is irreversible (the image files are deleted too) — confirm
