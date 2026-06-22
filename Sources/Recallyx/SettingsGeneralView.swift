@@ -33,6 +33,7 @@ struct SettingsGeneralView: View {
             openAISection
             anthropicSection
             ollamaSection
+            defaultModelSection
             shortcutsSection
             historySection
             startupSection
@@ -50,7 +51,7 @@ struct SettingsGeneralView: View {
         VStack(spacing: 0) {
             SectionLabel(text: "OpenAI", theme: theme)
             SettingsCard(theme: theme) {
-                SettingsRow(label: "API key", desc: apiKeyDesc, theme: theme) {
+                SettingsRow(label: "API key", desc: apiKeyDesc, last: true, theme: theme) {
                     if showKey {
                         SettingsField(text: $apiKey, placeholder: "sk-…", mono: true, width: 150, theme: theme)
                     } else {
@@ -67,22 +68,32 @@ struct SettingsGeneralView: View {
                     SettingsButton(title: "Test", theme: theme) { Task { await testKey() } }
                     SettingsButton(title: "Save", kind: .primary, theme: theme) { persistKey() }
                 }
+            }
+        }
+    }
+
+    // MARK: - Default model
+
+    /// Cross-provider setting (its own section, not under OpenAI). Lists only
+    /// available providers via `ModelCatalog.availableGroups()`, plus the
+    /// current value if it belongs to a now-unavailable provider so the Picker
+    /// never renders blank.
+    private var defaultModelSection: some View {
+        VStack(spacing: 0) {
+            SectionLabel(text: "Default model", theme: theme)
+            SettingsCard(theme: theme) {
                 SettingsRow(label: "Default model", desc: "Used by AI steps without an override.", last: true, theme: theme) {
                     Picker("", selection: Binding(
                         get: { settingsStore.settings.defaultModel },
                         set: { settingsStore.settings.defaultModel = $0 }
                     )) {
-                        Section("OpenAI") {
-                            ForEach(ModelCatalog.openAI, id: \.self) { Text($0).tag($0) }
-                        }
-                        Section("Anthropic") {
-                            ForEach(ModelCatalog.anthropic, id: \.self) { Text($0).tag($0) }
-                        }
-                        Section("Ollama (local)") {
-                            ForEach(ModelCatalog.ollama, id: \.self) { Text($0).tag($0) }
-                        }
-                        Section("Apple Intelligence (on-device)") {
-                            ForEach(ModelCatalog.apple, id: \.self) { Text($0).tag($0) }
+                        ForEach(ModelCatalog.groupsPreservingSelection(
+                            ModelCatalog.availableGroups(),
+                            selected: settingsStore.settings.defaultModel
+                        )) { group in
+                            Section(group.title) {
+                                ForEach(group.models, id: \.self) { Text($0).tag($0) }
+                            }
                         }
                     }
                     .labelsHidden()

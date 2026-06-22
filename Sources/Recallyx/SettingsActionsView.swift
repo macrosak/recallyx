@@ -307,11 +307,13 @@ struct StepCard: View {
                         set: { step.model = $0.isEmpty ? nil : $0 }
                     )) {
                         Text("Use default").tag("")
-                        Section("OpenAI") {
-                            ForEach(ModelCatalog.openAI, id: \.self) { Text($0).tag($0) }
-                        }
-                        Section("Anthropic") {
-                            ForEach(ModelCatalog.anthropic, id: \.self) { Text($0).tag($0) }
+                        ForEach(ModelCatalog.groupsPreservingSelection(
+                            ModelCatalog.availableGroups(),
+                            selected: step.model ?? ""
+                        )) { group in
+                            Section(group.title) {
+                                ForEach(group.models, id: \.self) { Text($0).tag($0) }
+                            }
                         }
                     }
                     .labelsHidden().frame(width: 150)

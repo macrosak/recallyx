@@ -127,4 +127,54 @@ enum ModelCatalog {
     /// Existing call sites that iterate every model keep working.
     static let all: [String] = openAI + anthropic + ollama + apple
     static let `default` = "gpt-4o-mini"
+
+    // MARK: - Availability-aware grouping (for the Settings model pickers)
+
+    /// One provider's worth of selectable models, rendered as a `Section` in a
+    /// SwiftUI `Picker`.
+    struct ModelGroup: Identifiable {
+        let title: String
+        let models: [String]
+        var id: String { title }
+    }
+
+    /// Pure, hermetic grouping — produces the provider sections to show, gated
+    /// purely by the passed flags. Order is fixed: OpenAI, Anthropic, Ollama,
+    /// Apple. Test THIS; `availableGroups()` computes the flags from live config.
+    static func groups(openAI: Bool, anthropic: Bool, ollama: Bool, apple: Bool) -> [ModelGroup] {
+        var result: [ModelGroup] = []
+        if openAI { result.append(ModelGroup(title: "OpenAI", models: self.openAI)) }
+        if anthropic { result.append(ModelGroup(title: "Anthropic", models: self.anthropic)) }
+        if ollama { result.append(ModelGroup(title: "Ollama (local)", models: self.ollama)) }
+        if apple { result.append(ModelGroup(title: "Apple Intelligence (on-device)", models: self.apple)) }
+        return result
+    }
+
+    /// Live-config convenience used by the views: cloud providers appear only
+    /// when their Keychain key is set, Apple only when the OS can run it, Ollama
+    /// always (local, keyless — deliberate v1 choice). Reads the keychain + OS
+    /// each call so newly-saved keys show up on the next view appearance.
+    static func availableGroups() -> [ModelGroup] {
+        func keySet(_ store: KeychainStore) -> Bool {
+            guard let key = store.read() else { return false }
+            return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return groups(
+            openAI: keySet(.openAIKey),
+            anthropic: keySet(.anthropicKey),
+            ollama: true,
+            apple: AppleClient.isAvailable
+        )
+    }
+
+    /// Keeps the `Picker`'s current selection selectable: a SwiftUI `Picker`
+    /// whose bound value isn't among its tags renders blank, so if a non-empty
+    /// `selected` (e.g. a `claude-…` override after the Anthropic key was
+    /// removed) isn't in any group, append a trailing single-item "Configured"
+    /// group for it. Pure and hermetic — unit-tested.
+    static func groupsPreservingSelection(_ groups: [ModelGroup], selected: String) -> [ModelGroup] {
+        guard !selected.isEmpty else { return groups }
+        if groups.contains(where: { $0.models.contains(selected) }) { return groups }
+        return groups + [ModelGroup(title: "Configured", models: [selected])]
+    }
 }

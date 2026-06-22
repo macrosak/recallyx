@@ -25,6 +25,21 @@ enum AppleError: LocalizedError {
 /// and runtime `#available`-gated (the app targets macOS 13+), with a throwing
 /// `#else` stub so toolchains without the framework still build.
 struct AppleClient {
+    /// Whether the on-device model can actually run right now: macOS 26+ with
+    /// FoundationModels and `SystemLanguageModel.default.availability == .available`
+    /// (AI enabled and the model downloaded). `false` everywhere the framework
+    /// can't import or the OS is older. Used by the Settings model pickers to
+    /// show the Apple group only when the Mac can use it.
+    static var isAvailable: Bool {
+        #if canImport(FoundationModels)
+        guard #available(macOS 26, *) else { return false }
+        if case .available = SystemLanguageModel.default.availability { return true }
+        return false
+        #else
+        return false
+        #endif
+    }
+
     /// `model` is the `apple:` model id (suffix ignored — the OS picks the
     /// on-device model).
     func complete(model: String, promptTemplate: String, text: String) async throws -> String {

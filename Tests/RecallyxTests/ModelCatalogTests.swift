@@ -46,4 +46,61 @@ struct ModelCatalogTests {
         }
         #expect(ModelCatalog.all.contains("apple:on-device"))
     }
+
+    // MARK: - groups(openAI:anthropic:ollama:apple:) — pure, flag-driven
+
+    @Test func groupsAllTrueAreFourInOrderWithRightModels() {
+        let groups = ModelCatalog.groups(openAI: true, anthropic: true, ollama: true, apple: true)
+        #expect(groups.count == 4)
+        #expect(groups.map(\.title) == ["OpenAI", "Anthropic", "Ollama (local)", "Apple Intelligence (on-device)"])
+        #expect(groups[0].models == ModelCatalog.openAI)
+        #expect(groups[1].models == ModelCatalog.anthropic)
+        #expect(groups[2].models == ModelCatalog.ollama)
+        #expect(groups[3].models == ModelCatalog.apple)
+    }
+
+    @Test func groupsOnlyOpenAIIsJustOpenAI() {
+        let groups = ModelCatalog.groups(openAI: true, anthropic: false, ollama: false, apple: false)
+        #expect(groups.map(\.title) == ["OpenAI"])
+        #expect(groups.first?.models == ModelCatalog.openAI)
+    }
+
+    @Test func groupsAnthropicFalseHasNoAnthropicGroup() {
+        let groups = ModelCatalog.groups(openAI: true, anthropic: false, ollama: true, apple: true)
+        #expect(!groups.contains { $0.title == "Anthropic" })
+        #expect(groups.map(\.title) == ["OpenAI", "Ollama (local)", "Apple Intelligence (on-device)"])
+    }
+
+    @Test func groupsAllFalseIsEmpty() {
+        #expect(ModelCatalog.groups(openAI: false, anthropic: false, ollama: false, apple: false).isEmpty)
+    }
+
+    // MARK: - groupsPreservingSelection — keeps the Picker selection visible
+
+    @Test func selectionInAGroupIsNotDuplicated() {
+        let base = ModelCatalog.groups(openAI: true, anthropic: false, ollama: true, apple: false)
+        let result = ModelCatalog.groupsPreservingSelection(base, selected: ModelCatalog.openAI[0])
+        #expect(result.map(\.title) == base.map(\.title))
+        #expect(!result.contains { $0.title == "Configured" })
+    }
+
+    @Test func unavailableSelectionGetsTrailingConfiguredGroup() {
+        let base = ModelCatalog.groups(openAI: true, anthropic: false, ollama: true, apple: false)
+        let result = ModelCatalog.groupsPreservingSelection(base, selected: "claude-sonnet-4-6")
+        #expect(result.count == base.count + 1)
+        #expect(result.last?.title == "Configured")
+        #expect(result.last?.models == ["claude-sonnet-4-6"])
+    }
+
+    @Test func emptySelectionIsLeftUntouched() {
+        let base = ModelCatalog.groups(openAI: true, anthropic: true, ollama: true, apple: true)
+        let result = ModelCatalog.groupsPreservingSelection(base, selected: "")
+        #expect(result.map(\.title) == base.map(\.title))
+    }
+
+    @Test func emptyGroupsWithSelectionYieldsOnlyConfigured() {
+        let result = ModelCatalog.groupsPreservingSelection([], selected: "gpt-4o")
+        #expect(result.map(\.title) == ["Configured"])
+        #expect(result.first?.models == ["gpt-4o"])
+    }
 }
