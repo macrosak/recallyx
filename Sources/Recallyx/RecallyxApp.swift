@@ -177,14 +177,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    /// Guards `handleTransformSelection` against re-entrancy. The visibility
+    /// check is synchronous but the capture is async (the ⌘C fallback polls the
+    /// pasteboard for up to ~500ms), so a fast second ⌃⇧V would otherwise pass
+    /// the guard and double-capture + dismiss→reshow. Set before the capture
+    /// Task, cleared when it ends.
+    private var isTransforming = false
+
     /// Transform-selection hotkey (⌃⇧V default) — grab the current selection,
     /// push it to the top of history, and open the panel already on that clip's
     /// action menu (the AI-Replace replacement).
     private func handleTransformSelection() {
         if historyPanel?.isVisible == true { historyPanel?.dismiss(); return }
+        guard !isTransforming else { return }
         guard accessibility.ensureTrustedOrPrompt() else { return }
+        isTransforming = true
 
         Task { @MainActor in
+            defer { isTransforming = false }
             let captured: (text: String, sourceApp: NSRunningApplication?)
             do {
                 captured = try await captureSelectionWithFallback()
