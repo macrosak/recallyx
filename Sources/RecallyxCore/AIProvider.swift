@@ -1,5 +1,27 @@
 import Foundation
 
+/// Shared AI-step plumbing used by every client (cloud + local).
+public enum AIClientDefaults {
+    /// Output-token cap requested from the cloud chat APIs. A high default so
+    /// OCR ("Extract text") and "Summarize" on long clips don't get silently cut
+    /// off mid-sentence at the old 1000-token ceiling. The local Ollama/Apple
+    /// paths don't take a cap.
+    public static let maxOutputTokens = 4096
+}
+
+/// Fill an AI-step prompt template with the clip text. When the template
+/// contains the `{{TEXT}}` placeholder, substitute it; when it doesn't (a saved
+/// prompt that forgot the placeholder), **append** the input on its own line
+/// instead of silently dropping it — so the model still sees the clip. The
+/// ad-hoc Custom… path ensures `{{TEXT}}` upstream, so it never double-appends.
+/// Centralizes what was a per-client `replacingOccurrences(of: "{{TEXT}}", …)`.
+public func applyPromptTemplate(_ template: String, text: String) -> String {
+    if template.contains("{{TEXT}}") {
+        return template.replacingOccurrences(of: "{{TEXT}}", with: text)
+    }
+    return template + "\n\n" + text
+}
+
 /// Which backend serves a given AI step. The model-id string is authoritative:
 /// `apple:*` routes to the on-device Apple Intelligence model, `ollama:*` to the
 /// local Ollama server, `claude*` (case-insensitive) to Anthropic, everything

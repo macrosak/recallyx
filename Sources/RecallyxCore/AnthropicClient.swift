@@ -28,7 +28,7 @@ public enum AnthropicError: LocalizedError {
 public struct AnthropicClient {
     public init() {}
     private static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
-    private static let maxTokens = 1000
+    private static let maxTokens = AIClientDefaults.maxOutputTokens
     private static let version = "2023-06-01"
 
     /// `imageData` (PNG bytes) opt-in: when non-nil, the user message `content`
@@ -43,7 +43,7 @@ public struct AnthropicClient {
     ) async throws -> String {
         guard !apiKey.isEmpty else { throw AnthropicError.missingApiKey }
 
-        let fullPrompt = promptTemplate.replacingOccurrences(of: "{{TEXT}}", with: text)
+        let fullPrompt = applyPromptTemplate(promptTemplate, text: text)
 
         var request = URLRequest(url: Self.endpoint)
         request.httpMethod = "POST"
@@ -87,6 +87,10 @@ public struct AnthropicClient {
             throw AnthropicError.httpError(http.statusCode, bodyString)
         }
 
+        if decoded?.stopReason == "max_tokens" {
+            Log.info("Anthropic response truncated at max_tokens=\(Self.maxTokens)")
+        }
+
         // First text block; a refusal (HTTP 200, no text block) lands here too.
         guard let text = decoded?.content?
             .first(where: { $0.type == "text" })?.text?
@@ -102,5 +106,11 @@ public struct AnthropicClient {
         struct APIError: Decodable { let message: String }
         let content: [Block]?
         let error: APIError?
+        let stopReason: String?
+        enum CodingKeys: String, CodingKey {
+            case content
+            case error
+            case stopReason = "stop_reason"
+        }
     }
 }

@@ -61,7 +61,7 @@ public struct OllamaClient {
             throw OllamaError.notRunning(baseURL)
         }
         let name = Self.strippedModel(model)
-        let fullPrompt = promptTemplate.replacingOccurrences(of: "{{TEXT}}", with: text)
+        let fullPrompt = applyPromptTemplate(promptTemplate, text: text)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

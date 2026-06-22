@@ -192,6 +192,37 @@ struct AIProviderTests {
         }
     }
 
+    // MARK: - applyPromptTemplate
+
+    /// A template with `{{TEXT}}` substitutes the clip text in place — no append.
+    @Test func applyPromptTemplate_substitutesPlaceholder() {
+        #expect(applyPromptTemplate("Fix: {{TEXT}}", text: "hello") == "Fix: hello")
+        // Placeholder anywhere, multiple occurrences both replaced.
+        #expect(applyPromptTemplate("{{TEXT}} / {{TEXT}}", text: "x") == "x / x")
+    }
+
+    /// A template that FORGOT `{{TEXT}}` must APPEND the input (on its own line)
+    /// rather than silently dropping it — the bug fix.
+    @Test func applyPromptTemplate_appendsWhenPlaceholderMissing() {
+        #expect(applyPromptTemplate("Summarize the following", text: "long clip")
+            == "Summarize the following\n\nlong clip")
+    }
+
+    /// Empty text is handled in both branches without crashing.
+    @Test func applyPromptTemplate_emptyTextHandled() {
+        // With placeholder: substitutes to nothing.
+        #expect(applyPromptTemplate("a{{TEXT}}b", text: "") == "ab")
+        // Without placeholder: appends an empty trailing line.
+        #expect(applyPromptTemplate("prompt", text: "") == "prompt\n\n")
+    }
+
+    /// The shared output-token cap is high enough to avoid the old 1000-token
+    /// silent-truncation; all cloud clients read this one constant.
+    @Test func maxOutputTokens_isHighDefault() {
+        #expect(AIClientDefaults.maxOutputTokens == 4096)
+        #expect(AIClientDefaults.maxOutputTokens > 1000)
+    }
+
     /// The image run path carries `imageData` into the AI step's seam for the
     /// first step and clears it for subsequent (text) steps.
     @MainActor
