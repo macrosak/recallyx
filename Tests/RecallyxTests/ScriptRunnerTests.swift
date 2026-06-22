@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Recallyx
+@testable import RecallyxCore
 
 /// `.serialized`: these tests spawn real `bash` children over `Pipe`s. Run
 /// concurrently, each child inherits copies of the sibling tests' pipe

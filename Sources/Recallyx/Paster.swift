@@ -1,4 +1,5 @@
 import AppKit
+import RecallyxCore
 
 /// Paste mechanics, extracted from AI Replace's `CorrectionController`:
 /// pre-populate the clipboard, re-activate the source app, then post a

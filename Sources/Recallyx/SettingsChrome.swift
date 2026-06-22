@@ -1,4 +1,5 @@
 import SwiftUI
+import RecallyxCore
 
 /// Solid-window settings palette, translated from the proposal's `stheme`
 /// (`settings.jsx`). Distinct from `RXTheme`, which is for the frosted panel.

@@ -3,11 +3,11 @@ import Foundation
 import FoundationModels
 #endif
 
-enum AppleError: LocalizedError {
+public enum AppleError: LocalizedError {
     case unavailable(String)
     case unsupportedOS
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .unavailable(let why): return "Apple Intelligence unavailable: \(why)"
         case .unsupportedOS: return "Apple Intelligence needs macOS 26 or later."
@@ -24,13 +24,14 @@ enum AppleError: LocalizedError {
 /// Compiles on every SDK: the FoundationModels path is `#if canImport`-guarded
 /// and runtime `#available`-gated (the app targets macOS 13+), with a throwing
 /// `#else` stub so toolchains without the framework still build.
-struct AppleClient {
+public struct AppleClient {
+    public init() {}
     /// Whether the on-device model can actually run right now: macOS 26+ with
     /// FoundationModels and `SystemLanguageModel.default.availability == .available`
     /// (AI enabled and the model downloaded). `false` everywhere the framework
     /// can't import or the OS is older. Used by the Settings model pickers to
     /// show the Apple group only when the Mac can use it.
-    static var isAvailable: Bool {
+    public static var isAvailable: Bool {
         #if canImport(FoundationModels)
         guard #available(macOS 26, *) else { return false }
         if case .available = SystemLanguageModel.default.availability { return true }
@@ -42,7 +43,7 @@ struct AppleClient {
 
     /// `model` is the `apple:` model id (suffix ignored — the OS picks the
     /// on-device model).
-    func complete(model: String, promptTemplate: String, text: String) async throws -> String {
+    public func complete(model: String, promptTemplate: String, text: String) async throws -> String {
         let fullPrompt = promptTemplate.replacingOccurrences(of: "{{TEXT}}", with: text)
         #if canImport(FoundationModels)
         guard #available(macOS 26, *) else { throw AppleError.unsupportedOS }

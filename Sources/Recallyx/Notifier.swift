@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import UserNotifications
+import RecallyxCore
 
 enum NotifierAction: String {
     case openAccessibilitySettings

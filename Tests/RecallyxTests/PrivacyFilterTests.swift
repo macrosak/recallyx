@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Recallyx
+@testable import RecallyxCore
 
 @Suite("PrivacyFilter")
 struct PrivacyFilterTests {

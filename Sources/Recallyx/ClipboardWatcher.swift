@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import RecallyxCore
 
 /// Polls `NSPasteboard.general.changeCount` (~0.3s) and turns each change into a
 /// `CapturedClip` for `HistoryStore`. Applies the privacy filter, classifies

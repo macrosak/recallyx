@@ -1,6 +1,6 @@
 import Foundation
 
-enum OpenAIError: LocalizedError {
+public enum OpenAIError: LocalizedError {
     case invalidResponse
     case httpError(Int, String)
     case apiError(String)
@@ -8,7 +8,7 @@ enum OpenAIError: LocalizedError {
     case missingApiKey
     case invalidApiKey
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Invalid server response"
         case .httpError(let code, _): return "HTTP \(code)"
@@ -21,14 +21,15 @@ enum OpenAIError: LocalizedError {
 }
 
 /// Chat-completions client. Copied from AI Replace.
-struct OpenAIClient {
+public struct OpenAIClient {
+    public init() {}
     private static let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
     private static let maxTokens = 1000
 
     /// `imageData` (PNG bytes) opt-in: when non-nil, the user message `content`
     /// becomes a vision array `[{text}, {image_url: data:image/png;base64,…}]`;
     /// otherwise the existing plain-text shape (unchanged).
-    func complete(
+    public func complete(
         apiKey: String,
         model: String,
         promptTemplate: String,
@@ -100,22 +101,22 @@ struct OpenAIClient {
 /// OpenAI model (backward compatible); Claude models route to `AnthropicClient`
 /// and `ollama:*` models to the local `OllamaClient`, by model-id prefix (see
 /// `AIProvider`).
-enum ModelCatalog {
-    static let openAI: [String] = [
+public enum ModelCatalog {
+    public static let openAI: [String] = [
         "gpt-4o-mini",
         "gpt-4o",
         "gpt-5.4-nano",
         "gpt-5.4-mini",
         "gpt-5.4",
     ]
-    static let anthropic: [String] = [
+    public static let anthropic: [String] = [
         "claude-haiku-4-5",
         "claude-sonnet-4-6",
         "claude-opus-4-8",
     ]
     /// Google Gemini cloud models — addressed `gemini*` so they route to
     /// `GeminiClient` (BYO-key). Easily updatable as Google ships new GA ids.
-    static let gemini: [String] = [
+    public static let gemini: [String] = [
         "gemini-3.5-flash",
         "gemini-2.5-pro",
         "gemini-3.1-flash-lite",
@@ -124,7 +125,7 @@ enum ModelCatalog {
     /// to `OllamaClient`. Users can also type a custom `ollama:<model>` override.
     /// `llava`/`llama3.2-vision` are multimodal (local OCR / describe-image);
     /// the others are text-only (see `AIProvider.isOllamaVisionModel`).
-    static let ollama: [String] = [
+    public static let ollama: [String] = [
         "ollama:llama3.2",
         "ollama:qwen2.5",
         "ollama:mistral",
@@ -134,26 +135,30 @@ enum ModelCatalog {
     /// On-device Apple Intelligence — addressed `apple:…` so it routes to
     /// `AppleClient`. The suffix is ignored (the OS picks the model); no key,
     /// no URL, macOS 26+ only.
-    static let apple: [String] = ["apple:on-device"]
+    public static let apple: [String] = ["apple:on-device"]
     /// Existing call sites that iterate every model keep working.
-    static let all: [String] = openAI + anthropic + gemini + ollama + apple
-    static let `default` = "gpt-4o-mini"
+    public static let all: [String] = openAI + anthropic + gemini + ollama + apple
+    public static let `default` = "gpt-4o-mini"
 
     // MARK: - Availability-aware grouping (for the Settings model pickers)
 
     /// One provider's worth of selectable models, rendered as a `Section` in a
     /// SwiftUI `Picker`.
-    struct ModelGroup: Identifiable {
-        let title: String
-        let models: [String]
-        var id: String { title }
+    public struct ModelGroup: Identifiable {
+        public let title: String
+        public let models: [String]
+        public var id: String { title }
+        public init(title: String, models: [String]) {
+            self.title = title
+            self.models = models
+        }
     }
 
     /// Pure, hermetic grouping — produces the provider sections to show, gated
     /// purely by the passed flags. Order is fixed: OpenAI, Anthropic, Google
     /// Gemini, Ollama, Apple. Test THIS; `availableGroups()` computes the flags
     /// from live config.
-    static func groups(openAI: Bool, anthropic: Bool, gemini: Bool, ollama: Bool, apple: Bool) -> [ModelGroup] {
+    public static func groups(openAI: Bool, anthropic: Bool, gemini: Bool, ollama: Bool, apple: Bool) -> [ModelGroup] {
         var result: [ModelGroup] = []
         if openAI { result.append(ModelGroup(title: "OpenAI", models: self.openAI)) }
         if anthropic { result.append(ModelGroup(title: "Anthropic", models: self.anthropic)) }
@@ -167,7 +172,7 @@ enum ModelCatalog {
     /// when their Keychain key is set, Apple only when the OS can run it, Ollama
     /// always (local, keyless — deliberate v1 choice). Reads the keychain + OS
     /// each call so newly-saved keys show up on the next view appearance.
-    static func availableGroups() -> [ModelGroup] {
+    public static func availableGroups() -> [ModelGroup] {
         func keySet(_ store: KeychainStore) -> Bool {
             guard let key = store.read() else { return false }
             return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -186,7 +191,7 @@ enum ModelCatalog {
     /// `selected` (e.g. a `claude-…` override after the Anthropic key was
     /// removed) isn't in any group, append a trailing single-item "Configured"
     /// group for it. Pure and hermetic — unit-tested.
-    static func groupsPreservingSelection(_ groups: [ModelGroup], selected: String) -> [ModelGroup] {
+    public static func groupsPreservingSelection(_ groups: [ModelGroup], selected: String) -> [ModelGroup] {
         guard !selected.isEmpty else { return groups }
         if groups.contains(where: { $0.models.contains(selected) }) { return groups }
         return groups + [ModelGroup(title: "Configured", models: [selected])]

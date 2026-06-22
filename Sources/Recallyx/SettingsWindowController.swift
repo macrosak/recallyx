@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import RecallyxCore
 
 /// Owns the Settings window. LSUIElement apps have no Dock-driven Preferences
 /// path, so we drive the window manually from the menu-bar dropdown and from

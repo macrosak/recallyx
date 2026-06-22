@@ -6,14 +6,14 @@ import Foundation
 /// else to OpenAI (the default — backward compatible, no schema migration). A
 /// further provider slots in here: add a case + (for cloud providers) its
 /// keychain account + a client dispatch in `AIClient`.
-enum AIProvider {
+public enum AIProvider {
     case openai
     case anthropic
     case gemini
     case ollama
     case apple
 
-    static func provider(for model: String) -> AIProvider {
+    public static func provider(for model: String) -> AIProvider {
         let lower = model.lowercased()
         if lower.hasPrefix("apple:") { return .apple }
         if lower.hasPrefix("ollama:") { return .ollama }
@@ -24,7 +24,7 @@ enum AIProvider {
     /// Cloud providers store an API key in the Keychain; the local providers
     /// (Ollama, on-device Apple Intelligence) have none, so this is `nil` for
     /// `.ollama`/`.apple` (the facade skips the key check for local).
-    var keychain: KeychainStore? {
+    public var keychain: KeychainStore? {
         switch self {
         case .openai: return .openAIKey
         case .anthropic: return .anthropicKey
@@ -33,7 +33,7 @@ enum AIProvider {
         }
     }
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .openai: return "OpenAI"
         case .anthropic: return "Anthropic"
@@ -48,7 +48,7 @@ enum AIProvider {
     /// — Ollama vision is **per-model** (see `supportsVision(forModel:)`), so
     /// this flag stays `false` for `.ollama`. Prefer the model-aware static
     /// check at call sites that have a concrete model id.
-    var supportsVision: Bool {
+    public var supportsVision: Bool {
         switch self {
         case .openai, .anthropic, .gemini: return true
         case .ollama, .apple: return false
@@ -60,7 +60,7 @@ enum AIProvider {
     /// bakllava, moondream, minicpm-v); text-only locals (llama3.2, qwen2.5,
     /// mistral) cannot take an image. Cloud providers are always vision-capable;
     /// on-device Apple Intelligence is text-only in v1.
-    static func supportsVision(forModel model: String) -> Bool {
+    public static func supportsVision(forModel model: String) -> Bool {
         switch provider(for: model) {
         case .openai, .anthropic, .gemini: return true
         case .apple: return false
@@ -71,7 +71,7 @@ enum AIProvider {
     /// Substring allowlist on the prefix-stripped, lowercased model name.
     /// `"llava"` covers llava/llava-llama3; `"vision"` covers llama3.2-vision; a
     /// substring match so a custom tag like `ollama:llava:13b` still counts.
-    static func isOllamaVisionModel(_ model: String) -> Bool {
+    public static func isOllamaVisionModel(_ model: String) -> Bool {
         let name = OllamaClient.strippedModel(model).lowercased()
         let visionMarkers = ["llava", "vision", "bakllava", "moondream", "minicpm-v"]
         return visionMarkers.contains { name.contains($0) }
@@ -84,7 +84,7 @@ enum AIProvider {
 /// missing key throws `ActionError.missingApiKey` naming the right provider.
 /// `.ollama` is local (no key) — the facade dispatches straight to the client,
 /// reading the configured base URL.
-struct AIClient {
+public struct AIClient {
     private let openAI = OpenAIClient()
     private let anthropic = AnthropicClient()
     private let gemini = GeminiClient()
@@ -92,7 +92,7 @@ struct AIClient {
     private let apple = AppleClient()
     private let ollamaBaseURL: () -> String
 
-    init(ollamaBaseURL: @escaping () -> String = { AppSettings.defaultOllamaBaseURL }) {
+    public init(ollamaBaseURL: @escaping () -> String = { recallyxDefaultOllamaBaseURL }) {
         self.ollamaBaseURL = ollamaBaseURL
     }
 
@@ -100,7 +100,7 @@ struct AIClient {
     /// request. The gate is **model-aware** (`supportsVision(forModel:)`) since
     /// Ollama vision is per-model — a non-vision model with an image throws
     /// `ActionError.imageNotSupported`; a vision-capable model passes it through.
-    func complete(prompt: String, model: String, input: String, imageData: Data? = nil) async throws -> String {
+    public func complete(prompt: String, model: String, input: String, imageData: Data? = nil) async throws -> String {
         let provider = AIProvider.provider(for: model)
         if imageData != nil, !AIProvider.supportsVision(forModel: model) {
             throw ActionError.imageNotSupported

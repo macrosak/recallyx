@@ -1,5 +1,6 @@
 import Carbon.HIToolbox
 import SwiftUI
+import RecallyxCore
 
 @main
 struct RecallyxApp: App {

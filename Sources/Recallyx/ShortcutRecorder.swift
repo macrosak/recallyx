@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
+import RecallyxCore
 
 /// The app delegate's hotkey seam, handed down to the Settings UI. `apply` is
 /// the single mutation point (Carbon-then-settings); `suspend`/`resume`

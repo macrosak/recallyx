@@ -1,4 +1,5 @@
 import SwiftUI
+import RecallyxCore
 
 /// Popover content: scrollable grid of curated SF Symbols. Tapping a symbol
 /// updates the binding and dismisses. Copied from AI Replace.

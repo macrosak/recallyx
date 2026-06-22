@@ -1,4 +1,5 @@
 import Foundation
+import RecallyxCore
 
 /// Small app preferences persisted as JSON in UserDefaults (history itself lives
 /// on disk via `HistoryStore`). Phase 2 extends this with `defaultModel` and the
@@ -7,8 +8,8 @@ import Foundation
 struct AppSettings: Codable, Equatable {
     /// Where the local Ollama server lives. `RECALLYX_OLLAMA_URL` overrides it
     /// (escape hatch for unusual setups); otherwise the standard local port.
-    static let defaultOllamaBaseURL: String =
-        ProcessInfo.processInfo.environment["RECALLYX_OLLAMA_URL"] ?? "http://localhost:11434"
+    /// Re-exports the core default so the app's setting matches the clients'.
+    static let defaultOllamaBaseURL: String = recallyxDefaultOllamaBaseURL
 
     var retentionCap: Int
     var captureSensitive: Bool

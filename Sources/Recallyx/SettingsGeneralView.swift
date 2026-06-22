@@ -1,4 +1,5 @@
 import SwiftUI
+import RecallyxCore
 
 /// The General settings tab. Phase 1: Shortcuts, History, Startup. The OpenAI
 /// section (API key + model) is added with the AI layer.

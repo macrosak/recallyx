@@ -1,87 +1,9 @@
 import SwiftUI
+import RecallyxCore
 
-/// Built-in item actions surfaced in the Tab action menu. (User-defined
-/// script/AI actions and the Custom… one-off are layered on in Phase 2.)
-enum BuiltinAction: String, Identifiable, CaseIterable {
-    case paste
-    case copy
-    case pin
-    case unpin
-    case delete
-    case copyFilePath
-    case revealInFinder
-    case openInPreview
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .paste: return "Paste"
-        case .copy: return "Copy"
-        case .pin: return "Pin"
-        case .unpin: return "Unpin"
-        case .delete: return "Delete from history"
-        case .copyFilePath: return "Copy file path"
-        case .revealInFinder: return "Reveal in Finder"
-        case .openInPreview: return "Open in Preview"
-        }
-    }
-
-    var subtitle: String? {
-        switch self {
-        case .copy: return "without pasting"
-        default: return nil
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .paste: return "doc.on.clipboard"
-        case .copy: return "doc.on.doc"
-        case .pin: return "pin"
-        case .unpin: return "pin.slash"
-        case .delete: return "trash"
-        case .copyFilePath: return "link"
-        case .revealInFinder: return "folder"
-        case .openInPreview: return "eye"
-        }
-    }
-
-    var isDanger: Bool { self == .delete }
-
-    /// The built-ins available for a given clip kind, in display order.
-    static func entries(for kind: ClipKind) -> [BuiltinAction] {
-        switch kind {
-        case .text: return [.paste, .copy, .delete]
-        case .image: return [.paste, .openInPreview, .copyFilePath, .revealInFinder, .delete]
-        }
-    }
-}
-
-/// One row in the action menu: a built-in, a saved user action, or the Custom…
-/// one-off entry. Indexed positionally by the view model's cursor.
-enum ActionMenuItem: Identifiable {
-    case builtin(BuiltinAction)
-    case custom
-    case saved(Action)
-
-    var id: String {
-        switch self {
-        case .builtin(let b): return "builtin.\(b.rawValue)"
-        case .custom: return "custom"
-        case .saved(let a): return "saved.\(a.id.uuidString)"
-        }
-    }
-
-    /// Text the action search matches against.
-    var searchText: String {
-        switch self {
-        case .builtin(let b): return b.title
-        case .custom: return "Custom"
-        case .saved(let a): return a.name
-        }
-    }
-}
+// `BuiltinAction` and `ActionMenuItem` are pure model types, moved to
+// `RecallyxCore` (the view model depends on them); the SwiftUI views below stay
+// in the macOS app target.
 
 /// The right column when the action menu is open: an "ACTIONS" header (with the
 /// clip's app icon) over built-in rows, then a "Saved actions" divider before

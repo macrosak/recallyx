@@ -1,4 +1,5 @@
 import SwiftUI
+import RecallyxCore
 
 /// Menu-bar dropdown — a native `NSMenu` (the scene uses `.menuBarExtraStyle(.menu)`).
 /// `Text` items render as disabled status labels, `Button`s as standard menu items,

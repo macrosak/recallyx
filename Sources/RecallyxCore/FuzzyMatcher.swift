@@ -4,15 +4,15 @@ import Foundation
 /// characters appear in order (case-insensitive). Ranking, best first:
 /// exact > prefix > contiguous substring > scattered subsequence. Returns `nil`
 /// when there's no match at all.
-enum FuzzyMatcher {
+public enum FuzzyMatcher {
     /// Maximum bytes of `HistoryItem.text` scanned during a synchronous search pass.
     /// Items with text longer than this are still matched — via a bounded prefix
     /// here, and full-text async in `HistoryPanelViewModel.refreshClips` — so no
     /// match is ever permanently dropped; this bound only controls how much is
     /// scanned on the main thread per keystroke.
-    static let searchPrefixLimit = 16 * 1024  // 16 KB
+    public static let searchPrefixLimit = 16 * 1024  // 16 KB
 
-    static func score(_ candidate: String, query: String) -> Int? {
+    public static func score(_ candidate: String, query: String) -> Int? {
         let q = query.lowercased()
         guard !q.isEmpty else { return 0 }
         let c = candidate.lowercased()
@@ -36,7 +36,7 @@ enum FuzzyMatcher {
     /// keep main-thread cost O(1) per item regardless of clip size. Items where
     /// only the tail (beyond the prefix) matches are surfaced by the async
     /// deep-search pass in `HistoryPanelViewModel`.
-    static func rank(_ items: [HistoryItem], query: String) -> [HistoryItem] {
+    public static func rank(_ items: [HistoryItem], query: String) -> [HistoryItem] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return items }
         return items.filter { bestScore(for: $0, query: trimmed) != nil }
@@ -58,7 +58,7 @@ enum FuzzyMatcher {
 
     /// Returns a view into `s` truncated to at most `searchPrefixLimit` UTF-8
     /// bytes while preserving valid `Character` boundaries.
-    static func boundedPrefix(_ s: String) -> Substring {
+    public static func boundedPrefix(_ s: String) -> Substring {
         guard s.utf8.count > searchPrefixLimit else { return s[...] }
         var byteIdx = s.utf8.index(s.utf8.startIndex, offsetBy: searchPrefixLimit)
         // Walk back within the UTF-8 view until we land on a character boundary

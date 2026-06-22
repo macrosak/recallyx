@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Recallyx
+@testable import RecallyxCore
 
 /// Placeholder so the test target resolves from commit 1. Real unit tests for
 /// HistoryStore / privacy filter / fuzzy matcher / ActionRunner land alongside

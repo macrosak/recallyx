@@ -1,4 +1,5 @@
 import AppKit
+import RecallyxCore
 
 /// Decides whether a pasteboard change should be captured. Pure logic so it can
 /// be unit-tested without a live `NSPasteboard`.

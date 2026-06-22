@@ -1,4 +1,5 @@
 import SwiftUI
+import RecallyxCore
 
 /// The ⌘⇧V panel content: search bar on top, list + detail below, hint bar
 /// footer — laid out to match the proposal's `HistoryPanel`.
