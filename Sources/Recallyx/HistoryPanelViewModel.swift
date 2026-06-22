@@ -229,6 +229,15 @@ final class HistoryPanelViewModel: ObservableObject {
         }
     }
 
+    /// Open the action menu on the clip with `focusId` (the ⌃⇧V captured
+    /// selection), falling back to the first displayed clip if not found / nil.
+    /// Targets by id so pinned-first ordering doesn't hijack the selection.
+    func openActionsOnTop(focusId: UUID?) {
+        guard !filtered.isEmpty else { return }
+        selectedIndex = focusId.flatMap { id in filtered.firstIndex(where: { $0.id == id }) } ?? 0
+        tab()
+    }
+
     /// ⇥ — list: open the action menu; actions: edit-before-run the highlighted
     /// saved action; edit: advance to the next step.
     func tab() {
