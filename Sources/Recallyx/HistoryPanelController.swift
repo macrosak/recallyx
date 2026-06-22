@@ -181,6 +181,13 @@ final class HistoryPanelController {
                 vm.pasteItem(at: digit - 1)
                 return nil
             }
+            // ⌘1–9 run the Nth saved action (actions mode only). Built-ins and
+            // Custom… are not numbered. Plain digits fall through to the search.
+            if vm.mode == .actions, event.modifierFlags.contains(.command),
+               let digit = Self.digitKeyCodes[event.keyCode] {
+                vm.runSavedAction(at: digit - 1)
+                return nil
+            }
             switch event.keyCode {
             case 0x7E: vm.moveUp(); return nil
             case 0x7D: vm.moveDown(); return nil

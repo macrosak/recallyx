@@ -149,6 +149,18 @@ final class HistoryPanelViewModel: ObservableObject {
         onBuiltin(.paste, filtered[index])
     }
 
+    /// Run the Nth saved action (0-based) among the currently visible menu items —
+    /// built-ins and Custom… are not counted (⌘1 = first saved action). No-op if
+    /// out of range or not in `.actions` mode. Mirrors `pasteItem(at:)`.
+    func runSavedAction(at index: Int) {
+        guard mode == .actions, let item = actionItem else { return }
+        let saved: [Action] = filteredMenuItems.compactMap {
+            if case .saved(let a) = $0 { return a } else { return nil }
+        }
+        guard saved.indices.contains(index) else { return }
+        onRunAction(saved[index], item)
+    }
+
     /// esc — actions/custom/edit: step back; list: close the panel.
     func cancel() {
         switch mode {
