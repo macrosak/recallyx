@@ -195,6 +195,47 @@ struct HistoryPanelViewModelTests {
         #expect(pasted == nil)
     }
 
+    @Test func runSavedAction_runsNthSavedAction() {
+        let actions = [
+            Action(name: "First", icon: "sparkles", steps: []),
+            Action(name: "Second", icon: "scroll", steps: []),
+        ]
+        var ran: Action?
+        let vm = HistoryPanelViewModel(items: [textItem("x")], actions: actions,
+            onBuiltin: { _, _ in }, onRunAction: { a, _ in ran = a }, onDismiss: {})
+        vm.tab()                       // open actions menu
+        vm.runSavedAction(at: 0)       // ⌘1 → first saved action
+        #expect(ran?.name == "First")
+        vm.runSavedAction(at: 1)       // ⌘2 → second saved action
+        #expect(ran?.name == "Second")
+    }
+
+    @Test func runSavedAction_skipsBuiltinsAndCustom() {
+        // With 2 saved actions, index 2 is out of range (built-ins/Custom… aren't
+        // counted) → no-op.
+        let actions = [
+            Action(name: "First", icon: "sparkles", steps: []),
+            Action(name: "Second", icon: "scroll", steps: []),
+        ]
+        var ran: Action?
+        let vm = HistoryPanelViewModel(items: [textItem("x")], actions: actions,
+            onBuiltin: { _, _ in }, onRunAction: { a, _ in ran = a }, onDismiss: {})
+        vm.tab()
+        vm.runSavedAction(at: 2)
+        #expect(ran == nil)
+    }
+
+    @Test func runSavedAction_nonActionsMode_isNoOp() {
+        let actions = [Action(name: "First", icon: "sparkles", steps: [])]
+        var ran: Action?
+        let vm = HistoryPanelViewModel(items: [textItem("x")], actions: actions,
+            onBuiltin: { _, _ in }, onRunAction: { a, _ in ran = a }, onDismiss: {})
+        // Still in .list mode (no tab) → no-op.
+        #expect(vm.mode == .list)
+        vm.runSavedAction(at: 0)
+        #expect(ran == nil)
+    }
+
     @Test func tab_clearsQueryAndSwitchesSearchDomain() {
         let vm = makeVM([textItem("alpha"), textItem("beta")])
         vm.query = "alp"
