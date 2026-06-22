@@ -1,4 +1,5 @@
 import AppKit
+import RecallyxCore
 
 /// Borderless, floating, frosted panel hosting the history SwiftUI content.
 /// Subclass exists to flip `canBecomeKey`/`canBecomeMain` true for a borderless

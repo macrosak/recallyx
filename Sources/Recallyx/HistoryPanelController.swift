@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import RecallyxCore
 
 /// Owns the ⌘⇧V history panel: builds it on demand, positions it, captures the
 /// source app to paste back into, and routes navigation keys to the view model

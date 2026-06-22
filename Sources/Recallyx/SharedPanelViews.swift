@@ -1,4 +1,5 @@
 import SwiftUI
+import RecallyxCore
 
 /// A keycap, mirroring the proposal's `Kbd`.
 struct Keycap: View {

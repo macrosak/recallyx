@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
+import RecallyxCore
 
 /// One global hotkey binding: the Carbon-facing keyCode + modifier mask, plus a
 /// display label captured at record time. Storing the label sidesteps the

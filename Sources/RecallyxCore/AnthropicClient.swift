@@ -1,6 +1,6 @@
 import Foundation
 
-enum AnthropicError: LocalizedError {
+public enum AnthropicError: LocalizedError {
     case invalidResponse
     case httpError(Int, String)
     case apiError(String)
@@ -8,7 +8,7 @@ enum AnthropicError: LocalizedError {
     case missingApiKey
     case invalidApiKey
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Invalid server response"
         case .httpError(let code, _): return "HTTP \(code)"
@@ -25,7 +25,8 @@ enum AnthropicError: LocalizedError {
 /// deps. `max_tokens` is required; no `thinking`/`temperature`/`top_p` (these are
 /// simple, fast text transforms — omitting thinking keeps the output clean, and
 /// the sampling params are rejected on current Claude models).
-struct AnthropicClient {
+public struct AnthropicClient {
+    public init() {}
     private static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
     private static let maxTokens = 1000
     private static let version = "2023-06-01"
@@ -33,7 +34,7 @@ struct AnthropicClient {
     /// `imageData` (PNG bytes) opt-in: when non-nil, the user message `content`
     /// becomes a vision array `[{image, source: base64 image/png}, {text}]`;
     /// otherwise the existing plain-text shape (unchanged).
-    func complete(
+    public func complete(
         apiKey: String,
         model: String,
         promptTemplate: String,

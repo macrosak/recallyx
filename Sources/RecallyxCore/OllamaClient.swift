@@ -1,13 +1,19 @@
 import Foundation
 
-enum OllamaError: LocalizedError {
+/// Where the local Ollama server lives by default. `RECALLYX_OLLAMA_URL`
+/// overrides it (used by tests / advanced setups). `AppSettings` re-exports
+/// this so the app's settings default matches the core clients' fallback.
+public let recallyxDefaultOllamaBaseURL: String =
+    ProcessInfo.processInfo.environment["RECALLYX_OLLAMA_URL"] ?? "http://localhost:11434"
+
+public enum OllamaError: LocalizedError {
     case invalidResponse
     case notRunning(String)
     case modelNotFound(String)
     case httpError(Int, String)
     case emptyResponse
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Invalid server response"
         case .notRunning(let baseURL):
@@ -26,12 +32,13 @@ enum OllamaError: LocalizedError {
 /// `ollama:<name>` in the model string (so `AIProvider` can route by prefix);
 /// the prefix is stripped before the name is sent. Local models can be slow to
 /// load on first use, so the timeout is 120s.
-struct OllamaClient {
-    static let prefix = "ollama:"
+public struct OllamaClient {
+    public init() {}
+    public static let prefix = "ollama:"
     private static let timeout: TimeInterval = 120
 
     /// Strip the `ollama:` routing prefix to get the bare Ollama model name.
-    static func strippedModel(_ model: String) -> String {
+    public static func strippedModel(_ model: String) -> String {
         guard model.lowercased().hasPrefix(prefix) else { return model }
         return String(model.dropFirst(prefix.count))
     }
@@ -41,7 +48,7 @@ struct OllamaClient {
     /// URL prefix (that's an OpenAI-ism). Only vision-capable local models
     /// (llava, moondream, …) accept it; the facade gates non-vision models out
     /// before we get here. Text-only path (nil) is unchanged.
-    func complete(
+    public func complete(
         baseURL: String,
         model: String,
         promptTemplate: String,

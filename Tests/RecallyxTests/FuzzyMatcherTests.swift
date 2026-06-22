@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Recallyx
+@testable import RecallyxCore
 
 @Suite("FuzzyMatcher")
 struct FuzzyMatcherTests {

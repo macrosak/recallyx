@@ -1,4 +1,5 @@
 import SwiftUI
+import RecallyxCore
 
 enum SettingsTab: String, Hashable {
     case general

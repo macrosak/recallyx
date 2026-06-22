@@ -2,8 +2,8 @@ import Foundation
 
 /// Curated SF Symbol names exposed in the action icon picker. Copied from AI
 /// Replace and widened a little for script/AI/clipboard actions.
-enum IconCatalog {
-    static let curated: [String] = [
+public enum IconCatalog {
+    public static let curated: [String] = [
         // AI / magic
         "sparkles", "sparkle", "wand.and.stars", "wand.and.rays", "brain", "lightbulb", "bolt",
         // Script / code
@@ -23,5 +23,5 @@ enum IconCatalog {
         "star", "tag", "gear",
     ]
 
-    static let fallback = "sparkles"
+    public static let fallback = "sparkles"
 }

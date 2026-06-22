@@ -1,6 +1,6 @@
 import Foundation
 
-enum GeminiError: LocalizedError {
+public enum GeminiError: LocalizedError {
     case invalidResponse
     case httpError(Int, String)
     case apiError(String)
@@ -8,7 +8,7 @@ enum GeminiError: LocalizedError {
     case missingApiKey
     case invalidApiKey
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Invalid server response"
         case .httpError(let code, _): return "HTTP \(code)"
@@ -24,13 +24,14 @@ enum GeminiError: LocalizedError {
 /// `URLSession`, `JSONSerialization` request body, `JSONDecoder` response, zero
 /// deps. The key rides as a `?key=` query param; the model id is part of the
 /// path. These are simple, fast text transforms so no generation config is sent.
-struct GeminiClient {
+public struct GeminiClient {
+    public init() {}
     private static let base = "https://generativelanguage.googleapis.com/v1beta/models"
 
     /// `imageData` (PNG bytes) opt-in: when non-nil, an `inline_data` part is
     /// appended to the content `parts` (mime_type image/png, raw base64, no
     /// `data:` prefix); otherwise the existing plain-text shape (unchanged).
-    func complete(
+    public func complete(
         apiKey: String,
         model: String,
         promptTemplate: String,

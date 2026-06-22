@@ -10,12 +10,12 @@ import Foundation
 /// orphan reconciliation on launch (skipped on the corrupt-reseed path so the
 /// backed-up index's PNGs survive). The retention cap is also enforced on load.
 @MainActor
-final class HistoryStore: ObservableObject {
-    @Published private(set) var items: [HistoryItem] = []
+public final class HistoryStore: ObservableObject {
+    @Published public private(set) var items: [HistoryItem] = []
 
     /// Retention cap — clips beyond this are evicted oldest-first. Changing it
     /// (from Settings) re-enforces immediately.
-    var cap: Int {
+    public var cap: Int {
         didSet {
             guard cap != oldValue else { return }
             enforceCap()
@@ -31,12 +31,12 @@ final class HistoryStore: ObservableObject {
 
     /// `onChange` fires after every mutation so the app can refresh the
     /// menu-bar count and any open panel.
-    var onChange: (() -> Void)?
+    public var onChange: (() -> Void)?
 
     /// - Parameters:
     ///   - baseURL: the store directory; defaults to
     ///     `~/Library/Application Support/Recallyx`. Tests pass a temp dir.
-    init(baseURL: URL? = nil, cap: Int = 1000) {
+    public init(baseURL: URL? = nil, cap: Int = 1000) {
         self.cap = cap
         let base = baseURL ?? Self.defaultBaseURL()
         self.baseURL = base
@@ -57,7 +57,7 @@ final class HistoryStore: ObservableObject {
         enforceCap()
     }
 
-    static func defaultBaseURL() -> URL {
+    public static func defaultBaseURL() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("Recallyx", isDirectory: true)
     }
@@ -68,7 +68,7 @@ final class HistoryStore: ObservableObject {
     /// (same `contentHash`) — bump that existing row to the top instead of
     /// inserting a duplicate. Returns the resulting item's id.
     @discardableResult
-    func add(_ captured: CapturedClip) -> UUID {
+    public func add(_ captured: CapturedClip) -> UUID {
         if let idx = items.firstIndex(where: { $0.contentHash == captured.contentHash }) {
             var existing = items.remove(at: idx)
             existing.lastUsedAt = Date()
@@ -116,7 +116,7 @@ final class HistoryStore: ObservableObject {
 
     /// Move an existing item to the top and refresh its `lastUsedAt` — used when
     /// the user pastes a clip (the watcher's self-write guard prevents a dupe).
-    func bump(_ id: UUID) {
+    public func bump(_ id: UUID) {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         var item = items.remove(at: idx)
         item.lastUsedAt = Date()
@@ -127,27 +127,27 @@ final class HistoryStore: ObservableObject {
     /// Toggle a clip's pinned flag. Pinned clips sort to the top of the panel
     /// list and are exempt from cap eviction. `items` stays in pure recency
     /// order internally — pinned-first ordering is applied at the panel layer.
-    func setPinned(_ id: UUID, _ pinned: Bool) {
+    public func setPinned(_ id: UUID, _ pinned: Bool) {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].pinned = pinned
         didMutate()
     }
 
-    func delete(_ id: UUID) {
+    public func delete(_ id: UUID) {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let item = items.remove(at: idx)
         deleteImageFile(for: item)
         didMutate()
     }
 
-    func clear() {
+    public func clear() {
         for item in items { deleteImageFile(for: item) }
         items.removeAll()
         didMutate()
     }
 
     /// Absolute URL of an image item's PNG, or nil for text / missing file.
-    func imageURL(for item: HistoryItem) -> URL? {
+    public func imageURL(for item: HistoryItem) -> URL? {
         guard let filename = item.imageFilename else { return nil }
         return imagesURL.appendingPathComponent(filename)
     }
@@ -190,7 +190,7 @@ final class HistoryStore: ObservableObject {
     }
 
     /// Flush any pending debounced write synchronously (call at shutdown).
-    func flush() {
+    public func flush() {
         saveTask?.cancel()
         saveTask = nil
         Self.persist(items, to: indexURL)

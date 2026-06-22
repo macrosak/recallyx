@@ -1,4 +1,5 @@
 import AppKit
+import RecallyxCore
 
 /// Debug-only command channel so scripts (and AI agents doing manual UI
 /// testing) can drive the running app: open the panel, type a query, press

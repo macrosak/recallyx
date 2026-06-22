@@ -1,5 +1,6 @@
 import Foundation
 import ServiceManagement
+import RecallyxCore
 
 /// Thin wrapper around `SMAppService.mainApp`. macOS 13+ only — matches our
 /// platform floor. Copied from AI Replace.

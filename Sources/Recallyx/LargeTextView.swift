@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import RecallyxCore
 
 /// NSViewRepresentable wrapping NSScrollView + NSTextView(usingTextLayoutManager: true)
 /// (TextKit 2). TextKit 2 lays out only the visible viewport so a 5 MB string costs

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import ImageIO
+import RecallyxCore
 
 /// Maximum displayed extent of a preview image (points). The detail pane is
 /// 380pt wide, so a landscape preview can be ~340pt across even though its

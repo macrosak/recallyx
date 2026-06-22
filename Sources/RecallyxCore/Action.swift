@@ -1,6 +1,6 @@
 import Foundation
 
-enum StepType: String, Codable, Equatable {
+public enum StepType: String, Codable, Equatable {
     case script
     case ai
 }
@@ -8,15 +8,15 @@ enum StepType: String, Codable, Equatable {
 /// One stage of an action pipeline. A `.script` step pipes text through a bash
 /// filter; an `.ai` step runs it through OpenAI with `prompt` (and an optional
 /// per-step model override). Generalizes AI Replace's fixed pre/AI/post stages.
-struct Step: Codable, Identifiable, Equatable {
-    var id: UUID
-    var type: StepType
-    var enabled: Bool
-    var script: String
-    var prompt: String
-    var model: String?
+public struct Step: Codable, Identifiable, Equatable {
+    public var id: UUID
+    public var type: StepType
+    public var enabled: Bool
+    public var script: String
+    public var prompt: String
+    public var model: String?
 
-    init(
+    public init(
         id: UUID = UUID(),
         type: StepType,
         enabled: Bool = true,
@@ -35,14 +35,14 @@ struct Step: Codable, Identifiable, Equatable {
 
 /// A named, reorderable pipeline of steps — the successor to AI Replace's
 /// `Preset`. Runs against a clip's text; the result is pasted at the cursor.
-struct Action: Codable, Identifiable, Equatable {
-    var id: UUID
-    var name: String
+public struct Action: Codable, Identifiable, Equatable {
+    public var id: UUID
+    public var name: String
     /// SF Symbol name.
-    var icon: String
-    var steps: [Step]
+    public var icon: String
+    public var steps: [Step]
 
-    init(id: UUID = UUID(), name: String, icon: String, steps: [Step]) {
+    public init(id: UUID = UUID(), name: String, icon: String, steps: [Step]) {
         self.id = id
         self.name = name
         self.icon = icon
@@ -50,11 +50,11 @@ struct Action: Codable, Identifiable, Equatable {
     }
 
     /// A SCRIPT/AI tag for the action menu — AI if any AI step is present.
-    var kindTag: String {
+    public var kindTag: String {
         steps.contains { $0.type == .ai } ? "AI" : "SCRIPT"
     }
 
-    static func defaults() -> [Action] {
+    public static func defaults() -> [Action] {
         [
             Action(name: "Fix grammar (EN)", icon: "textformat.abc", steps: [
                 Step(type: .ai, prompt: "Fix grammar and obvious typos in the following English text. Do not change anything else; return only the corrected text:\n\n{{TEXT}}"),
@@ -130,7 +130,7 @@ struct Action: Codable, Identifiable, Equatable {
     /// saved `actions` array, so the decode-time `defaults()` fallback never
     /// fires) pick up newly shipped built-ins, and it doubles as "recover a
     /// default I deleted by accident" — without resurrecting one twice.
-    static func appendingMissingBuiltins(into existing: [Action]) -> [Action] {
+    public static func appendingMissingBuiltins(into existing: [Action]) -> [Action] {
         let existingNames = Set(existing.map(\.name))
         let missing = defaults().filter { !existingNames.contains($0.name) }
         return existing + missing.map {

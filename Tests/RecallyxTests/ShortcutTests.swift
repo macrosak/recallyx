@@ -3,6 +3,7 @@ import Carbon.HIToolbox
 import SwiftUI
 import Testing
 @testable import Recallyx
+@testable import RecallyxCore
 
 @Suite("Shortcut")
 struct ShortcutTests {

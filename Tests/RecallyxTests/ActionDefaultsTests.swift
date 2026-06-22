@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Recallyx
+@testable import RecallyxCore
 
 /// Covers the dev-action pack in `Action.defaults()` and the append-only,
 /// name-matched `appendingMissingBuiltins` merge that lets existing installs

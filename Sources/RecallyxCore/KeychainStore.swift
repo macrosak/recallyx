@@ -3,26 +3,30 @@ import Security
 
 /// Thin wrapper around generic-password Keychain items. One instance per
 /// (service, account) pair. Copied from AI Replace.
-struct KeychainStore {
-    let service: String
-    let account: String
+public struct KeychainStore {
+    public let service: String
+    public let account: String
+    public init(service: String, account: String) {
+        self.service = service
+        self.account = account
+    }
 
-    static let openAIKey = KeychainStore(
+    public static let openAIKey = KeychainStore(
         service: "io.github.macrosak.recallyx",
         account: "openai-api-key"
     )
 
-    static let anthropicKey = KeychainStore(
+    public static let anthropicKey = KeychainStore(
         service: "io.github.macrosak.recallyx",
         account: "anthropic-api-key"
     )
 
-    static let geminiKey = KeychainStore(
+    public static let geminiKey = KeychainStore(
         service: "io.github.macrosak.recallyx",
         account: "gemini-api-key"
     )
 
-    func read() -> String? {
+    public func read() -> String? {
         var query: [String: Any] = baseQuery
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         query[kSecReturnData as String] = true
@@ -41,7 +45,7 @@ struct KeychainStore {
     }
 
     @discardableResult
-    func write(_ value: String) -> Bool {
+    public func write(_ value: String) -> Bool {
         let data = Data(value.utf8)
         let update: [String: Any] = [kSecValueData as String: data]
         let updateStatus = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
@@ -62,7 +66,7 @@ struct KeychainStore {
     }
 
     @discardableResult
-    func delete() -> Bool {
+    public func delete() -> Bool {
         let status = SecItemDelete(baseQuery as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
             Log.error("Keychain delete failed status=\(status)")

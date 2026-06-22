@@ -6,8 +6,8 @@ import Foundation
 ///   • list    → list | detail
 ///   • actions → detail | action menu
 @MainActor
-final class HistoryPanelViewModel: ObservableObject {
-    enum Mode: Equatable {
+public final class HistoryPanelViewModel: ObservableObject {
+    public enum Mode: Equatable {
         case list
         case actions
         /// Typing a one-off Custom… prompt.
@@ -21,25 +21,25 @@ final class HistoryPanelViewModel: ObservableObject {
     /// active domain. (Guarded against same-value re-writes — SwiftUI re-fires
     /// the binding when the field resigns focus, which would otherwise reset the
     /// cursor out from under an open menu.)
-    @Published var query: String = "" {
+    @Published public var query: String = "" {
         didSet { if query != oldValue { onQueryChanged() } }
     }
-    @Published private(set) var filtered: [HistoryItem]
-    @Published var selectedIndex: Int = 0
-    @Published private(set) var mode: Mode = .list
+    @Published public private(set) var filtered: [HistoryItem]
+    @Published public var selectedIndex: Int = 0
+    @Published public private(set) var mode: Mode = .list
     /// Full menu for the captured clip; `filteredMenuItems` is what's shown/navigated.
-    @Published private(set) var menuItems: [ActionMenuItem] = []
-    @Published private(set) var filteredMenuItems: [ActionMenuItem] = []
-    @Published var actionIndex: Int = 0
+    @Published public private(set) var menuItems: [ActionMenuItem] = []
+    @Published public private(set) var filteredMenuItems: [ActionMenuItem] = []
+    @Published public var actionIndex: Int = 0
     /// The clip the action menu / custom / edit modes operate on. Captured when
     /// the menu opens so it stays fixed even if `selectedIndex` shifts.
-    @Published private(set) var actionItem: HistoryItem?
+    @Published public private(set) var actionItem: HistoryItem?
 
     /// True while the user holds ⌘ over the open panel. Reveals the ⌘1–9
     /// quick-key badges on eligible rows (replacing their trailing timestamp /
     /// accessory). Set/cleared by the controller's `.flagsChanged` monitor and
     /// reset to false on dismiss so a stale held-state never sticks.
-    @Published var commandHeld: Bool = false
+    @Published public var commandHeld: Bool = false
 
     /// The clip search, stashed while we're in an action state so it can be
     /// restored when we return to the list (Tab clears the field for action
@@ -47,8 +47,8 @@ final class HistoryPanelViewModel: ObservableObject {
     private var savedClipQuery: String = ""
 
     /// Placeholder + count adapt to the active search domain.
-    var searchPlaceholder: String { mode == .list ? "Search clipboard…" : "Search actions…" }
-    var countText: String {
+    public var searchPlaceholder: String { mode == .list ? "Search clipboard…" : "Search actions…" }
+    public var countText: String {
         switch mode {
         case .list: return "\(filtered.count) clips"
         case .actions: return "\(filteredMenuItems.count) actions"
@@ -57,10 +57,10 @@ final class HistoryPanelViewModel: ObservableObject {
     }
 
     // Ad-hoc AI state.
-    @Published var customText: String = ""
-    @Published private(set) var editAction: Action?
-    @Published private(set) var editStepIndex: Int = 0
-    @Published var editBody: String = ""
+    @Published public var customText: String = ""
+    @Published public private(set) var editAction: Action?
+    @Published public private(set) var editStepIndex: Int = 0
+    @Published public var editBody: String = ""
 
     private(set) var allItems: [HistoryItem]
     private let actions: [Action]
@@ -73,14 +73,14 @@ final class HistoryPanelViewModel: ObservableObject {
 
     /// In-flight async deep-search task; cancelled on each new keystroke.
     /// Internal (not private) so tests can await it via `searchTask?.value`.
-    var searchTask: Task<Void, Never>?
+    public var searchTask: Task<Void, Never>?
 
     /// Debounce for the `search` usage event — log on a short pause, not on
     /// every keystroke, so a fast typist produces one event per query, not one
     /// per character.
     private var searchLogTask: Task<Void, Never>?
 
-    init(
+    public init(
         items: [HistoryItem],
         actions: [Action] = [],
         onBuiltin: @escaping (BuiltinAction, HistoryItem) -> Void,
@@ -100,7 +100,7 @@ final class HistoryPanelViewModel: ObservableObject {
 
     /// Display order: pinned clips first, then by recency (newest first). Applied
     /// where items enter the vm; the store keeps pure recency order internally.
-    static func ordered(_ items: [HistoryItem]) -> [HistoryItem] {
+    public static func ordered(_ items: [HistoryItem]) -> [HistoryItem] {
         // Stable: enumerated index breaks ties so equal-recency items keep their
         // incoming (store recency) order rather than being shuffled by an
         // unstable sort.
@@ -111,22 +111,22 @@ final class HistoryPanelViewModel: ObservableObject {
         }.map(\.element)
     }
 
-    var selectedItem: HistoryItem? {
+    public var selectedItem: HistoryItem? {
         guard filtered.indices.contains(selectedIndex) else { return nil }
         return filtered[selectedIndex]
     }
 
     /// The clip the detail pane / action menu should show: the cursor item in
     /// the list, or the captured target once we're acting on one.
-    var detailItem: HistoryItem? {
+    public var detailItem: HistoryItem? {
         mode == .list ? selectedItem : actionItem
     }
 
-    var isEmpty: Bool { allItems.isEmpty }
+    public var isEmpty: Bool { allItems.isEmpty }
 
     // MARK: - Navigation
 
-    func moveUp() {
+    public func moveUp() {
         switch mode {
         case .list: stepList(by: -1)
         case .actions: stepAction(by: -1)
@@ -134,7 +134,7 @@ final class HistoryPanelViewModel: ObservableObject {
         }
     }
 
-    func moveDown() {
+    public func moveDown() {
         switch mode {
         case .list: stepList(by: 1)
         case .actions: stepAction(by: 1)
@@ -144,7 +144,7 @@ final class HistoryPanelViewModel: ObservableObject {
 
     /// ↵ — list: paste the selected clip; actions: run/open the highlighted
     /// entry; custom: run the one-off prompt.
-    func confirm() {
+    public func confirm() {
         switch mode {
         case .list:
             guard let item = selectedItem else { return }
@@ -161,7 +161,7 @@ final class HistoryPanelViewModel: ObservableObject {
 
     /// Paste the clip at `index` in the filtered list (1-based positions map to
     /// index-1 by the caller). Used by ⌘1–9 quick-paste. No-op if out of range.
-    func pasteItem(at index: Int) {
+    public func pasteItem(at index: Int) {
         guard mode == .list, filtered.indices.contains(index) else { return }
         logPaste(filtered[index], via: "quickKey")
         onBuiltin(.paste, filtered[index])
@@ -169,7 +169,7 @@ final class HistoryPanelViewModel: ObservableObject {
 
     /// Paste from a list-row click (distinct `via` from the keyboard ↵ path,
     /// which routes through `confirm()`).
-    func clickPaste(at index: Int) {
+    public func clickPaste(at index: Int) {
         guard mode == .list, filtered.indices.contains(index) else { return }
         selectedIndex = index
         logPaste(filtered[index], via: "click")
@@ -185,7 +185,7 @@ final class HistoryPanelViewModel: ObservableObject {
     /// Run the Nth saved action (0-based) among the currently visible menu items —
     /// built-ins and Custom… are not counted (⌘1 = first saved action). No-op if
     /// out of range or not in `.actions` mode. Mirrors `pasteItem(at:)`.
-    func runSavedAction(at index: Int) {
+    public func runSavedAction(at index: Int) {
         guard mode == .actions, let item = actionItem else { return }
         let saved: [Action] = filteredMenuItems.compactMap {
             if case .saved(let a) = $0 { return a } else { return nil }
@@ -197,12 +197,12 @@ final class HistoryPanelViewModel: ObservableObject {
     // MARK: - Quick-key numbers (⌘1–9 discoverability)
 
     /// The maximum quick-key digit (⌘1…⌘9). ⌘0 / ⌘10+ aren't bound.
-    static let maxQuickKey = 9
+    public static let maxQuickKey = 9
 
     /// The ⌘-digit (1–9) for a list row at `index` in display order, or nil if
     /// the row has no bound shortcut (rows 10+). Mirrors `pasteItem(at:)`'s
     /// 0-based indexing → 1-based digit.
-    static func listQuickKey(forRowAt index: Int) -> Int? {
+    public static func listQuickKey(forRowAt index: Int) -> Int? {
         guard index >= 0, index < maxQuickKey else { return nil }
         return index + 1
     }
@@ -210,7 +210,7 @@ final class HistoryPanelViewModel: ObservableObject {
     /// The ⌘-digit (1–9) for the action-menu row at `index`, or nil if it's a
     /// built-in / Custom… / divider, or a saved action past the 9th. Counts only
     /// `.saved` entries (in `items` order), matching `runSavedAction(at:)`.
-    static func actionQuickKey(forRowAt index: Int, in items: [ActionMenuItem]) -> Int? {
+    public static func actionQuickKey(forRowAt index: Int, in items: [ActionMenuItem]) -> Int? {
         guard items.indices.contains(index), case .saved = items[index] else { return nil }
         // Position among saved entries up to and including this row.
         let savedSoFar = items[...index].reduce(0) { count, entry in
@@ -221,7 +221,7 @@ final class HistoryPanelViewModel: ObservableObject {
     }
 
     /// esc — actions/custom/edit: step back; list: close the panel.
-    func cancel() {
+    public func cancel() {
         switch mode {
         case .actions: returnToList()
         case .custom, .edit: backToActions()
@@ -232,7 +232,7 @@ final class HistoryPanelViewModel: ObservableObject {
     /// Open the action menu on the clip with `focusId` (the ⌃⇧V captured
     /// selection), falling back to the first displayed clip if not found / nil.
     /// Targets by id so pinned-first ordering doesn't hijack the selection.
-    func openActionsOnTop(focusId: UUID?) {
+    public func openActionsOnTop(focusId: UUID?) {
         guard !filtered.isEmpty else { return }
         selectedIndex = focusId.flatMap { id in filtered.firstIndex(where: { $0.id == id }) } ?? 0
         tab()
@@ -240,7 +240,7 @@ final class HistoryPanelViewModel: ObservableObject {
 
     /// ⇥ — list: open the action menu; actions: edit-before-run the highlighted
     /// saved action; edit: advance to the next step.
-    func tab() {
+    public func tab() {
         switch mode {
         case .list:
             guard let item = selectedItem else { return }
@@ -320,7 +320,7 @@ final class HistoryPanelViewModel: ObservableObject {
     /// `{{TEXT}}` if present, else append the clip after the instruction
     /// (ported from AI Replace). For image clips there is no text to splice —
     /// the image is fed to the AI directly — so the instruction is used as-is.
-    static func buildCustomPrompt(_ userInput: String, isImage: Bool = false) -> String {
+    public static func buildCustomPrompt(_ userInput: String, isImage: Bool = false) -> String {
         let trimmed = userInput.trimmingCharacters(in: .whitespacesAndNewlines)
         if isImage { return trimmed }
         if trimmed.contains("{{TEXT}}") { return trimmed }
@@ -360,13 +360,13 @@ final class HistoryPanelViewModel: ObservableObject {
     }
 
     /// ⌘↵ — commit the current edit and run the modified transient action once.
-    func runEdit() {
+    public func runEdit() {
         guard let item = actionItem, var action = editAction else { return }
         commitEditBody(into: &action)
         onRunAction(action, item)
     }
 
-    var editStepCount: Int { editAction?.steps.count ?? 0 }
+    public var editStepCount: Int { editAction?.steps.count ?? 0 }
 
     private func commitEditBody(into action: inout Action) {
         guard action.steps.indices.contains(editStepIndex) else { return }
@@ -522,8 +522,8 @@ final class HistoryPanelViewModel: ObservableObject {
 }
 
 /// Relative + clock time formatting for the list rows and detail footer.
-enum ClipTime {
-    static func relative(_ date: Date, now: Date = Date()) -> String {
+public enum ClipTime {
+    public static func relative(_ date: Date, now: Date = Date()) -> String {
         let seconds = Int(now.timeIntervalSince(date))
         switch seconds {
         case ..<5: return "just now"
@@ -540,7 +540,7 @@ enum ClipTime {
         return f
     }()
 
-    static func clock(_ date: Date) -> String {
+    public static func clock(_ date: Date) -> String {
         clockFormatter.string(from: date)
     }
 }

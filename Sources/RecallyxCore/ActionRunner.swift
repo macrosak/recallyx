@@ -1,11 +1,11 @@
 import Foundation
 
-enum ActionError: LocalizedError {
+public enum ActionError: LocalizedError {
     case imageNotSupported
     case scriptFirstOnImage
     case missingApiKey(AIProvider)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .imageNotSupported: return "Image actions need an OpenAI or Claude model"
         case .scriptFirstOnImage: return "The first step must be AI to run on an image"
@@ -24,13 +24,13 @@ enum ActionError: LocalizedError {
 /// The script/AI runners are injectable so tests stay hermetic (no subprocess /
 /// network); production wires the real `ScriptRunner` + `OpenAIClient`.
 @MainActor
-final class ActionRunner {
+public final class ActionRunner {
     private let runScript: (_ script: String, _ input: String) async throws -> String
     private let runAI: (_ prompt: String, _ model: String?, _ input: String, _ imageData: Data?) async throws -> String
 
-    init(
+    public init(
         defaultModel: @escaping () -> String,
-        ollamaBaseURL: @escaping () -> String = { AppSettings.defaultOllamaBaseURL },
+        ollamaBaseURL: @escaping () -> String = { recallyxDefaultOllamaBaseURL },
         runScript: ((String, String) async throws -> String)? = nil,
         runAI: ((String, String?, String, Data?) async throws -> String)? = nil
     ) {
@@ -47,7 +47,7 @@ final class ActionRunner {
 
     /// Run `action` over `text` and return the transformed result. Disabled
     /// steps are skipped; an empty pipeline returns the text unchanged.
-    func run(_ action: Action, on text: String) async throws -> String {
+    public func run(_ action: Action, on text: String) async throws -> String {
         Log.info("action run name=\(action.name) steps=\(action.steps.count) inputLen=\(text.count)")
         return try await thread(action.steps[...], current: text)
     }
@@ -57,7 +57,7 @@ final class ActionRunner {
     /// enabled steps thread through the shared text loop, exactly as
     /// `run(_:on:)` does. A `.script` first enabled step throws (bash can't take
     /// an image); an empty pipeline returns "".
-    func run(_ action: Action, onImageData imageData: Data) async throws -> String {
+    public func run(_ action: Action, onImageData imageData: Data) async throws -> String {
         Log.info("action run (image) name=\(action.name) steps=\(action.steps.count) imageBytes=\(imageData.count)")
         let steps = action.steps
         guard let firstIdx = steps.firstIndex(where: { $0.enabled && !($0.type == .script && $0.script.isEmpty) && !($0.type == .ai && $0.prompt.isEmpty) }) else {

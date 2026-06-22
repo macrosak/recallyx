@@ -1,4 +1,5 @@
 import SwiftUI
+import RecallyxCore
 
 /// The Actions settings tab: a list of actions on the left, the selected
 /// action's step-pipeline editor on the right. Matches the proposal's

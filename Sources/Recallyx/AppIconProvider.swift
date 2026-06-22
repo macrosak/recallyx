@@ -1,4 +1,5 @@
 import AppKit
+import RecallyxCore
 
 /// Resolves a source app's icon as an `NSImage`, memoized by bundle ID. Uses
 /// `NSWorkspace.icon(forFile:)` against the app bundle path (works even when the

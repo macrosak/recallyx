@@ -1,12 +1,12 @@
 import Foundation
 
-enum ScriptError: LocalizedError {
+public enum ScriptError: LocalizedError {
     case launchFailed(String)
     case nonZeroExit(code: Int32, stderr: String)
     case timedOut(seconds: Int)
     case badOutput
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .launchFailed(let m):
             return "Script failed to launch: \(m)"
@@ -29,8 +29,8 @@ enum ScriptError: LocalizedError {
 /// runs the snippet so the user always writes bash regardless of `$SHELL`. The
 /// body is passed via an env var to sidestep shell-quoting. Trailing newlines are
 /// stripped like `$(...)`.
-struct ScriptRunner {
-    static let timeoutSeconds = 30
+public struct ScriptRunner {
+    public static let timeoutSeconds = 30
     private static let envScriptKey = "RECALLYX_SCRIPT"
 
     /// write(2) to a pipe whose reader is gone raises SIGPIPE, whose default
@@ -39,7 +39,7 @@ struct ScriptRunner {
     /// a harmless EPIPE error instead.
     private static let ignoreSIGPIPE: Void = { signal(SIGPIPE, SIG_IGN) }()
 
-    static func run(script: String, input: String) async throws -> String {
+    public static func run(script: String, input: String) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
             try runBlocking(script: script, input: input)
         }.value

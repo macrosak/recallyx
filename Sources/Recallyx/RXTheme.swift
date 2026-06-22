@@ -1,4 +1,5 @@
 import SwiftUI
+import RecallyxCore
 
 extension Color {
     /// 0–255 channels + 0–1 alpha, matching the design tokens' rgba() values.

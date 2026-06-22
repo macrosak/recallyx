@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import Foundation
+import RecallyxCore
 
 private func hotkeyCarbonCallback(
     _ callRef: EventHandlerCallRef?,

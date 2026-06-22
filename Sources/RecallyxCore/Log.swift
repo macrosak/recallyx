@@ -1,30 +1,30 @@
 import Foundation
 import os
 
-enum Log {
+public enum Log {
     private static let logger = os.Logger(
         subsystem: "io.github.macrosak.recallyx",
         category: "main"
     )
 
-    static func debug(_ message: String) {
+    public static func debug(_ message: String) {
         logger.debug("\(message, privacy: .public)")
         write("[recallyx] \(message)")
     }
 
-    static func info(_ message: String) {
+    public static func info(_ message: String) {
         logger.info("\(message, privacy: .public)")
         write("[recallyx] \(message)")
     }
 
-    static func error(_ message: String) {
+    public static func error(_ message: String) {
         logger.error("\(message, privacy: .public)")
         write("[recallyx] ERROR: \(message)")
     }
 
     /// Truncate long strings for log output. Clipboard contents and OpenAI
     /// responses can be arbitrarily long and noisy; logs only need a peek.
-    static func snippet(_ string: String, max: Int = 120) -> String {
+    public static func snippet(_ string: String, max: Int = 120) -> String {
         let normalized = string
             .replacingOccurrences(of: "\n", with: "⏎")
             .replacingOccurrences(of: "\r", with: "")

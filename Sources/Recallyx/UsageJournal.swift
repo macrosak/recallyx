@@ -1,4 +1,5 @@
 import Foundation
+import RecallyxCore
 
 /// A **local-only, opt-in, off-by-default** record of how Recallyx is used, so
 /// product decisions can be grounded in real behavior. Mirrors the other stores

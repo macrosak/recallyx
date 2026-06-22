@@ -1,4 +1,5 @@
 import AppKit
+import RecallyxCore
 
 /// The menu-bar glyph: the Recallyx brand mark (two offset rounded "clips")
 /// rendered as a **template** image so macOS tints it to match the menu bar in
