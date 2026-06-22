@@ -2,7 +2,7 @@
   <img src="docs/recallyx-social.png" alt="Recallyx" width="760">
 
   <h1>Recallyx</h1>
-  <p><b>Native macOS clipboard manager with script &amp; AI actions on each clip.</b></p>
+  <p><b>A programmable clipboard for macOS — run script &amp; AI pipelines on anything you copy.</b></p>
 
   <p>
     <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-111?logo=apple&logoColor=white">
@@ -14,11 +14,20 @@
 
 ## What it is
 
-Recallyx is a native macOS menu-bar clipboard manager. It watches the system clipboard and
-keeps a searchable history of everything you copy — text and images — on disk. A fast
-floating panel lets you find and paste anything from that history without leaving the app
-you're in. On top of that sits an **actions** layer: small pipelines that transform a clip
-before pasting it.
+macOS now has a basic built-in clipboard history. Recallyx is the layer on top of it. It keeps a
+fast, searchable history of everything you copy — text and images — on disk, and adds an
+**actions** layer that the system clipboard can't: small pipelines of **script** (`bash`) and
+**AI** steps that transform a clip and paste the result. Clean up some JSON, fix grammar, rewrite
+a selection, reshape data — then paste it right where you were. Select text anywhere (even in
+Chrome) and transform it in place.
+
+## Why it's different
+
+- **Programmable** — chain `bash` and AI steps per clip. Most clipboard managers stop at history
+  and snippets; Recallyx lets you build and run real transform pipelines on anything you copy.
+- **Private by default** — your history lives on disk, never the cloud; password-manager and
+  transient clips are skipped by default; AI steps use your own API key.
+- **Native and fast** — a floating ⌘⇧V panel, zero dependencies, no Electron.
 
 ## The two hotkeys
 
