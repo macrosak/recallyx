@@ -40,6 +40,8 @@ struct SettingsActionsView: View {
                 toolbarButton("plus") { addAction() }
                 toolbarButton("minus") { deleteSelected() }
                 Spacer()
+                toolbarButton("arrow.clockwise") { restoreBuiltins() }
+                    .help("Restore built-in actions")
             }
             .padding(8)
             .overlay(alignment: .top) { Rectangle().fill(theme.cardBorder).frame(height: 0.5) }
@@ -191,6 +193,17 @@ struct SettingsActionsView: View {
         guard let id = selectedID else { return }
         settingsStore.settings.actions.removeAll { $0.id == id }
         selectedID = settingsStore.settings.actions.first?.id
+    }
+
+    /// Append any shipped built-in actions the user is missing (append-only,
+    /// idempotent, matched by name). How existing installs pick up newly added
+    /// defaults, and a way to recover a default deleted by accident.
+    private func restoreBuiltins() {
+        let before = settingsStore.settings.actions
+        let merged = Action.appendingMissingBuiltins(into: before)
+        guard merged.count != before.count else { return }
+        settingsStore.settings.actions = merged
+        if selectedID == nil { selectedID = merged.first?.id }
     }
 
     private func moveAction(from: Int, to: Int) {
