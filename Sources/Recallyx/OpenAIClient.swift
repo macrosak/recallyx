@@ -115,10 +115,14 @@ enum ModelCatalog {
     ]
     /// Local models served by Ollama — addressed `ollama:<name>` so they route
     /// to `OllamaClient`. Users can also type a custom `ollama:<model>` override.
+    /// `llava`/`llama3.2-vision` are multimodal (local OCR / describe-image);
+    /// the others are text-only (see `AIProvider.isOllamaVisionModel`).
     static let ollama: [String] = [
         "ollama:llama3.2",
         "ollama:qwen2.5",
         "ollama:mistral",
+        "ollama:llava",
+        "ollama:llama3.2-vision",
     ]
     /// On-device Apple Intelligence — addressed `apple:…` so it routes to
     /// `AppleClient`. The suffix is ignored (the OS picks the model); no key,

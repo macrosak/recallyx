@@ -32,11 +32,17 @@ struct ModelCatalogTests {
     }
 
     @Test func ollamaModelsPresentAndRouteToOllama() {
-        let expected = ["ollama:llama3.2", "ollama:qwen2.5", "ollama:mistral"]
+        let expected = [
+            "ollama:llama3.2", "ollama:qwen2.5", "ollama:mistral",
+            "ollama:llava", "ollama:llama3.2-vision",
+        ]
         #expect(ModelCatalog.ollama == expected)
         for model in ModelCatalog.ollama {
             #expect(AIProvider.provider(for: model) == .ollama)
         }
+        // The two vision-capable locals are surfaced for the pickers.
+        #expect(AIProvider.isOllamaVisionModel("ollama:llava"))
+        #expect(AIProvider.isOllamaVisionModel("ollama:llama3.2-vision"))
     }
 
     @Test func appleModelsPresentAndRouteToApple() {

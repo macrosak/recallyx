@@ -39,15 +39,38 @@ enum AIProvider {
         }
     }
 
-    /// Whether this provider can take image input. Cloud providers (OpenAI,
-    /// Anthropic) do; the local providers (Ollama, on-device Apple Intelligence)
-    /// do not in v1 — `AIClient.complete` throws `ActionError.imageNotSupported`
-    /// for those.
+    /// Whether this provider can take image input as a whole. Cloud providers
+    /// (OpenAI, Anthropic) do; the local providers do not at the provider level
+    /// — Ollama vision is **per-model** (see `supportsVision(forModel:)`), so
+    /// this flag stays `false` for `.ollama`. Prefer the model-aware static
+    /// check at call sites that have a concrete model id.
     var supportsVision: Bool {
         switch self {
         case .openai, .anthropic: return true
         case .ollama, .apple: return false
         }
+    }
+
+    /// Model-aware vision gate. Ollama vision is **per-model** — only specific
+    /// local models are multimodal (llava, llava-llama3, llama3.2-vision,
+    /// bakllava, moondream, minicpm-v); text-only locals (llama3.2, qwen2.5,
+    /// mistral) cannot take an image. Cloud providers are always vision-capable;
+    /// on-device Apple Intelligence is text-only in v1.
+    static func supportsVision(forModel model: String) -> Bool {
+        switch provider(for: model) {
+        case .openai, .anthropic: return true
+        case .apple: return false
+        case .ollama: return isOllamaVisionModel(model)
+        }
+    }
+
+    /// Substring allowlist on the prefix-stripped, lowercased model name.
+    /// `"llava"` covers llava/llava-llama3; `"vision"` covers llama3.2-vision; a
+    /// substring match so a custom tag like `ollama:llava:13b` still counts.
+    static func isOllamaVisionModel(_ model: String) -> Bool {
+        let name = OllamaClient.strippedModel(model).lowercased()
+        let visionMarkers = ["llava", "vision", "bakllava", "moondream", "minicpm-v"]
+        return visionMarkers.contains { name.contains($0) }
     }
 }
 
@@ -69,18 +92,19 @@ struct AIClient {
     }
 
     /// `imageData` (PNG bytes) opt-in: when non-nil the prompt runs as a vision
-    /// request. Providers that can't do vision (v1: a future local provider)
-    /// throw `ActionError.imageNotSupported`; cloud providers pass it through.
+    /// request. The gate is **model-aware** (`supportsVision(forModel:)`) since
+    /// Ollama vision is per-model — a non-vision model with an image throws
+    /// `ActionError.imageNotSupported`; a vision-capable model passes it through.
     func complete(prompt: String, model: String, input: String, imageData: Data? = nil) async throws -> String {
         let provider = AIProvider.provider(for: model)
-        if imageData != nil, !provider.supportsVision {
+        if imageData != nil, !AIProvider.supportsVision(forModel: model) {
             throw ActionError.imageNotSupported
         }
         switch provider {
         case .apple:
             return try await apple.complete(model: model, promptTemplate: prompt, text: input)
         case .ollama:
-            return try await ollama.complete(baseURL: ollamaBaseURL(), model: model, promptTemplate: prompt, text: input)
+            return try await ollama.complete(baseURL: ollamaBaseURL(), model: model, promptTemplate: prompt, text: input, imageData: imageData)
         case .openai, .anthropic:
             guard let apiKey = provider.keychain?.read(), !apiKey.isEmpty else {
                 throw ActionError.missingApiKey(provider)
