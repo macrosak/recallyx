@@ -1,29 +1,32 @@
 import Foundation
 
 /// Which backend serves a given AI step. The model-id string is authoritative:
-/// `ollama:*` routes to the local Ollama server, `claude*` (case-insensitive) to
-/// Anthropic, everything else to OpenAI (the default — backward compatible, no
-/// schema migration). A further provider slots in here: add a case + (for cloud
-/// providers) its keychain account + a client dispatch in `AIClient`.
+/// `apple:*` routes to the on-device Apple Intelligence model, `ollama:*` to the
+/// local Ollama server, `claude*` (case-insensitive) to Anthropic, everything
+/// else to OpenAI (the default — backward compatible, no schema migration). A
+/// further provider slots in here: add a case + (for cloud providers) its
+/// keychain account + a client dispatch in `AIClient`.
 enum AIProvider {
     case openai
     case anthropic
     case ollama
+    case apple
 
     static func provider(for model: String) -> AIProvider {
         let lower = model.lowercased()
+        if lower.hasPrefix("apple:") { return .apple }
         if lower.hasPrefix("ollama:") { return .ollama }
         return lower.hasPrefix("claude") ? .anthropic : .openai
     }
 
-    /// Cloud providers store an API key in the Keychain; the local Ollama
-    /// provider has none, so this is `nil` for `.ollama` (the facade skips the
-    /// key check for local).
+    /// Cloud providers store an API key in the Keychain; the local providers
+    /// (Ollama, on-device Apple Intelligence) have none, so this is `nil` for
+    /// `.ollama`/`.apple` (the facade skips the key check for local).
     var keychain: KeychainStore? {
         switch self {
         case .openai: return .openAIKey
         case .anthropic: return .anthropicKey
-        case .ollama: return nil
+        case .ollama, .apple: return nil
         }
     }
 
@@ -32,16 +35,18 @@ enum AIProvider {
         case .openai: return "OpenAI"
         case .anthropic: return "Anthropic"
         case .ollama: return "Ollama"
+        case .apple: return "Apple Intelligence"
         }
     }
 
     /// Whether this provider can take image input. Cloud providers (OpenAI,
-    /// Anthropic) do; a future local provider (e.g. `ollama:`) would not in v1 —
-    /// `AIClient.complete` throws `ActionError.imageNotSupported` for those.
+    /// Anthropic) do; the local providers (Ollama, on-device Apple Intelligence)
+    /// do not in v1 — `AIClient.complete` throws `ActionError.imageNotSupported`
+    /// for those.
     var supportsVision: Bool {
         switch self {
         case .openai, .anthropic: return true
-        case .ollama: return false
+        case .ollama, .apple: return false
         }
     }
 }
@@ -56,6 +61,7 @@ struct AIClient {
     private let openAI = OpenAIClient()
     private let anthropic = AnthropicClient()
     private let ollama = OllamaClient()
+    private let apple = AppleClient()
     private let ollamaBaseURL: () -> String
 
     init(ollamaBaseURL: @escaping () -> String = { AppSettings.defaultOllamaBaseURL }) {
@@ -71,6 +77,8 @@ struct AIClient {
             throw ActionError.imageNotSupported
         }
         switch provider {
+        case .apple:
+            return try await apple.complete(model: model, promptTemplate: prompt, text: input)
         case .ollama:
             return try await ollama.complete(baseURL: ollamaBaseURL(), model: model, promptTemplate: prompt, text: input)
         case .openai, .anthropic:
