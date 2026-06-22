@@ -30,11 +30,15 @@ struct AnthropicClient {
     private static let maxTokens = 1000
     private static let version = "2023-06-01"
 
+    /// `imageData` (PNG bytes) opt-in: when non-nil, the user message `content`
+    /// becomes a vision array `[{image, source: base64 image/png}, {text}]`;
+    /// otherwise the existing plain-text shape (unchanged).
     func complete(
         apiKey: String,
         model: String,
         promptTemplate: String,
-        text: String
+        text: String,
+        imageData: Data? = nil
     ) async throws -> String {
         guard !apiKey.isEmpty else { throw AnthropicError.missingApiKey }
 
@@ -47,10 +51,24 @@ struct AnthropicClient {
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue(Self.version, forHTTPHeaderField: "anthropic-version")
 
+        let content: Any
+        if let imageData {
+            content = [
+                ["type": "image", "source": [
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": imageData.base64EncodedString(),
+                ]],
+                ["type": "text", "text": fullPrompt],
+            ]
+        } else {
+            content = fullPrompt
+        }
+
         let body: [String: Any] = [
             "model": model,
             "max_tokens": Self.maxTokens,
-            "messages": [["role": "user", "content": fullPrompt]]
+            "messages": [["role": "user", "content": content]]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

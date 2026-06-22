@@ -58,7 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var debugHooks: DebugHooks?
     private let notifier = Notifier()
     private let accessibility = AccessibilityClient()
-    private lazy var actionRunner = ActionRunner(defaultModel: { [settingsStore] in settingsStore.settings.defaultModel })
+    private lazy var actionRunner = ActionRunner(
+        defaultModel: { [settingsStore] in settingsStore.settings.defaultModel },
+        ollamaBaseURL: { [settingsStore] in settingsStore.settings.ollamaBaseURL }
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.info("applicationDidFinishLaunching")
@@ -242,14 +245,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// at the cursor. The result re-enters history naturally via the watcher
     /// (it's new content, so it's NOT marked as a self-copy).
     func runAction(_ action: Action, item: HistoryItem, into app: NSRunningApplication?) {
-        guard item.kind == .text, let text = item.text else {
+        // Resolve the input up front: text clips thread their text; image clips
+        // feed their PNG bytes to the runner's image path (first step = AI).
+        var imageData: Data?
+        if item.kind == .image {
+            guard let url = store.imageURL(for: item), let data = try? Data(contentsOf: url) else {
+                notifier.notify(body: "Couldn't read the image for this clip.")
+                return
+            }
+            imageData = data
+        } else if item.text == nil {
             notifier.notify(body: ActionError.imageNotSupported.localizedDescription)
             return
         }
         state.status = .working
         Task { @MainActor in
             do {
-                let result = try await actionRunner.run(action, on: text)
+                let result: String
+                if let imageData {
+                    result = try await actionRunner.run(action, onImageData: imageData)
+                } else {
+                    result = try await actionRunner.run(action, on: item.text ?? "")
+                }
                 await Paster.pasteText(result, into: app)
                 state.flash(.success)
             } catch let ActionError.missingApiKey(provider) {

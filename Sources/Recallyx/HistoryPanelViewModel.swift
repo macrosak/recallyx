@@ -163,13 +163,13 @@ final class HistoryPanelViewModel: ObservableObject {
         }
     }
 
-    /// Built-ins for the clip kind, then (text only) Custom… + the saved actions.
+    /// Built-ins for the clip kind, then Custom… + the saved actions. Image
+    /// clips offer these too: a saved/custom AI step takes the image as input
+    /// (first step must be AI — enforced by `ActionRunner`).
     private func buildMenu(for item: HistoryItem) -> [ActionMenuItem] {
         var entries: [ActionMenuItem] = BuiltinAction.entries(for: item.kind).map { .builtin($0) }
-        if item.kind == .text {
-            entries.append(.custom)
-            entries += actions.map { .saved($0) }
-        }
+        entries.append(.custom)
+        entries += actions.map { .saved($0) }
         return entries
     }
 

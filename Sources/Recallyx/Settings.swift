@@ -5,6 +5,11 @@ import Foundation
 /// user-defined `actions`; the custom decoder defaults missing keys so older
 /// saved blobs keep loading.
 struct AppSettings: Codable, Equatable {
+    /// Where the local Ollama server lives. `RECALLYX_OLLAMA_URL` overrides it
+    /// (escape hatch for unusual setups); otherwise the standard local port.
+    static let defaultOllamaBaseURL: String =
+        ProcessInfo.processInfo.environment["RECALLYX_OLLAMA_URL"] ?? "http://localhost:11434"
+
     var retentionCap: Int
     var captureSensitive: Bool
     var launchAtLogin: Bool
@@ -12,6 +17,8 @@ struct AppSettings: Codable, Equatable {
     var defaultModel: String
     /// User-defined script/AI action pipelines shown in the Tab menu.
     var actions: [Action]
+    /// Base URL of the local Ollama server used by `ollama:*` models.
+    var ollamaBaseURL: String
     /// ⌘⇧V by default — opens the history panel.
     var searchHistoryShortcut: Shortcut
     /// ⌃⇧V by default — grabs the selection and opens its actions.
@@ -23,6 +30,7 @@ struct AppSettings: Codable, Equatable {
         launchAtLogin: Bool = false,
         defaultModel: String = ModelCatalog.default,
         actions: [Action] = Action.defaults(),
+        ollamaBaseURL: String = AppSettings.defaultOllamaBaseURL,
         searchHistoryShortcut: Shortcut = .searchHistoryDefault,
         transformSelectionShortcut: Shortcut = .transformSelectionDefault
     ) {
@@ -31,6 +39,7 @@ struct AppSettings: Codable, Equatable {
         self.launchAtLogin = launchAtLogin
         self.defaultModel = defaultModel
         self.actions = actions
+        self.ollamaBaseURL = ollamaBaseURL
         self.searchHistoryShortcut = searchHistoryShortcut
         self.transformSelectionShortcut = transformSelectionShortcut
     }
@@ -42,6 +51,7 @@ struct AppSettings: Codable, Equatable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         defaultModel = try c.decodeIfPresent(String.self, forKey: .defaultModel) ?? ModelCatalog.default
         actions = try c.decodeIfPresent([Action].self, forKey: .actions) ?? Action.defaults()
+        ollamaBaseURL = try c.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? AppSettings.defaultOllamaBaseURL
         searchHistoryShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .searchHistoryShortcut) ?? .searchHistoryDefault
         transformSelectionShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .transformSelectionShortcut) ?? .transformSelectionDefault
     }

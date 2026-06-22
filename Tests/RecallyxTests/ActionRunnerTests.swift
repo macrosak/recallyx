@@ -10,12 +10,12 @@ struct ActionRunnerTests {
     /// "|ai(<prompt>)".
     private func makeRunner(
         runScript: ((String, String) async throws -> String)? = nil,
-        runAI: ((String, String?, String) async throws -> String)? = nil
+        runAI: ((String, String?, String, Data?) async throws -> String)? = nil
     ) -> ActionRunner {
         ActionRunner(
             defaultModel: { "test-model" },
             runScript: runScript ?? { script, input in "\(input)|\(script)" },
-            runAI: runAI ?? { prompt, _, input in "\(input)|ai(\(prompt))" }
+            runAI: runAI ?? { prompt, _, input, _ in "\(input)|ai(\(prompt))" }
         )
     }
 
@@ -82,5 +82,62 @@ struct ActionRunnerTests {
         ])
         let out = try await runner.run(action, on: "seed")
         #expect(out == "seed")
+    }
+
+    // MARK: - Image input
+
+    /// The first AI step receives the image (imageData != nil); later steps
+    /// thread the resulting text through the shared text loop (imageData == nil).
+    @Test func imagePath_firstAIGetsImage_thenThreadsText() async throws {
+        var imageStepGotImage = false
+        var textStepGotImage = true
+        let runner = makeRunner(runAI: { prompt, _, input, imageData in
+            if prompt == "ocr" {
+                imageStepGotImage = imageData != nil
+                return "extracted"
+            }
+            textStepGotImage = imageData != nil
+            return "\(input)|ai(\(prompt))"
+        })
+        let action = Action(name: "A", icon: "x", steps: [
+            Step(type: .ai, prompt: "ocr"),
+            Step(type: .script, script: "upper"),
+            Step(type: .ai, prompt: "summarize"),
+        ])
+        let out = try await runner.run(action, onImageData: Data([0x89, 0x50]))
+        #expect(imageStepGotImage == true)
+        #expect(textStepGotImage == false)
+        #expect(out == "extracted|upper|ai(summarize)")
+    }
+
+    @Test func imagePath_scriptFirst_throws() async throws {
+        let runner = makeRunner()
+        let action = Action(name: "A", icon: "x", steps: [
+            Step(type: .script, script: "trim"),
+            Step(type: .ai, prompt: "fix"),
+        ])
+        await #expect(throws: ActionError.self) {
+            try await runner.run(action, onImageData: Data([0x00]))
+        }
+    }
+
+    /// A disabled/empty leading script step is skipped; the first *effective*
+    /// step (AI) takes the image.
+    @Test func imagePath_skipsLeadingDisabledStep() async throws {
+        let runner = makeRunner(runAI: { prompt, _, input, imageData in
+            imageData != nil ? "img(\(prompt))" : "\(input)|ai(\(prompt))"
+        })
+        let action = Action(name: "A", icon: "x", steps: [
+            Step(type: .script, enabled: false, script: "skip"),
+            Step(type: .ai, prompt: "ocr"),
+        ])
+        let out = try await runner.run(action, onImageData: Data([0x01]))
+        #expect(out == "img(ocr)")
+    }
+
+    @Test func imagePath_emptyPipeline_returnsEmpty() async throws {
+        let runner = makeRunner()
+        let out = try await runner.run(Action(name: "A", icon: "x", steps: []), onImageData: Data([0x01]))
+        #expect(out == "")
     }
 }

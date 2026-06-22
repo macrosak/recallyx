@@ -47,5 +47,19 @@ struct SettingsStoreTests {
         #expect(store.settings.captureSensitive == false)
         #expect(store.settings.searchHistoryShortcut == .searchHistoryDefault)
         #expect(store.settings.transformSelectionShortcut == .transformSelectionDefault)
+        // The additive Ollama URL key is absent in old blobs → defaults.
+        #expect(store.settings.ollamaBaseURL == AppSettings.defaultOllamaBaseURL)
+    }
+
+    @Test func ollamaBaseURL_defaultsAndRoundTrips() {
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.ollamaBaseURL == AppSettings.defaultOllamaBaseURL)
+
+        store.settings.ollamaBaseURL = "http://192.168.1.10:11434"
+        store.flush()
+
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.ollamaBaseURL == "http://192.168.1.10:11434")
     }
 }
