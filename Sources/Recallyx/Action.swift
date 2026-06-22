@@ -80,6 +80,35 @@ struct Action: Codable, Identifiable, Equatable {
             Action(name: "Extract URLs", icon: "globe.americas", steps: [
                 Step(type: .script, script: "grep -oE 'https?://[^[:space:]]+' || true"),
             ]),
+            // Dev-oriented, zero-config, offline script transforms (no API key).
+            // All use system python3 (the proven runtime already used by
+            // "Pretty-print JSON"): text in on stdin, result out on stdout.
+            Action(name: "URL decode", icon: "link", steps: [
+                Step(type: .script, script: "python3 -c 'import sys,urllib.parse;sys.stdout.write(urllib.parse.unquote(sys.stdin.read()))'"),
+            ]),
+            Action(name: "URL encode", icon: "link.badge.plus", steps: [
+                Step(type: .script, script: "python3 -c 'import sys,urllib.parse;sys.stdout.write(urllib.parse.quote(sys.stdin.read()))'"),
+            ]),
+            Action(name: "Base64 decode", icon: "arrow.down.doc", steps: [
+                Step(type: .script, script: "python3 -c 'import sys,base64;d=sys.stdin.read().strip();d+=\"=\"*(-len(d)%4);sys.stdout.buffer.write(base64.b64decode(d))'"),
+            ]),
+            Action(name: "Base64 encode", icon: "arrow.up.doc", steps: [
+                Step(type: .script, script: "python3 -c 'import sys,base64;sys.stdout.write(base64.b64encode(sys.stdin.buffer.read()).decode())'"),
+            ]),
+            Action(name: "Decode JWT", icon: "key", steps: [
+                Step(type: .script, script: """
+                python3 -c '
+                import sys,base64,json
+                p=sys.stdin.read().strip().split(".")
+                def d(s):
+                    s+="="*(-len(s)%4)
+                    return json.loads(base64.urlsafe_b64decode(s))
+                print(json.dumps({"header":d(p[0]),"payload":d(p[1])},indent=2))'
+                """),
+            ]),
+            Action(name: "Minify JSON", icon: "arrow.down.right.and.arrow.up.left", steps: [
+                Step(type: .script, script: "python3 -c 'import sys,json;json.dump(json.load(sys.stdin),sys.stdout,separators=(\",\",\":\"))'"),
+            ]),
             // Image-friendly AI actions: run on image clips (first step AI →
             // receives the image), and harmlessly on text clips too.
             Action(name: "Extract text", icon: "text.viewfinder", steps: [
@@ -89,5 +118,23 @@ struct Action: Codable, Identifiable, Equatable {
                 Step(type: .ai, prompt: "Describe this image concisely. Return only the description."),
             ]),
         ]
+    }
+
+    /// Appends any `defaults()` action whose `name` isn't already present in
+    /// `existing`, minting a fresh UUID for each appended copy. Append-only,
+    /// idempotent, matched by name, preserving `existing`'s order (missing
+    /// built-ins are appended in `defaults()` order).
+    ///
+    /// `defaults()` mints random UUIDs each call, so name is the only stable
+    /// identity to diff on. This is how existing installs (which already have a
+    /// saved `actions` array, so the decode-time `defaults()` fallback never
+    /// fires) pick up newly shipped built-ins, and it doubles as "recover a
+    /// default I deleted by accident" — without resurrecting one twice.
+    static func appendingMissingBuiltins(into existing: [Action]) -> [Action] {
+        let existingNames = Set(existing.map(\.name))
+        let missing = defaults().filter { !existingNames.contains($0.name) }
+        return existing + missing.map {
+            Action(name: $0.name, icon: $0.icon, steps: $0.steps)
+        }
     }
 }
