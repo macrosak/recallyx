@@ -9,6 +9,7 @@ import Foundation
 enum AIProvider {
     case openai
     case anthropic
+    case gemini
     case ollama
     case apple
 
@@ -16,6 +17,7 @@ enum AIProvider {
         let lower = model.lowercased()
         if lower.hasPrefix("apple:") { return .apple }
         if lower.hasPrefix("ollama:") { return .ollama }
+        if lower.hasPrefix("gemini") { return .gemini }
         return lower.hasPrefix("claude") ? .anthropic : .openai
     }
 
@@ -26,6 +28,7 @@ enum AIProvider {
         switch self {
         case .openai: return .openAIKey
         case .anthropic: return .anthropicKey
+        case .gemini: return .geminiKey
         case .ollama, .apple: return nil
         }
     }
@@ -34,6 +37,7 @@ enum AIProvider {
         switch self {
         case .openai: return "OpenAI"
         case .anthropic: return "Anthropic"
+        case .gemini: return "Google Gemini"
         case .ollama: return "Ollama"
         case .apple: return "Apple Intelligence"
         }
@@ -46,7 +50,7 @@ enum AIProvider {
     /// check at call sites that have a concrete model id.
     var supportsVision: Bool {
         switch self {
-        case .openai, .anthropic: return true
+        case .openai, .anthropic, .gemini: return true
         case .ollama, .apple: return false
         }
     }
@@ -58,7 +62,7 @@ enum AIProvider {
     /// on-device Apple Intelligence is text-only in v1.
     static func supportsVision(forModel model: String) -> Bool {
         switch provider(for: model) {
-        case .openai, .anthropic: return true
+        case .openai, .anthropic, .gemini: return true
         case .apple: return false
         case .ollama: return isOllamaVisionModel(model)
         }
@@ -83,6 +87,7 @@ enum AIProvider {
 struct AIClient {
     private let openAI = OpenAIClient()
     private let anthropic = AnthropicClient()
+    private let gemini = GeminiClient()
     private let ollama = OllamaClient()
     private let apple = AppleClient()
     private let ollamaBaseURL: () -> String
@@ -105,14 +110,17 @@ struct AIClient {
             return try await apple.complete(model: model, promptTemplate: prompt, text: input)
         case .ollama:
             return try await ollama.complete(baseURL: ollamaBaseURL(), model: model, promptTemplate: prompt, text: input, imageData: imageData)
-        case .openai, .anthropic:
+        case .openai, .anthropic, .gemini:
             guard let apiKey = provider.keychain?.read(), !apiKey.isEmpty else {
                 throw ActionError.missingApiKey(provider)
             }
-            if provider == .openai {
+            switch provider {
+            case .openai:
                 return try await openAI.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData)
-            } else {
+            case .anthropic:
                 return try await anthropic.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData)
+            default:
+                return try await gemini.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData)
             }
         }
     }

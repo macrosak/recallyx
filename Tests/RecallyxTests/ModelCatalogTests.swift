@@ -4,8 +4,8 @@ import Testing
 
 @Suite("ModelCatalog")
 struct ModelCatalogTests {
-    @Test func allIsOpenAIPlusAnthropicPlusOllamaPlusApple() {
-        #expect(ModelCatalog.all == ModelCatalog.openAI + ModelCatalog.anthropic + ModelCatalog.ollama + ModelCatalog.apple)
+    @Test func allIsOpenAIPlusAnthropicPlusGeminiPlusOllamaPlusApple() {
+        #expect(ModelCatalog.all == ModelCatalog.openAI + ModelCatalog.anthropic + ModelCatalog.gemini + ModelCatalog.ollama + ModelCatalog.apple)
     }
 
     @Test func defaultStaysOpenAI() {
@@ -53,45 +53,65 @@ struct ModelCatalogTests {
         #expect(ModelCatalog.all.contains("apple:on-device"))
     }
 
-    // MARK: - groups(openAI:anthropic:ollama:apple:) — pure, flag-driven
+    @Test func geminiModelsPresentAndRouteToGemini() {
+        #expect(!ModelCatalog.gemini.isEmpty)
+        for model in ModelCatalog.gemini {
+            #expect(AIProvider.provider(for: model) == .gemini)
+            #expect(ModelCatalog.all.contains(model))
+        }
+    }
 
-    @Test func groupsAllTrueAreFourInOrderWithRightModels() {
-        let groups = ModelCatalog.groups(openAI: true, anthropic: true, ollama: true, apple: true)
-        #expect(groups.count == 4)
-        #expect(groups.map(\.title) == ["OpenAI", "Anthropic", "Ollama (local)", "Apple Intelligence (on-device)"])
+    // MARK: - groups(openAI:anthropic:gemini:ollama:apple:) — pure, flag-driven
+
+    @Test func groupsAllTrueAreFiveInOrderWithRightModels() {
+        let groups = ModelCatalog.groups(openAI: true, anthropic: true, gemini: true, ollama: true, apple: true)
+        #expect(groups.count == 5)
+        #expect(groups.map(\.title) == ["OpenAI", "Anthropic", "Google Gemini", "Ollama (local)", "Apple Intelligence (on-device)"])
         #expect(groups[0].models == ModelCatalog.openAI)
         #expect(groups[1].models == ModelCatalog.anthropic)
-        #expect(groups[2].models == ModelCatalog.ollama)
-        #expect(groups[3].models == ModelCatalog.apple)
+        #expect(groups[2].models == ModelCatalog.gemini)
+        #expect(groups[3].models == ModelCatalog.ollama)
+        #expect(groups[4].models == ModelCatalog.apple)
     }
 
     @Test func groupsOnlyOpenAIIsJustOpenAI() {
-        let groups = ModelCatalog.groups(openAI: true, anthropic: false, ollama: false, apple: false)
+        let groups = ModelCatalog.groups(openAI: true, anthropic: false, gemini: false, ollama: false, apple: false)
         #expect(groups.map(\.title) == ["OpenAI"])
         #expect(groups.first?.models == ModelCatalog.openAI)
     }
 
     @Test func groupsAnthropicFalseHasNoAnthropicGroup() {
-        let groups = ModelCatalog.groups(openAI: true, anthropic: false, ollama: true, apple: true)
+        let groups = ModelCatalog.groups(openAI: true, anthropic: false, gemini: false, ollama: true, apple: true)
         #expect(!groups.contains { $0.title == "Anthropic" })
         #expect(groups.map(\.title) == ["OpenAI", "Ollama (local)", "Apple Intelligence (on-device)"])
     }
 
+    @Test func groupsGeminiTrueAddsGeminiGroupAfterAnthropic() {
+        let groups = ModelCatalog.groups(openAI: true, anthropic: true, gemini: true, ollama: false, apple: false)
+        #expect(groups.map(\.title) == ["OpenAI", "Anthropic", "Google Gemini"])
+        #expect(groups.last?.models == ModelCatalog.gemini)
+    }
+
+    @Test func groupsGeminiFalseOmitsGeminiGroup() {
+        let groups = ModelCatalog.groups(openAI: true, anthropic: true, gemini: false, ollama: true, apple: true)
+        #expect(!groups.contains { $0.title == "Google Gemini" })
+    }
+
     @Test func groupsAllFalseIsEmpty() {
-        #expect(ModelCatalog.groups(openAI: false, anthropic: false, ollama: false, apple: false).isEmpty)
+        #expect(ModelCatalog.groups(openAI: false, anthropic: false, gemini: false, ollama: false, apple: false).isEmpty)
     }
 
     // MARK: - groupsPreservingSelection — keeps the Picker selection visible
 
     @Test func selectionInAGroupIsNotDuplicated() {
-        let base = ModelCatalog.groups(openAI: true, anthropic: false, ollama: true, apple: false)
+        let base = ModelCatalog.groups(openAI: true, anthropic: false, gemini: false, ollama: true, apple: false)
         let result = ModelCatalog.groupsPreservingSelection(base, selected: ModelCatalog.openAI[0])
         #expect(result.map(\.title) == base.map(\.title))
         #expect(!result.contains { $0.title == "Configured" })
     }
 
     @Test func unavailableSelectionGetsTrailingConfiguredGroup() {
-        let base = ModelCatalog.groups(openAI: true, anthropic: false, ollama: true, apple: false)
+        let base = ModelCatalog.groups(openAI: true, anthropic: false, gemini: false, ollama: true, apple: false)
         let result = ModelCatalog.groupsPreservingSelection(base, selected: "claude-sonnet-4-6")
         #expect(result.count == base.count + 1)
         #expect(result.last?.title == "Configured")
@@ -99,7 +119,7 @@ struct ModelCatalogTests {
     }
 
     @Test func emptySelectionIsLeftUntouched() {
-        let base = ModelCatalog.groups(openAI: true, anthropic: true, ollama: true, apple: true)
+        let base = ModelCatalog.groups(openAI: true, anthropic: true, gemini: true, ollama: true, apple: true)
         let result = ModelCatalog.groupsPreservingSelection(base, selected: "")
         #expect(result.map(\.title) == base.map(\.title))
     }

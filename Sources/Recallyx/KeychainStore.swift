@@ -17,6 +17,11 @@ struct KeychainStore {
         account: "anthropic-api-key"
     )
 
+    static let geminiKey = KeychainStore(
+        service: "io.github.macrosak.recallyx",
+        account: "gemini-api-key"
+    )
+
     func read() -> String? {
         var query: [String: Any] = baseQuery
         query[kSecMatchLimit as String] = kSecMatchLimitOne

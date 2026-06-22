@@ -20,9 +20,13 @@ struct SettingsGeneralView: View {
     @State private var anthropicApiKey: String = ""
     @State private var showAnthropicKey: Bool = false
     @State private var anthropicTestResult: KeyTestResult = .idle
+    @State private var geminiApiKey: String = ""
+    @State private var showGeminiKey: Bool = false
+    @State private var geminiTestResult: KeyTestResult = .idle
 
     private let keychain = KeychainStore.openAIKey
     private let anthropicKeychain = KeychainStore.anthropicKey
+    private let geminiKeychain = KeychainStore.geminiKey
 
     private enum KeyTestResult: Equatable {
         case idle, testing, ok, failed(String)
@@ -32,6 +36,7 @@ struct SettingsGeneralView: View {
         VStack(spacing: 17) {
             openAISection
             anthropicSection
+            geminiSection
             ollamaSection
             defaultModelSection
             shortcutsSection
@@ -42,6 +47,7 @@ struct SettingsGeneralView: View {
             capText = String(settingsStore.settings.retentionCap)
             apiKey = keychain.read() ?? ""
             anthropicApiKey = anthropicKeychain.read() ?? ""
+            geminiApiKey = geminiKeychain.read() ?? ""
         }
     }
 
@@ -158,6 +164,64 @@ struct SettingsGeneralView: View {
             anthropicTestResult = .ok
         } catch {
             anthropicTestResult = .failed(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Google Gemini
+
+    private var geminiSection: some View {
+        VStack(spacing: 0) {
+            SectionLabel(text: "Google Gemini", theme: theme)
+            SettingsCard(theme: theme) {
+                SettingsRow(label: "API key", desc: geminiApiKeyDesc, last: true, theme: theme) {
+                    if showGeminiKey {
+                        SettingsField(text: $geminiApiKey, placeholder: "AIza…", mono: true, width: 150, theme: theme)
+                    } else {
+                        SecureField("AIza…", text: $geminiApiKey)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12.5, design: .monospaced))
+                            .foregroundStyle(theme.text)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .frame(width: 150)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(theme.inputBg)
+                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.inputBorder, lineWidth: 0.5)))
+                    }
+                    SettingsButton(title: showGeminiKey ? "Hide" : "Show", theme: theme) { showGeminiKey.toggle() }
+                    SettingsButton(title: "Test", theme: theme) { Task { await testGeminiKey() } }
+                    SettingsButton(title: "Save", kind: .primary, theme: theme) { persistGeminiKey() }
+                }
+            }
+        }
+    }
+
+    private var geminiApiKeyDesc: String {
+        switch geminiTestResult {
+        case .idle: return "Stored in your macOS Keychain."
+        case .testing: return "Testing key against \(ModelCatalog.gemini.first ?? "gemini-3.5-flash")…"
+        case .ok: return "✓ API key is valid."
+        case .failed(let msg): return "✗ \(msg)"
+        }
+    }
+
+    private func persistGeminiKey() {
+        let trimmed = geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { _ = geminiKeychain.delete() } else { _ = geminiKeychain.write(trimmed) }
+    }
+
+    /// Tests the key as typed in the field, WITHOUT persisting it (mirrors the
+    /// OpenAI/Anthropic Tests). Uses the cheapest Gemini model with a trivial prompt.
+    private func testGeminiKey() async {
+        let trimmed = geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        geminiTestResult = .testing
+        let model = ModelCatalog.gemini.first ?? "gemini-3.5-flash"
+        do {
+            _ = try await GeminiClient().complete(apiKey: trimmed, model: model, promptTemplate: "Reply with: ok", text: "")
+            geminiTestResult = .ok
+        } catch GeminiError.emptyResponse {
+            geminiTestResult = .ok
+        } catch {
+            geminiTestResult = .failed(error.localizedDescription)
         }
     }
 
