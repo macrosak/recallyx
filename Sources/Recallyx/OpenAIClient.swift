@@ -113,6 +113,13 @@ enum ModelCatalog {
         "claude-sonnet-4-6",
         "claude-opus-4-8",
     ]
+    /// Google Gemini cloud models — addressed `gemini*` so they route to
+    /// `GeminiClient` (BYO-key). Easily updatable as Google ships new GA ids.
+    static let gemini: [String] = [
+        "gemini-3.5-flash",
+        "gemini-2.5-pro",
+        "gemini-3.1-flash-lite",
+    ]
     /// Local models served by Ollama — addressed `ollama:<name>` so they route
     /// to `OllamaClient`. Users can also type a custom `ollama:<model>` override.
     /// `llava`/`llama3.2-vision` are multimodal (local OCR / describe-image);
@@ -129,7 +136,7 @@ enum ModelCatalog {
     /// no URL, macOS 26+ only.
     static let apple: [String] = ["apple:on-device"]
     /// Existing call sites that iterate every model keep working.
-    static let all: [String] = openAI + anthropic + ollama + apple
+    static let all: [String] = openAI + anthropic + gemini + ollama + apple
     static let `default` = "gpt-4o-mini"
 
     // MARK: - Availability-aware grouping (for the Settings model pickers)
@@ -143,12 +150,14 @@ enum ModelCatalog {
     }
 
     /// Pure, hermetic grouping — produces the provider sections to show, gated
-    /// purely by the passed flags. Order is fixed: OpenAI, Anthropic, Ollama,
-    /// Apple. Test THIS; `availableGroups()` computes the flags from live config.
-    static func groups(openAI: Bool, anthropic: Bool, ollama: Bool, apple: Bool) -> [ModelGroup] {
+    /// purely by the passed flags. Order is fixed: OpenAI, Anthropic, Google
+    /// Gemini, Ollama, Apple. Test THIS; `availableGroups()` computes the flags
+    /// from live config.
+    static func groups(openAI: Bool, anthropic: Bool, gemini: Bool, ollama: Bool, apple: Bool) -> [ModelGroup] {
         var result: [ModelGroup] = []
         if openAI { result.append(ModelGroup(title: "OpenAI", models: self.openAI)) }
         if anthropic { result.append(ModelGroup(title: "Anthropic", models: self.anthropic)) }
+        if gemini { result.append(ModelGroup(title: "Google Gemini", models: self.gemini)) }
         if ollama { result.append(ModelGroup(title: "Ollama (local)", models: self.ollama)) }
         if apple { result.append(ModelGroup(title: "Apple Intelligence (on-device)", models: self.apple)) }
         return result
@@ -166,6 +175,7 @@ enum ModelCatalog {
         return groups(
             openAI: keySet(.openAIKey),
             anthropic: keySet(.anthropicKey),
+            gemini: keySet(.geminiKey),
             ollama: true,
             apple: AppleClient.isAvailable
         )

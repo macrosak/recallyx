@@ -334,6 +334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch AIProvider.provider(for: model) {
         case .openai: return "openai"
         case .anthropic: return "anthropic"
+        case .gemini: return "gemini"
         case .ollama: return "ollama"
         case .apple: return "apple"
         }

@@ -17,6 +17,12 @@ struct AIProviderTests {
         #expect(AIProvider.provider(for: "") == .openai)
     }
 
+    @Test func routesGeminiPrefixToGemini() {
+        #expect(AIProvider.provider(for: "gemini-2.5-pro") == .gemini)
+        #expect(AIProvider.provider(for: "gemini-3.5-flash") == .gemini)
+        #expect(AIProvider.provider(for: "GEMINI-2.5-PRO") == .gemini)
+    }
+
     @Test func routesOllamaPrefixToOllama() {
         #expect(AIProvider.provider(for: "ollama:llama3.2") == .ollama)
         #expect(AIProvider.provider(for: "ollama:qwen2.5") == .ollama)
@@ -51,6 +57,7 @@ struct AIProviderTests {
     @Test func keychainMatchesProvider() {
         #expect(AIProvider.openai.keychain?.account == KeychainStore.openAIKey.account)
         #expect(AIProvider.anthropic.keychain?.account == KeychainStore.anthropicKey.account)
+        #expect(AIProvider.gemini.keychain?.account == KeychainStore.geminiKey.account)
         // Local providers (Ollama, on-device Apple Intelligence) have no key.
         #expect(AIProvider.ollama.keychain == nil)
         #expect(AIProvider.apple.keychain == nil)
@@ -59,6 +66,7 @@ struct AIProviderTests {
     @Test func displayNameNamesProvider() {
         #expect(AIProvider.openai.displayName == "OpenAI")
         #expect(AIProvider.anthropic.displayName == "Anthropic")
+        #expect(AIProvider.gemini.displayName == "Google Gemini")
         #expect(AIProvider.ollama.displayName == "Ollama")
         #expect(AIProvider.apple.displayName == "Apple Intelligence")
     }
@@ -82,6 +90,7 @@ struct AIProviderTests {
     @Test func cloudProvidersSupportVision() {
         #expect(AIProvider.openai.supportsVision == true)
         #expect(AIProvider.anthropic.supportsVision == true)
+        #expect(AIProvider.gemini.supportsVision == true)
         #expect(AIProvider.ollama.supportsVision == false)
         #expect(AIProvider.apple.supportsVision == false)
     }
@@ -107,6 +116,7 @@ struct AIProviderTests {
         // Cloud providers: always vision-capable.
         #expect(AIProvider.supportsVision(forModel: "gpt-4o") == true)
         #expect(AIProvider.supportsVision(forModel: "claude-opus-4-8") == true)
+        #expect(AIProvider.supportsVision(forModel: "gemini-2.5-pro") == true)
         // On-device Apple: text-only in v1.
         #expect(AIProvider.supportsVision(forModel: "apple:on-device") == false)
         // Ollama vision models (substring allowlist).
