@@ -424,4 +424,42 @@ struct HistoryPanelViewModelTests {
         await vm.searchTask?.value
         #expect(vm.filtered.isEmpty)
     }
+
+    // MARK: - ⌘1–9 quick-key numbers
+
+    private func savedItem(_ name: String) -> ActionMenuItem {
+        .saved(Action(name: name, icon: "sparkles", steps: []))
+    }
+
+    @Test func listQuickKey_first9RowsNumbered_restNil() {
+        // 12 items → rows 0–8 map to ⌘1–⌘9, rows 9–11 map to nil.
+        let keys = (0..<12).map { HistoryPanelViewModel.listQuickKey(forRowAt: $0) }
+        #expect(keys == [1, 2, 3, 4, 5, 6, 7, 8, 9, nil, nil, nil])
+    }
+
+    @Test func actionQuickKey_onlySavedRowsNumbered() {
+        // [built-in, built-in, divider-isn't-a-row → saved, saved, saved]:
+        // a realistic menu is built-ins → Custom… → saved actions. Only saved
+        // rows get 1, 2, 3; built-ins/Custom… get nil.
+        let menu: [ActionMenuItem] = [
+            .builtin(.paste), .builtin(.copy), .custom,
+            savedItem("A"), savedItem("B"), savedItem("C"),
+        ]
+        let keys = menu.indices.map { HistoryPanelViewModel.actionQuickKey(forRowAt: $0, in: menu) }
+        #expect(keys == [nil, nil, nil, 1, 2, 3])
+    }
+
+    @Test func actionQuickKey_fewerThan9Saved_noNumberExceedsCount() {
+        let menu: [ActionMenuItem] = [.builtin(.paste), savedItem("A"), savedItem("B")]
+        let keys = menu.indices.compactMap { HistoryPanelViewModel.actionQuickKey(forRowAt: $0, in: menu) }
+        #expect(keys == [1, 2])
+        #expect(keys.max() == 2)
+    }
+
+    @Test func actionQuickKey_tenthSavedIsNil() {
+        // 10 saved actions → the 10th (⌘0 isn't bound) gets nil.
+        let menu: [ActionMenuItem] = [.builtin(.paste)] + (1...10).map { savedItem("Saved \($0)") }
+        let keys = menu.indices.map { HistoryPanelViewModel.actionQuickKey(forRowAt: $0, in: menu) }
+        #expect(keys == [nil, 1, 2, 3, 4, 5, 6, 7, 8, 9, nil])
+    }
 }

@@ -14,6 +14,7 @@ final class HistoryPanelController {
     private var localKeyMonitor: Any?
     private var globalClickMonitor: Any?
     private var localClickMonitor: Any?
+    private var flagsMonitor: Any?
 
     private let panelSize = NSSize(width: 760, height: 562)
 
@@ -117,6 +118,8 @@ final class HistoryPanelController {
         // Cancel any in-flight deep-search scan so a multi-MB substring pass
         // doesn't keep running (and retaining the view model) after dismiss.
         viewModel?.searchTask?.cancel()
+        // Clear the held-⌘ state so badges never stick into the next session.
+        viewModel?.commandHeld = false
         viewModel = nil
         // Hand focus back to where the user was: we activated ourselves to
         // show the panel, and with it gone the previous app doesn't regain key
@@ -151,15 +154,22 @@ final class HistoryPanelController {
             if event.window !== panel { self.dismiss() }
             return event
         }
+        // Reveal the ⌘1–9 quick-key badges while ⌘ is held (event returned
+        // unchanged — this only mirrors the modifier state into the view model).
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.viewModel?.commandHeld = event.modifierFlags.contains(.command)
+            return event
+        }
     }
 
     private func uninstallEventMonitors() {
-        [localKeyMonitor, globalClickMonitor, localClickMonitor].forEach {
+        [localKeyMonitor, globalClickMonitor, localClickMonitor, flagsMonitor].forEach {
             if let m = $0 { NSEvent.removeMonitor(m) }
         }
         localKeyMonitor = nil
         globalClickMonitor = nil
         localClickMonitor = nil
+        flagsMonitor = nil
     }
 
     /// Intercept navigation keys; everything else flows to the focused control

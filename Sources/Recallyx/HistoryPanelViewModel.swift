@@ -35,6 +35,12 @@ final class HistoryPanelViewModel: ObservableObject {
     /// the menu opens so it stays fixed even if `selectedIndex` shifts.
     @Published private(set) var actionItem: HistoryItem?
 
+    /// True while the user holds ⌘ over the open panel. Reveals the ⌘1–9
+    /// quick-key badges on eligible rows (replacing their trailing timestamp /
+    /// accessory). Set/cleared by the controller's `.flagsChanged` monitor and
+    /// reset to false on dismiss so a stale held-state never sticks.
+    @Published var commandHeld: Bool = false
+
     /// The clip search, stashed while we're in an action state so it can be
     /// restored when we return to the list (Tab clears the field for action
     /// search; Esc brings the clip search back).
@@ -159,6 +165,32 @@ final class HistoryPanelViewModel: ObservableObject {
         }
         guard saved.indices.contains(index) else { return }
         onRunAction(saved[index], item)
+    }
+
+    // MARK: - Quick-key numbers (⌘1–9 discoverability)
+
+    /// The maximum quick-key digit (⌘1…⌘9). ⌘0 / ⌘10+ aren't bound.
+    static let maxQuickKey = 9
+
+    /// The ⌘-digit (1–9) for a list row at `index` in display order, or nil if
+    /// the row has no bound shortcut (rows 10+). Mirrors `pasteItem(at:)`'s
+    /// 0-based indexing → 1-based digit.
+    static func listQuickKey(forRowAt index: Int) -> Int? {
+        guard index >= 0, index < maxQuickKey else { return nil }
+        return index + 1
+    }
+
+    /// The ⌘-digit (1–9) for the action-menu row at `index`, or nil if it's a
+    /// built-in / Custom… / divider, or a saved action past the 9th. Counts only
+    /// `.saved` entries (in `items` order), matching `runSavedAction(at:)`.
+    static func actionQuickKey(forRowAt index: Int, in items: [ActionMenuItem]) -> Int? {
+        guard items.indices.contains(index), case .saved = items[index] else { return nil }
+        // Position among saved entries up to and including this row.
+        let savedSoFar = items[...index].reduce(0) { count, entry in
+            if case .saved = entry { return count + 1 } else { return count }
+        }
+        guard savedSoFar <= maxQuickKey else { return nil }
+        return savedSoFar
     }
 
     /// esc — actions/custom/edit: step back; list: close the panel.

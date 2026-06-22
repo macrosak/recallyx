@@ -90,6 +90,9 @@ struct ActionMenuColumn: View {
     let item: HistoryItem
     let items: [ActionMenuItem]
     let selectedIndex: Int
+    /// While true, saved-action rows reveal a ⌘N quick-key badge (the same
+    /// numbers `runSavedAction(at:)` honors). Built-ins/Custom… get none.
+    var commandHeld: Bool = false
     let theme: RXTheme
     let onTap: (Int) -> Void
 
@@ -104,7 +107,7 @@ struct ActionMenuColumn: View {
                         if case .saved = entry, isFirstSaved(idx) {
                             MenuDivider(label: "Saved actions", theme: theme)
                         }
-                        row(for: entry, active: idx == selectedIndex)
+                        row(for: entry, at: idx, active: idx == selectedIndex)
                             .contentShape(Rectangle())
                             .onTapGesture { onTap(idx) }
                     }
@@ -122,17 +125,18 @@ struct ActionMenuColumn: View {
     }
 
     @ViewBuilder
-    private func row(for entry: ActionMenuItem, active: Bool) -> some View {
+    private func row(for entry: ActionMenuItem, at idx: Int, active: Bool) -> some View {
+        let quickKey = commandHeld ? HistoryPanelViewModel.actionQuickKey(forRowAt: idx, in: items) : nil
         switch entry {
         case .builtin(let b):
             ActionRowView(icon: b.icon, title: b.title, subtitle: b.subtitle, tag: nil,
-                          danger: b.isDanger, active: active, theme: theme)
+                          danger: b.isDanger, active: active, quickKey: quickKey, theme: theme)
         case .custom:
             ActionRowView(icon: "sparkle", title: "Custom…", subtitle: "one-off prompt", tag: nil,
-                          danger: false, active: active, theme: theme)
+                          danger: false, active: active, quickKey: quickKey, theme: theme)
         case .saved(let a):
             ActionRowView(icon: a.icon, title: a.name, subtitle: nil, tag: a.kindTag,
-                          danger: false, active: active, theme: theme)
+                          danger: false, active: active, quickKey: quickKey, theme: theme)
         }
     }
 }
@@ -283,6 +287,9 @@ struct ActionRowView: View {
     let tag: String?
     let danger: Bool
     let active: Bool
+    /// The ⌘-digit (1–9) to reveal in place of the trailing tag while ⌘ is held;
+    /// nil shows the SCRIPT/AI tag (the default).
+    var quickKey: Int? = nil
     let theme: RXTheme
 
     private var fg: Color { active ? .white : (danger ? theme.bad : theme.text) }
@@ -306,7 +313,9 @@ struct ActionRowView: View {
                 }
             }
             Spacer(minLength: 6)
-            if let tag {
+            if let quickKey {
+                Keycap(label: "⌘\(quickKey)", theme: theme)
+            } else if let tag {
                 Text(tag.uppercased())
                     .font(.system(size: 10, weight: .bold))
                     .tracking(0.5)

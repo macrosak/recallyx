@@ -112,6 +112,7 @@ struct HistoryPanelView: View {
                     item: item,
                     items: viewModel.filteredMenuItems,
                     selectedIndex: viewModel.actionIndex,
+                    commandHeld: viewModel.commandHeld,
                     theme: theme,
                     onTap: { idx in
                         viewModel.actionIndex = idx
@@ -167,7 +168,12 @@ struct HistoryPanelView: View {
             ScrollView {
                 LazyVStack(spacing: 1) {
                     ForEach(Array(viewModel.filtered.enumerated()), id: \.element.id) { idx, item in
-                        HistoryRowView(item: item, active: idx == viewModel.selectedIndex, theme: theme)
+                        HistoryRowView(
+                            item: item,
+                            active: idx == viewModel.selectedIndex,
+                            quickKey: viewModel.commandHeld ? HistoryPanelViewModel.listQuickKey(forRowAt: idx) : nil,
+                            theme: theme
+                        )
                             .id(item.id)
                             .contentShape(Rectangle())
                             .onTapGesture {
@@ -206,6 +212,9 @@ struct HistoryPanelView: View {
 struct HistoryRowView: View {
     let item: HistoryItem
     let active: Bool
+    /// The ⌘-digit (1–9) to reveal in place of the timestamp while ⌘ is held;
+    /// nil shows the timestamp (the default).
+    var quickKey: Int? = nil
     let theme: RXTheme
 
     private var fg: Color { active ? .white : theme.text }
@@ -221,11 +230,7 @@ struct HistoryRowView: View {
                     .foregroundStyle(faint)
                     .fixedSize()
             }
-            Text(ClipTime.relative(item.recency))
-                .font(.system(size: 11.5))
-                .foregroundStyle(faint)
-                .monospacedDigit()
-                .fixedSize()
+            trailingAccessory
         }
         .padding(.horizontal, 12)
         .frame(height: 46)
@@ -235,6 +240,25 @@ struct HistoryRowView: View {
                 .shadow(color: active ? Color(rgba: 10, 90, 200, 0.35) : .clear, radius: 3, y: 1)
         )
         .padding(.horizontal, 8)
+    }
+
+    /// Trailing slot: the ⌘N quick-key keycap while ⌘ is held over an eligible
+    /// row, otherwise the relative timestamp. A fixed min-width keeps the row
+    /// layout stable so nothing shifts as the badge swaps in.
+    @ViewBuilder
+    private var trailingAccessory: some View {
+        if let quickKey {
+            Keycap(label: "⌘\(quickKey)", theme: theme)
+                .frame(minWidth: 56, alignment: .trailing)
+                .fixedSize()
+        } else {
+            Text(ClipTime.relative(item.recency))
+                .font(.system(size: 11.5))
+                .foregroundStyle(faint)
+                .monospacedDigit()
+                .frame(minWidth: 56, alignment: .trailing)
+                .fixedSize()
+        }
     }
 
     /// Single-line snippet drawn at natural width, clipped to the available
