@@ -101,18 +101,25 @@ struct ActionMenuColumn: View {
             ColumnHeader(label: "Actions", theme: theme) {
                 AppIconView(item: item, size: 15)
             }
-            ScrollView {
-                VStack(spacing: 1) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, entry in
-                        if case .saved = entry, isFirstSaved(idx) {
-                            MenuDivider(label: "Saved actions", theme: theme)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 1) {
+                        ForEach(Array(items.enumerated()), id: \.element.id) { idx, entry in
+                            if case .saved = entry, isFirstSaved(idx) {
+                                MenuDivider(label: "Saved actions", theme: theme)
+                            }
+                            row(for: entry, at: idx, active: idx == selectedIndex)
+                                .id(idx)
+                                .contentShape(Rectangle())
+                                .onTapGesture { onTap(idx) }
                         }
-                        row(for: entry, at: idx, active: idx == selectedIndex)
-                            .contentShape(Rectangle())
-                            .onTapGesture { onTap(idx) }
                     }
+                    .padding(.vertical, 6)
                 }
-                .padding(.vertical, 6)
+                .onChange(of: selectedIndex) { _ in
+                    guard items.indices.contains(selectedIndex) else { return }
+                    withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(selectedIndex, anchor: .center) }
+                }
             }
             Spacer(minLength: 0)
         }
