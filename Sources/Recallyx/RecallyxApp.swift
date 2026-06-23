@@ -245,14 +245,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// AX read first (instant where it works); Chromium/Gmail don't expose
     /// `kAXSelectedText`, so any read miss falls back to a synthesized ⌘C and
-    /// the pasteboard. The watcher's next tick sees that copy too and
-    /// dedupe-bumps against the item added above — no duplicate.
+    /// the pasteboard. The fallback snapshots the user's clipboard, reads the
+    /// selection, then restores it and `markSelfWrite()`s the restore so the
+    /// watcher ignores it. The captured selection still reaches history via the
+    /// `store.add` in `handleTransformSelection` — restoring the live clipboard
+    /// is non-lossy.
     private func captureSelectionWithFallback() async throws -> (text: String, sourceApp: NSRunningApplication?) {
         do {
             return try accessibility.captureSelection()
         } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
             Log.info("transform: AX selection read missed — trying ⌘C fallback")
-            return try await accessibility.captureSelectionViaCopy()
+            return try await accessibility.captureSelectionViaCopy(
+                markSelfWrite: { [weak self] in self?.watcher?.markSelfWrite() }
+            )
         }
     }
 
@@ -282,6 +287,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     result = try await actionRunner.run(action, onImageData: imageData)
                 } else {
                     result = try await actionRunner.run(action, on: item.text ?? "")
+                }
+                // An empty/whitespace-only result must NOT paste — doing so would
+                // set the clipboard to "" and synth-⌘V over the user's current
+                // selection, silently wiping it. Surface a no-op instead.
+                guard !ActionRunner.isEmptyResult(result) else {
+                    journal.log("action_error", ["name": action.name, "category": "emptyResult"])
+                    Log.info("action produced no output — skipping paste")
+                    state.flash(.error("no output"))
+                    notifier.notify(body: "Action produced no output.")
+                    return
                 }
                 await Paster.pasteText(result, into: app)
                 state.flash(.success)

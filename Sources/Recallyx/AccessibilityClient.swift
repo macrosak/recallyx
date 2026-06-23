@@ -61,14 +61,23 @@ final class AccessibilityClient {
     /// Fallback for apps whose AX tree doesn't expose `kAXSelectedText` reads
     /// (Chromium/Gmail — same family as the silent-write-drop lesson):
     /// synthesize ⌘C and watch the pasteboard's `changeCount`. No bump within
-    /// the window ⇒ nothing was selected. The pasteboard intentionally keeps
-    /// the selection afterwards — ⌃⇧V's contract is to push the selection to
-    /// the top of history anyway, and here it got there via a genuine copy.
-    func captureSelectionViaCopy() async throws -> (text: String, sourceApp: NSRunningApplication?) {
+    /// the window ⇒ nothing was selected.
+    ///
+    /// The synth-⌘C overwrites whatever the user had on the clipboard, so we
+    /// snapshot it first and **restore it afterwards** — the selection is pushed
+    /// to history by the caller's `store.add`, so we don't need to leave it on
+    /// the live pasteboard, and *not* restoring would silently eat the user's
+    /// prior clip. We restore only after reading the copied text, then invoke
+    /// `markSelfWrite` (wired to the watcher) so the watcher's next tick treats
+    /// the restored content as our own write and won't recapture/bump it.
+    func captureSelectionViaCopy(
+        markSelfWrite: (() -> Void)? = nil
+    ) async throws -> (text: String, sourceApp: NSRunningApplication?) {
         guard isTrusted() else { throw AccessibilityError.notTrusted }
         let sourceApp = NSWorkspace.shared.frontmostApplication
 
         let pasteboard = NSPasteboard.general
+        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         let before = pasteboard.changeCount
         Paster.synthesizeCopyShortcut()
 
@@ -76,12 +85,19 @@ final class AccessibilityClient {
         for _ in 0..<10 {
             try? await Task.sleep(nanoseconds: 50_000_000)
             guard pasteboard.changeCount != before else { continue }
-            guard let text = pasteboard.string(forType: .string), !text.isEmpty else {
+            let copied = pasteboard.string(forType: .string)
+            // Read first, then put the user's prior clipboard back and mark the
+            // restore as a self-write so the watcher ignores it.
+            snapshot.restore(to: pasteboard)
+            markSelfWrite?()
+            guard let text = copied, !text.isEmpty else {
                 throw AccessibilityError.noSelection // copied, but not text
             }
-            Log.info("⌘C fallback captured len=\(text.count)")
+            Log.info("⌘C fallback captured len=\(text.count) — clipboard restored")
             return (text, sourceApp)
         }
+        // Nothing was copied (no selection) — the pasteboard was never touched,
+        // so there's nothing to restore.
         throw AccessibilityError.noSelection
     }
 
@@ -102,5 +118,41 @@ final class AccessibilityClient {
            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+/// A non-lossy snapshot of the pasteboard's contents, so a transient overwrite
+/// (the synth-⌘C selection grab) can put the user's clipboard back exactly as it
+/// was — preserving every type on every item, not just the plain-text flavor.
+///
+/// Kept as a small value type so the capture/restore round-trip is testable in
+/// isolation (the synth-⌘C polling around it is AppKit/timing-bound).
+struct PasteboardSnapshot {
+    /// One entry per original `NSPasteboardItem`: each type paired with its data.
+    private let items: [[NSPasteboard.PasteboardType: Data]]
+
+    /// Read every item/type currently on `pasteboard` into a detached copy.
+    static func capture(from pasteboard: NSPasteboard) -> PasteboardSnapshot {
+        let items = (pasteboard.pasteboardItems ?? []).map { item -> [NSPasteboard.PasteboardType: Data] in
+            var byType: [NSPasteboard.PasteboardType: Data] = [:]
+            for type in item.types {
+                if let data = item.data(forType: type) { byType[type] = data }
+            }
+            return byType
+        }
+        return PasteboardSnapshot(items: items)
+    }
+
+    /// Rewrite the captured items back onto `pasteboard`, replacing whatever is
+    /// there now. An empty snapshot still clears (the user had an empty board).
+    func restore(to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        let rebuilt = items.compactMap { byType -> NSPasteboardItem? in
+            guard !byType.isEmpty else { return nil }
+            let item = NSPasteboardItem()
+            for (type, data) in byType { item.setData(data, forType: type) }
+            return item
+        }
+        if !rebuilt.isEmpty { pasteboard.writeObjects(rebuilt) }
     }
 }

@@ -45,6 +45,14 @@ public final class ActionRunner {
         }
     }
 
+    /// True when a run produced nothing worth pasting (empty / whitespace-only).
+    /// Pasting such a result would set the clipboard to "" and synth-⌘V over the
+    /// user's current selection, silently wiping it — callers use this to skip
+    /// the paste and surface a no-op instead. Pure + testable.
+    public static func isEmptyResult(_ result: String) -> Bool {
+        result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Run `action` over `text` and return the transformed result. Disabled
     /// steps are skipped; an empty pipeline returns the text unchanged.
     public func run(_ action: Action, on text: String) async throws -> String {

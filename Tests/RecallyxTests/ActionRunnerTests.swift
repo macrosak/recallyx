@@ -141,4 +141,26 @@ struct ActionRunnerTests {
         let out = try await runner.run(Action(name: "A", icon: "x", steps: []), onImageData: Data([0x01]))
         #expect(out == "")
     }
+
+    // MARK: - Empty-result guard (don't paste "" over the user's selection)
+
+    @Test func isEmptyResult_recognizesNothingToPaste() {
+        #expect(ActionRunner.isEmptyResult("") == true)
+        #expect(ActionRunner.isEmptyResult("   \n\t  ") == true)
+        #expect(ActionRunner.isEmptyResult("x") == false)
+        #expect(ActionRunner.isEmptyResult("  hi  ") == false)
+    }
+
+    /// An all-disabled-step image action returns "" from `run` (existing
+    /// behavior) — the empty guard then recognizes that as a no-op so the
+    /// caller skips the destructive paste.
+    @Test func emptyImageRun_isRecognizedAsNoOp() async throws {
+        let runner = makeRunner()
+        let action = Action(name: "A", icon: "x", steps: [
+            Step(type: .ai, enabled: false, prompt: "ocr"),
+        ])
+        let out = try await runner.run(action, onImageData: Data([0x01]))
+        #expect(out == "")
+        #expect(ActionRunner.isEmptyResult(out) == true)
+    }
 }
