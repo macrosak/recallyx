@@ -47,11 +47,17 @@ public struct KeychainStore {
     @discardableResult
     public func write(_ value: String) -> Bool {
         let data = Data(value.utf8)
-        let update: [String: Any] = [kSecValueData as String: data]
-        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
-        if updateStatus == errSecSuccess { return true }
-        if updateStatus != errSecItemNotFound {
-            Log.error("Keychain update failed status=\(updateStatus)")
+
+        // Delete any existing item before re-adding so the new item's access
+        // control list is recreated against the current code signature.
+        // SecItemUpdate refreshes the secret but keeps the original ACL, which
+        // — when the item was first created by an older/ad-hoc-signed build —
+        // mismatches the current signature and reprompts on every reinstall.
+        // A fresh SecItemAdd binds the ACL to the current designated
+        // requirement, self-healing the stale entry after one save.
+        let deleteStatus = SecItemDelete(baseQuery as CFDictionary)
+        if deleteStatus != errSecSuccess && deleteStatus != errSecItemNotFound {
+            Log.error("Keychain delete-before-add failed status=\(deleteStatus)")
             return false
         }
 
