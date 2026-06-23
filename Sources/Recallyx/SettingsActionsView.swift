@@ -96,6 +96,10 @@ struct SettingsActionsView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(theme.textDim)
                 .frame(width: 24, height: 22)
+                // Without this, .plain only hit-tests the opaque glyph pixels, so
+                // clicks in the transparent area around a thin +/−/↻ glyph never
+                // fired the action. Make the whole frame clickable.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -188,12 +192,41 @@ struct SettingsActionsView: View {
         let action = Action(name: "New action", icon: "sparkles", steps: [Step(type: .ai)])
         settingsStore.settings.actions.append(action)
         selectedID = action.id
+        // Structural edit: persist immediately rather than waiting on the
+        // debounce, which a kill (e.g. install.sh's killall) can outrun.
+        settingsStore.flush()
     }
 
     private func deleteSelected() {
-        guard let id = selectedID else { return }
-        settingsStore.settings.actions.removeAll { $0.id == id }
-        selectedID = settingsStore.settings.actions.first?.id
+        let countBefore = settingsStore.settings.actions.count
+        guard let id = selectedID else {
+            Log.info("delete requested: no selectedID — nothing to delete (count=\(countBefore))")
+            return
+        }
+        guard let removedIndex = settingsStore.settings.actions.firstIndex(where: { $0.id == id }) else {
+            Log.info("delete requested: selectedID=\(id) matched NO action (count=\(countBefore))")
+            return
+        }
+        let matchedName = settingsStore.settings.actions[removedIndex].name
+        Log.info("delete requested: selectedID=\(id) matchedName=\(matchedName) countBefore=\(countBefore)")
+        settingsStore.settings.actions.remove(at: removedIndex)
+        Log.info("delete done: countAfter=\(settingsStore.settings.actions.count)")
+        // Keep selection on the neighbor: the action now at the deleted index
+        // (the next one down), or the previous one if we removed the last row;
+        // nil only when the list is now empty.
+        selectedID = SettingsActionsView.neighborSelection(
+            in: settingsStore.settings.actions, removedIndex: removedIndex
+        )
+        settingsStore.flush()
+    }
+
+    /// Which action to select after removing the one at `removedIndex`: the item
+    /// that now occupies that index (the next one down), the new last item if the
+    /// removed row was last, or nil when the list is empty. Pure for testing.
+    static func neighborSelection(in actions: [Action], removedIndex: Int) -> UUID? {
+        guard !actions.isEmpty else { return nil }
+        let index = min(removedIndex, actions.count - 1)
+        return actions[index].id
     }
 
     /// Append any shipped built-in actions the user is missing (append-only,
@@ -202,9 +235,14 @@ struct SettingsActionsView: View {
     private func restoreBuiltins() {
         let before = settingsStore.settings.actions
         let merged = Action.appendingMissingBuiltins(into: before)
-        guard merged.count != before.count else { return }
+        guard merged.count != before.count else {
+            Log.info("restore built-ins: nothing missing (count=\(before.count))")
+            return
+        }
+        Log.info("restore built-ins: appended \(merged.count - before.count) (\(before.count) → \(merged.count))")
         settingsStore.settings.actions = merged
         if selectedID == nil { selectedID = merged.first?.id }
+        settingsStore.flush()
     }
 
     private func moveAction(from: Int, to: Int) {
@@ -213,6 +251,7 @@ struct SettingsActionsView: View {
         let action = list.remove(at: from)
         list.insert(action, at: to)
         settingsStore.settings.actions = list
+        settingsStore.flush()
     }
 
     private func addStep(to action: Binding<Action>) {

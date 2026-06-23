@@ -52,15 +52,25 @@ struct AppSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        retentionCap = try c.decodeIfPresent(Int.self, forKey: .retentionCap) ?? 1000
-        captureSensitive = try c.decodeIfPresent(Bool.self, forKey: .captureSensitive) ?? false
-        launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
-        usageJournalEnabled = try c.decodeIfPresent(Bool.self, forKey: .usageJournalEnabled) ?? false
-        defaultModel = try c.decodeIfPresent(String.self, forKey: .defaultModel) ?? ModelCatalog.default
-        actions = try c.decodeIfPresent([Action].self, forKey: .actions) ?? Action.defaults()
-        ollamaBaseURL = try c.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? AppSettings.defaultOllamaBaseURL
-        searchHistoryShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .searchHistoryShortcut) ?? .searchHistoryDefault
-        transformSelectionShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .transformSelectionShortcut) ?? .transformSelectionDefault
+        // Decode each field independently and tolerantly: a missing OR malformed
+        // value falls back to that field's default, instead of throwing and
+        // failing the whole blob. Without this, one bad neighbor field (e.g. a
+        // shortcut written by a different build) made the entire AppSettings
+        // decode throw → SettingsStore reseeded AppSettings() → actions reverted
+        // to Action.defaults(), silently resurrecting actions the user deleted.
+        // `try?` flattens decodeIfPresent's optional, so `(try? …) ?? default`
+        // covers both an absent key (nil) and a malformed value (threw → nil).
+        retentionCap = (try? c.decodeIfPresent(Int.self, forKey: .retentionCap)) ?? 1000
+        captureSensitive = (try? c.decodeIfPresent(Bool.self, forKey: .captureSensitive)) ?? false
+        launchAtLogin = (try? c.decodeIfPresent(Bool.self, forKey: .launchAtLogin)) ?? false
+        usageJournalEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .usageJournalEnabled)) ?? false
+        defaultModel = (try? c.decodeIfPresent(String.self, forKey: .defaultModel)) ?? ModelCatalog.default
+        // Absent or malformed → seed defaults; a present-but-empty [] (the user
+        // deleted them all) decodes to [] and is preserved.
+        actions = (try? c.decodeIfPresent([Action].self, forKey: .actions)) ?? Action.defaults()
+        ollamaBaseURL = (try? c.decodeIfPresent(String.self, forKey: .ollamaBaseURL)) ?? AppSettings.defaultOllamaBaseURL
+        searchHistoryShortcut = (try? c.decodeIfPresent(Shortcut.self, forKey: .searchHistoryShortcut)) ?? .searchHistoryDefault
+        transformSelectionShortcut = (try? c.decodeIfPresent(Shortcut.self, forKey: .transformSelectionShortcut)) ?? .transformSelectionDefault
     }
 }
 
@@ -72,6 +82,9 @@ final class SettingsStore: ObservableObject {
 
     @Published var settings: AppSettings {
         didSet {
+            if settings.actions.count != oldValue.actions.count {
+                Log.info("settings.actions count changed → \(settings.actions.count)")
+            }
             scheduleSave()
             if settings != oldValue { onChange?(settings) }
         }
@@ -117,14 +130,16 @@ final class SettingsStore: ObservableObject {
         do {
             let data = try JSONEncoder().encode(settings)
             defaults.set(data, forKey: storageKey)
+            Log.info("settings persisted: \(settings.actions.count) actions")
         } catch {
-            Log.error("SettingsStore encode failed: \(error.localizedDescription)")
+            Log.error("settings persist FAILED: \(error.localizedDescription)")
         }
     }
 
     func flush() {
         saveTask?.cancel()
         saveTask = nil
+        Log.info("settings flush: persisting \(settings.actions.count) actions")
         Self.persist(settings, to: defaults)
     }
 }

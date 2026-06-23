@@ -52,6 +52,102 @@ struct SettingsStoreTests {
         #expect(store.settings.ollamaBaseURL == AppSettings.defaultOllamaBaseURL)
     }
 
+    @Test func deletingActions_staysDeletedAfterReload() {
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        let originalCount = store.settings.actions.count
+        #expect(originalCount > 1)
+
+        // Delete one action (mirrors SettingsActionsView.deleteSelected).
+        let removedID = store.settings.actions[0].id
+        store.settings.actions.removeAll { $0.id == removedID }
+        store.flush()
+        #expect(store.settings.actions.count == originalCount - 1)
+
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.actions.count == originalCount - 1)
+        #expect(!reloaded.settings.actions.contains { $0.id == removedID })
+    }
+
+    @Test func debouncedSave_doesNotPersistBeforeKill() async {
+        // Documents the durability gap that lost deletes. A bare @Published
+        // mutation only schedules a 200ms debounced write; the only flush()
+        // callers were app-termination paths. A menu-bar (LSUIElement) app does
+        // NOT reliably get applicationWillTerminate on `killall`, and install.sh
+        // `killall`s on every reinstall — so a delete made within the debounce
+        // window before a kill never reached disk. Here we mutate, do NOT flush,
+        // and immediately reload (simulating the kill): the change is absent.
+        // The fix is to flush structural edits immediately at the call site
+        // (SettingsActionsView) — see deletingAction_immediatePersist below.
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        let removedID = store.settings.actions[0].id
+
+        store.settings.actions.removeAll { $0.id == removedID }
+        // No flush — abrupt kill before the 200ms debounce fires.
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.actions.contains { $0.id == removedID },
+                "without an immediate flush the debounced delete is lost on kill")
+    }
+
+    @Test func deletingAction_immediatePersist_survivesKill() {
+        // The fix: structural edits flush immediately, so the delete survives an
+        // abrupt kill (no debounce wait, no termination callback). Mirrors
+        // SettingsActionsView.deleteSelected, which now calls flush() after the
+        // mutation.
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        let originalCount = store.settings.actions.count
+        #expect(originalCount > 1)
+
+        let removedID = store.settings.actions[0].id
+        store.settings.actions.removeAll { $0.id == removedID }
+        store.flush()  // immediate persist, as deleteSelected now does
+
+        // Simulate an abrupt kill: no sleep, no second flush.
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.actions.count == originalCount - 1)
+        #expect(!reloaded.settings.actions.contains { $0.id == removedID })
+    }
+
+    @Test func deletingAllActions_staysEmptyAfterReload() {
+        // The user deleted every action on purpose — reload must NOT resurrect
+        // Action.defaults(). An explicit empty array is a real choice, distinct
+        // from a first run where the key is absent.
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.actions.isEmpty == false)
+
+        store.settings.actions.removeAll()
+        store.flush()
+        #expect(store.settings.actions.isEmpty)
+
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.actions.isEmpty)
+    }
+
+    @Test func malformedFieldDoesNotResurrectDeletedActions() throws {
+        // A user who has deleted actions saves an empty array, but some OTHER
+        // field in the blob is malformed (e.g. written by a different build).
+        // Decoding the whole AppSettings throws → load() returns nil → the store
+        // falls back to AppSettings(), whose actions = Action.defaults().
+        // That silently resurrects every action the user deleted.
+        let defaults = makeDefaults()
+        // Valid actions:[] but a Shortcut object missing required fields.
+        let blob: [String: Any] = [
+            "retentionCap": 1000,
+            "actions": [],
+            "searchHistoryShortcut": ["bogus": 1],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: blob)
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        // The user deleted their actions; a malformed neighbor field must not
+        // bring them back.
+        #expect(store.settings.actions.isEmpty)
+    }
+
     @Test func ollamaBaseURL_defaultsAndRoundTrips() {
         let defaults = makeDefaults()
         let store = SettingsStore(defaults: defaults)
