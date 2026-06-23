@@ -24,7 +24,7 @@ public enum OpenAIError: LocalizedError {
 public struct OpenAIClient {
     public init() {}
     private static let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
-    private static let maxTokens = 1000
+    private static let maxTokens = AIClientDefaults.maxOutputTokens
 
     /// `imageData` (PNG bytes) opt-in: when non-nil, the user message `content`
     /// becomes a vision array `[{text}, {image_url: data:image/png;base64,…}]`;
@@ -38,7 +38,7 @@ public struct OpenAIClient {
     ) async throws -> String {
         guard !apiKey.isEmpty else { throw OpenAIError.missingApiKey }
 
-        let fullPrompt = promptTemplate.replacingOccurrences(of: "{{TEXT}}", with: text)
+        let fullPrompt = applyPromptTemplate(promptTemplate, text: text)
 
         var request = URLRequest(url: Self.endpoint)
         request.httpMethod = "POST"
@@ -78,6 +78,10 @@ public struct OpenAIClient {
             throw OpenAIError.httpError(http.statusCode, bodyString)
         }
 
+        if decoded?.choices.first?.finishReason == "length" {
+            Log.info("OpenAI response truncated at max_completion_tokens=\(Self.maxTokens)")
+        }
+
         guard let text = decoded?.choices.first?.message.content?
             .trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty else {
@@ -90,6 +94,11 @@ public struct OpenAIClient {
         struct Choice: Decodable {
             struct Message: Decodable { let content: String? }
             let message: Message
+            let finishReason: String?
+            enum CodingKeys: String, CodingKey {
+                case message
+                case finishReason = "finish_reason"
+            }
         }
         struct APIError: Decodable { let message: String }
         let choices: [Choice]

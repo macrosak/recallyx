@@ -40,7 +40,7 @@ public struct GeminiClient {
     ) async throws -> String {
         guard !apiKey.isEmpty else { throw GeminiError.missingApiKey }
 
-        let fullPrompt = promptTemplate.replacingOccurrences(of: "{{TEXT}}", with: text)
+        let fullPrompt = applyPromptTemplate(promptTemplate, text: text)
 
         guard let key = apiKey.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "\(Self.base)/\(model):generateContent?key=\(key)") else {
@@ -63,7 +63,10 @@ public struct GeminiClient {
         }
 
         let body: [String: Any] = [
-            "contents": [["parts": parts]]
+            "contents": [["parts": parts]],
+            // Without this, Gemini caps output low and silently truncates long
+            // OCR/summaries; match the other clients' high default.
+            "generationConfig": ["maxOutputTokens": AIClientDefaults.maxOutputTokens]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -87,6 +90,10 @@ public struct GeminiClient {
             throw GeminiError.httpError(http.statusCode, bodyString)
         }
 
+        if decoded?.candidates?.first?.finishReason == "MAX_TOKENS" {
+            Log.info("Gemini response truncated at maxOutputTokens=\(AIClientDefaults.maxOutputTokens)")
+        }
+
         // First text part of the first candidate; a safety block (HTTP 200, no
         // candidate text) lands here too.
         guard let text = decoded?.candidates?.first?.content?.parts?
@@ -106,6 +113,7 @@ public struct GeminiClient {
                 let parts: [Part]?
             }
             let content: Content?
+            let finishReason: String?
         }
         struct APIError: Decodable { let message: String }
         let candidates: [Candidate]?

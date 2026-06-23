@@ -44,7 +44,7 @@ public struct AppleClient {
     /// `model` is the `apple:` model id (suffix ignored — the OS picks the
     /// on-device model).
     public func complete(model: String, promptTemplate: String, text: String) async throws -> String {
-        let fullPrompt = promptTemplate.replacingOccurrences(of: "{{TEXT}}", with: text)
+        let fullPrompt = applyPromptTemplate(promptTemplate, text: text)
         #if canImport(FoundationModels)
         guard #available(macOS 26, *) else { throw AppleError.unsupportedOS }
         switch SystemLanguageModel.default.availability {
