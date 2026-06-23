@@ -242,6 +242,40 @@ public final class HistoryPanelViewModel: ObservableObject {
         tab()
     }
 
+    /// Fold a clip created while the panel is open (a detail-pane ⌘C of part of
+    /// a clip) into the live list, *without* moving the highlight off the clip
+    /// the user is reading. `id` is the originally-selected clip's id, captured
+    /// before the insert; selection is resolved back to it by id afterwards
+    /// (falling back to the top row if it's gone).
+    ///
+    /// No-op outside list mode so it never disturbs the action/custom/edit
+    /// machinery. The store has already deduped by content hash, so a clip equal
+    /// to an existing one arrives as that bumped item (same id) — we replace in
+    /// place rather than duplicate.
+    public func insertCopiedClip(_ item: HistoryItem, keepingSelectionOnID id: UUID?) {
+        guard mode == .list else { return }
+
+        // Upsert by id: a dedupe-bump returns the existing clip's id, so drop any
+        // stale copy before inserting at the front (recency order, newest first).
+        allItems.removeAll { $0.id == item.id }
+        allItems.insert(item, at: 0)
+        allItems = Self.ordered(allItems)
+
+        // Rebuild the filtered view for the current query, then re-pin selection
+        // to the original clip by id (an active search may exclude the new clip,
+        // and pinned-first ordering can shift indices — id is the stable key).
+        rebuildFiltered()
+        selectedIndex = id.flatMap { wanted in filtered.firstIndex(where: { $0.id == wanted }) } ?? 0
+    }
+
+    /// Recompute `filtered` from `allItems` honoring the current query — the
+    /// shared body of `refreshClips`'s sync pass, without touching the cursor or
+    /// scheduling the async deep search (the caller re-pins selection by id).
+    private func rebuildFiltered() {
+        let q = query
+        filtered = q.isEmpty ? allItems : FuzzyMatcher.rank(allItems, query: q)
+    }
+
     /// ⇥ — list: open the action menu; actions: edit-before-run the highlighted
     /// saved action; edit: advance to the next step.
     public func tab() {

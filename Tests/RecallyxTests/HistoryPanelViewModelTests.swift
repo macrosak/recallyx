@@ -554,4 +554,65 @@ struct HistoryPanelViewModelTests {
         #expect(vm.mode == .actions)
         #expect(vm.actionItem?.id == pinned.id)        // falls back to filtered[0]
     }
+
+    // MARK: - insertCopiedClip (detail-pane ⌘C → new stack clip, keep original selected)
+
+    @Test func insertCopiedClip_insertsAtTop_keepsOriginalSelectedByID() {
+        let original = textItem("user: alice\npass: s3cr3t", age: 0)
+        let older = textItem("older", age: 10)
+        let vm = makeVM([original, older])
+        vm.selectedIndex = vm.filtered.firstIndex { $0.id == original.id }!
+
+        let copied = textItem("alice", age: 0)         // newest → sorts to the top
+        vm.insertCopiedClip(copied, keepingSelectionOnID: original.id)
+
+        #expect(vm.filtered.first?.id == copied.id)     // new clip is at the top
+        #expect(vm.selectedItem?.id == original.id)     // selection stayed on the viewed clip
+    }
+
+    @Test func insertCopiedClip_missingKeepID_fallsBackToTop() {
+        let original = textItem("orig", age: 0)
+        let vm = makeVM([original])
+
+        let copied = textItem("frag", age: 0)
+        vm.insertCopiedClip(copied, keepingSelectionOnID: nil)
+
+        #expect(vm.selectedIndex == 0)
+        #expect(vm.selectedItem?.id == copied.id)
+    }
+
+    @Test func insertCopiedClip_notInListMode_isNoOp() {
+        let original = textItem("orig")
+        let vm = makeVM([original])
+        vm.tab()                                        // → .actions
+        let before = vm.filtered.map(\.id)
+
+        let copied = textItem("frag")
+        vm.insertCopiedClip(copied, keepingSelectionOnID: original.id)
+
+        #expect(vm.mode == .actions)                    // unchanged
+        #expect(vm.filtered.map(\.id) == before)        // list untouched
+    }
+
+    @Test func insertCopiedClip_dedupeByID_bumpsNoDuplicate() {
+        let original = textItem("user: alice\npass: s3cr3t", age: 0)
+        let existing = textItem("alice", age: 20)       // an old clip equal to the copied text
+        let vm = makeVM([original, existing])
+        vm.selectedIndex = vm.filtered.firstIndex { $0.id == original.id }!
+
+        // The store deduped by content hash: it returns the EXISTING clip's id
+        // (bumped to "now"), not a fresh one.
+        let bumped = HistoryItem(
+            id: existing.id, kind: .text, text: "alice", imageFilename: nil,
+            preview: "alice", byteSize: 5,
+            sourceAppBundleID: nil, sourceAppName: nil, sourceAppPath: nil,
+            createdAt: existing.createdAt, lastUsedAt: Date(),
+            contentHash: ContentHash.of(text: "alice"), imageDimensions: nil
+        )
+        vm.insertCopiedClip(bumped, keepingSelectionOnID: original.id)
+
+        #expect(vm.filtered.filter { $0.id == existing.id }.count == 1)  // no duplicate
+        #expect(vm.filtered.first?.id == existing.id)                    // bumped to top
+        #expect(vm.selectedItem?.id == original.id)                      // selection preserved
+    }
 }

@@ -33,6 +33,10 @@ final class HistoryPanelController {
     private let onBuiltin: (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool
     /// Run a saved action against a clip, then paste the result into `sourceApp`.
     private let onRunAction: (Action, HistoryItem, NSRunningApplication?) -> Void
+    /// Add a detail-pane-copied substring as a new text clip, inheriting the
+    /// viewed clip's provenance. Returns the stored `HistoryItem` (or nil if it
+    /// was empty/whitespace and skipped) so the panel can fold it into the list.
+    private let onCopySelection: (String, HistoryItem) -> HistoryItem?
     /// Emit a usage-journal event (no-op when the journal is off). Only
     /// non-sensitive fields ever flow through here.
     private let log: (String, [String: Any]) -> Void
@@ -44,6 +48,7 @@ final class HistoryPanelController {
         imageURLResolver: @escaping (HistoryItem) -> URL?,
         onBuiltin: @escaping (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool,
         onRunAction: @escaping (Action, HistoryItem, NSRunningApplication?) -> Void = { _, _, _ in },
+        onCopySelection: @escaping (String, HistoryItem) -> HistoryItem? = { _, _ in nil },
         log: @escaping (String, [String: Any]) -> Void = { _, _ in }
     ) {
         self.itemsProvider = itemsProvider
@@ -52,6 +57,7 @@ final class HistoryPanelController {
         self.imageURLResolver = imageURLResolver
         self.onBuiltin = onBuiltin
         self.onRunAction = onRunAction
+        self.onCopySelection = onCopySelection
         self.log = log
     }
 
@@ -96,7 +102,15 @@ final class HistoryPanelController {
         let root = HistoryPanelView(
             viewModel: viewModel,
             imageURL: { [weak self] in self?.imageURLResolver($0) },
-            defaultModel: defaultModelProvider()
+            defaultModel: defaultModelProvider(),
+            onCopySelection: { [weak self] copied, sourceClip in
+                guard let self else { return }
+                // The app adds the new clip (inheriting `sourceClip`'s
+                // provenance) and hands back the stored item; the VM folds it in
+                // while keeping the originally-viewed clip highlighted by id.
+                guard let added = self.onCopySelection(copied, sourceClip) else { return }
+                self.viewModel?.insertCopiedClip(added, keepingSelectionOnID: sourceClip.id)
+            }
         )
         let hosting = NSHostingView(rootView: root)
         hosting.frame = NSRect(origin: .zero, size: panelSize)

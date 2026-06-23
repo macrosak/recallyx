@@ -10,9 +10,17 @@ struct LargeTextView: NSViewRepresentable {
     let text: String
     let itemID: UUID
     let theme: RXTheme
+    /// Fired after the user copies (⌘C) a non-empty selection in the detail
+    /// pane, with the copied substring. The app turns it into a new stack clip
+    /// while keeping the original clip selected. Nil disables copy capture.
+    var onCopy: ((String) -> Void)?
 
     func makeNSView(context: Context) -> NSScrollView {
-        let textView = NSTextView(usingTextLayoutManager: true)
+        context.coordinator.onCopy = onCopy
+        let textView = CopyInterceptingTextView(usingTextLayoutManager: true)
+        textView.onCopy = { [weak coordinator = context.coordinator] copied in
+            coordinator?.onCopy?(copied)
+        }
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
@@ -44,6 +52,10 @@ struct LargeTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        // Keep the copy callback current across SwiftUI re-renders (it closes
+        // over the viewed clip, which changes as the user navigates).
+        context.coordinator.onCopy = onCopy
+
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
         let itemChanged = context.coordinator.lastItemID != itemID
@@ -65,6 +77,9 @@ struct LargeTextView: NSViewRepresentable {
     final class Coordinator {
         var lastTheme: RXTheme?
         var lastItemID: UUID?
+        /// Held here (not on the text view) so it survives SwiftUI re-renders and
+        /// always reflects the currently viewed clip.
+        var onCopy: ((String) -> Void)?
     }
 
     private func applyAttributes(to textView: NSTextView, theme: RXTheme) {
@@ -77,5 +92,21 @@ struct LargeTextView: NSViewRepresentable {
             .paragraphStyle: paragraphStyle,
         ]
         textView.textStorage?.setAttributedString(NSAttributedString(string: text, attributes: attrs))
+    }
+}
+
+/// Read-only `NSTextView` that taps ⌘C: it performs the normal system copy
+/// (selection → pasteboard) and then reports the copied substring so the app
+/// can capture it as a new clip. Fires only for a non-empty selection.
+final class CopyInterceptingTextView: NSTextView {
+    var onCopy: ((String) -> Void)?
+
+    override func copy(_ sender: Any?) {
+        super.copy(sender)
+        let range = selectedRange()
+        guard range.length > 0, let storage = textStorage else { return }
+        let nsString = storage.string as NSString
+        guard range.location + range.length <= nsString.length else { return }
+        onCopy?(nsString.substring(with: range))
     }
 }
