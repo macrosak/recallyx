@@ -22,10 +22,15 @@ enum Paster {
         NSPasteboard.general.setString(text, forType: .string)
     }
 
-    /// Image counterpart of `setClipboardText`.
-    static func setClipboardImage(_ image: NSImage) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([image])
+    /// Image counterpart of `setClipboardText`. Writes the on-disk PNG bytes
+    /// straight to the pasteboard under `.png` — no `NSImage` round-trip, so the
+    /// pasted image is byte-identical to the captured original (no re-encode).
+    /// Stored images are always normalized to PNG at capture, so `.png` is the
+    /// correct type. The pasteboard is injectable for hermetic tests; callers
+    /// use the `.general` default.
+    static func setClipboardImage(data: Data, to pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        pasteboard.setData(data, forType: .png)
     }
 
     /// Activate the source app and synthesize ⌘V — the second half of a paste.

@@ -457,11 +457,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .text:
                 Paster.setClipboardText(item.text ?? "")
             case .image:
-                guard let url = store.imageURL(for: item), let image = NSImage(contentsOf: url) else {
+                guard let url = store.imageURL(for: item),
+                      let data = try? Data(contentsOf: url) else {
                     state.flash(.error("missing image"))
                     return
                 }
-                Paster.setClipboardImage(image)
+                Paster.setClipboardImage(data: data)
             }
             watcher?.markSelfWrite()
             await Paster.activateAndPaste(sourceApp: app)
