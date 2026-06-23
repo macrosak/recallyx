@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-public enum ClipKind: String, Codable, Equatable {
+public enum ClipKind: String, Codable, Equatable, Sendable {
     case text
     case image
 }
@@ -9,7 +9,7 @@ public enum ClipKind: String, Codable, Equatable {
 /// One stored clipboard entry. Text lives inline; images are written to
 /// `images/<id>.png` and only the filename is stored here. `contentHash` keys
 /// dedupe (a re-copy of identical content bumps the existing row to the top).
-public struct HistoryItem: Codable, Identifiable, Equatable {
+public struct HistoryItem: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID
     public var kind: ClipKind
     public var text: String?

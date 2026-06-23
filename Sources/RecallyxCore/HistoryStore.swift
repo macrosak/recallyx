@@ -1,14 +1,21 @@
+import CoreData
 import Foundation
 
-/// On-disk clipboard history: `history.json` (the index) + `images/<id>.png`
-/// (image payloads). Kept off UserDefaults because images make the store
-/// megabytes-large. The in-memory `items` array is always ordered newest-first;
-/// `add` inserts at the top, `bump` moves to the top.
+/// Clipboard history backed by **Core Data** (`NSPersistentCloudKitContainer`
+/// with mirroring OFF — a plain local SQLite store at
+/// `…/Recallyx/Recallyx.sqlite`). Image payloads still live on disk as
+/// `images/<id>.png`; only the filename is stored in the entity.
 ///
-/// Robustness mirrors AI Replace's `SettingsStore`: atomic writes (temp file +
-/// rename), debounced saves, reseed-on-corrupt (the bad file is backed up), and
-/// orphan reconciliation on launch (skipped on the corrupt-reseed path so the
-/// backed-up index's PNGs survive). The retention cap is also enforced on load.
+/// The public API is unchanged from the JSON era (`items`, `add`, `bump`,
+/// `delete`, `clear`, `setPinned`, `cap`, `imageURL`, `flush`, `onChange`) — only
+/// the backend swapped. The in-memory `items` array stays the canonical state
+/// (always recency-ordered, newest-first); every mutation mirrors into Core
+/// Data. Pinned-first ordering is applied at the panel layer.
+///
+/// Robustness mirrors the JSON era: the cap is enforced on load and on add,
+/// pinned clips are exempt from eviction, and `images/` is reconciled against
+/// the entities on launch. On first launch over an existing `history.json` (and
+/// an empty store) the JSON is imported, then renamed to `history.json.bak`.
 @MainActor
 public final class HistoryStore: ObservableObject {
     @Published public private(set) var items: [HistoryItem] = []
@@ -25,8 +32,10 @@ public final class HistoryStore: ObservableObject {
 
     private let baseURL: URL
     private let imagesURL: URL
-    private let indexURL: URL
+    private let indexURL: URL          // legacy history.json (migration source only)
+    private let storeURL: URL          // Recallyx.sqlite
     private let fm = FileManager.default
+    private let persistence: PersistenceController
     private var saveTask: Task<Void, Never>?
 
     /// `onChange` fires after every mutation so the app can refresh the
@@ -36,25 +45,40 @@ public final class HistoryStore: ObservableObject {
     /// - Parameters:
     ///   - baseURL: the store directory; defaults to
     ///     `~/Library/Application Support/Recallyx`. Tests pass a temp dir.
-    public init(baseURL: URL? = nil, cap: Int = 1000) {
+    ///   - inMemory: when true, the Core Data store is created in memory
+    ///     (`/dev/null`) so tests stay hermetic. The base dir is still used for
+    ///     image files and the JSON-migration source.
+    public init(baseURL: URL? = nil, cap: Int = 1000, inMemory: Bool = false) {
         self.cap = cap
         let base = baseURL ?? Self.defaultBaseURL()
         self.baseURL = base
         self.imagesURL = base.appendingPathComponent("images", isDirectory: true)
         self.indexURL = base.appendingPathComponent("history.json")
+        self.storeURL = base.appendingPathComponent("Recallyx.sqlite")
 
         try? fm.createDirectory(at: imagesURL, withIntermediateDirectories: true)
-        let reseededFromCorrupt = load()
-        // Skip reconciliation when we just reseeded from a corrupt index: with
-        // `items` empty, reconcileOrphans() would delete every PNG, destroying the
-        // payloads the `.corrupt-*` backup still names. Leaving the orphans on disk
-        // next to the backup keeps the data recoverable — a small disk leak in the
-        // rare corruption case is preferable to unrecoverable image loss.
-        if !reseededFromCorrupt { reconcileOrphans() }
-        // `cap`'s didSet doesn't fire during init, so enforce the cap here in case
-        // it was lowered between launches. In-memory trim only — don't fire
-        // onChange (listeners aren't wired yet); the next mutation persists.
-        enforceCap()
+        self.persistence = PersistenceController(storeURL: storeURL, inMemory: inMemory)
+
+        var skipReconcile = loadFromStore()
+
+        // One-time JSON → Core Data migration: only when the store is empty and a
+        // legacy index exists. Guarded by store-empty so it never double-imports.
+        if items.isEmpty {
+            // A corrupt legacy JSON is backed up to `.corrupt-*` and leaves the
+            // store empty; skip reconciliation so the PNGs the backup still names
+            // survive next to it (parity with the JSON-era corrupt path).
+            if importLegacyJSONIfNeeded() { skipReconcile = true }
+        }
+
+        // Skip reconciliation when we reseeded from a corrupt/failed store or a
+        // corrupt legacy import: with `items` empty, reconcileOrphans() would
+        // delete every PNG.
+        if !skipReconcile { reconcileOrphans() }
+
+        // `cap`'s didSet doesn't fire during init, so enforce here in case it was
+        // lowered between launches. Persists synchronously (no onChange — listeners
+        // aren't wired yet).
+        enforceCapOnLoad()
     }
 
     public static func defaultBaseURL() -> URL {
@@ -152,28 +176,26 @@ public final class HistoryStore: ObservableObject {
         return imagesURL.appendingPathComponent(filename)
     }
 
-    // MARK: - Persistence
+    // MARK: - Persistence (Core Data)
 
-    /// Loads the index into `items`. Returns `true` only when it took the
-    /// reseed-on-corrupt branch (so `init` can skip orphan reconciliation and
-    /// preserve the PNGs the `.corrupt-*` backup still references); `false` for a
-    /// successful load and for the normal empty/fresh case.
+    /// Loads the entities into `items`, recency-ordered. Returns `true` only when
+    /// the store failed to load and we reseeded empty (so `init` can skip orphan
+    /// reconciliation and preserve the PNGs); `false` for a successful load and
+    /// for the normal empty/fresh case.
     @discardableResult
-    private func load() -> Bool {
-        guard let data = try? Data(contentsOf: indexURL) else {
-            items = []
-            return false
-        }
+    private func loadFromStore() -> Bool {
+        let ctx = persistence.viewContext
+        let request = ClipEntity.clipFetchRequest()
+        request.sortDescriptors = [NSSortDescriptor(key: "recency", ascending: false)]
         do {
-            let decoded = try JSONDecoder().decode([HistoryItem].self, from: data)
-            // Defensive re-sort: trust max(createdAt, lastUsedAt) over file order.
-            items = decoded.sorted { $0.recency > $1.recency }
+            let rows = try ctx.fetch(request)
+            // Map to value types; trust max(createdAt, lastUsedAt) over the stored
+            // recency for the final sort (defensive, matches the JSON-era re-sort).
+            items = rows.compactMap { $0.toItem() }.sorted { $0.recency > $1.recency }
             Log.info("history loaded count=\(items.count)")
             return false
         } catch {
-            Log.error("history decode failed: \(error.localizedDescription) — backing up and reseeding")
-            let backup = indexURL.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))")
-            try? fm.moveItem(at: indexURL, to: backup)
+            Log.error("history fetch failed: \(error.localizedDescription) — reseeding empty")
             items = []
             return true
         }
@@ -185,7 +207,7 @@ public final class HistoryStore: ObservableObject {
         saveTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
-            Self.persist(snapshot, to: indexURL)
+            self.persist(snapshot)
         }
     }
 
@@ -193,20 +215,83 @@ public final class HistoryStore: ObservableObject {
     public func flush() {
         saveTask?.cancel()
         saveTask = nil
-        Self.persist(items, to: indexURL)
+        persist(items)
     }
 
-    private static func persist(_ items: [HistoryItem], to url: URL) {
-        do {
-            let data = try JSONEncoder().encode(items)
-            let tmp = url.appendingPathExtension("tmp")
-            try data.write(to: tmp, options: .atomic)
-            // Atomic replace: rename over the live file. `replaceItemAt` falls
-            // back to a plain move when there's no existing file.
-            _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
-        } catch {
-            Log.error("history persist failed: \(error.localizedDescription)")
+    /// Reconcile the Core Data store to match the in-memory `items`: upsert each
+    /// item by id, delete any rows whose id is no longer present. The in-memory
+    /// array is the source of truth, so this keeps the store a faithful mirror
+    /// without re-implementing the dedupe/cap/order logic in Core Data.
+    private func persist(_ snapshot: [HistoryItem]) {
+        let ctx = persistence.viewContext
+        ctx.performAndWait {
+            do {
+                let request = ClipEntity.clipFetchRequest()
+                let existing = try ctx.fetch(request)
+                var byID: [UUID: ClipEntity] = [:]
+                for row in existing {
+                    if let rid = row.id { byID[rid] = row } else { ctx.delete(row) }
+                }
+
+                let liveIDs = Set(snapshot.map { $0.id })
+                // Delete rows no longer in the snapshot.
+                for (rid, row) in byID where !liveIDs.contains(rid) {
+                    ctx.delete(row)
+                }
+                // Upsert each live item.
+                for item in snapshot {
+                    let entity = byID[item.id] ?? ClipEntity(context: ctx)
+                    entity.apply(item)
+                }
+
+                if ctx.hasChanges { try ctx.save() }
+            } catch {
+                Log.error("history persist failed: \(error.localizedDescription)")
+            }
         }
+    }
+
+    // MARK: - One-time JSON → Core Data migration
+
+    /// On first launch of the Core Data build: if a legacy `history.json` exists,
+    /// decode it with the JSON-era logic, insert an entity per item (preserving
+    /// ids/timestamps/pins/images), then rename `history.json` → `history.json.bak`.
+    /// Idempotent: callers guard on `items.isEmpty`, and the `.bak` rename means a
+    /// second run finds no `history.json` to import. A corrupt JSON is tolerated
+    /// (backed up to `.corrupt-*`, store stays empty).
+    ///
+    /// Returns `true` when it hit the corrupt-JSON branch (so `init` can skip
+    /// orphan reconciliation and preserve the PNGs the `.corrupt-*` backup names);
+    /// `false` for a clean import and for the no-legacy-file case.
+    @discardableResult
+    private func importLegacyJSONIfNeeded() -> Bool {
+        guard fm.fileExists(atPath: indexURL.path) else { return false }
+        guard let data = try? Data(contentsOf: indexURL) else { return false }
+
+        let decoded: [HistoryItem]
+        do {
+            decoded = try JSONDecoder().decode([HistoryItem].self, from: data)
+        } catch {
+            Log.error("legacy history.json decode failed: \(error.localizedDescription) — backing up, store stays empty")
+            let backup = indexURL.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))")
+            try? fm.moveItem(at: indexURL, to: backup)
+            return true
+        }
+
+        items = decoded.sorted { $0.recency > $1.recency }
+        persist(items)
+        Log.info("migrated \(items.count) clip(s) from history.json → Core Data")
+
+        // Rename the source so the import is one-shot. Don't delete — keep the
+        // .bak as a safety net.
+        let backup = indexURL.appendingPathExtension("bak")
+        try? fm.removeItem(at: backup)   // overwrite a stale .bak if present
+        do {
+            try fm.moveItem(at: indexURL, to: backup)
+        } catch {
+            Log.error("history.json → .bak rename failed: \(error.localizedDescription)")
+        }
+        return false
     }
 
     // MARK: - Internals
@@ -231,13 +316,21 @@ public final class HistoryStore: ObservableObject {
         Log.info("history evicted to cap=\(cap)")
     }
 
+    /// Cap enforcement during init: trim in memory and persist synchronously,
+    /// without firing onChange (listeners aren't wired yet).
+    private func enforceCapOnLoad() {
+        let before = items.count
+        enforceCap()
+        if items.count != before { persist(items) }
+    }
+
     private func deleteImageFile(for item: HistoryItem) {
         guard let url = imageURL(for: item) else { return }
         try? fm.removeItem(at: url)
     }
 
     /// On launch: delete `images/` files with no index entry, so abandoned PNGs
-    /// (e.g. from a crash between image-write and index-save) don't accumulate.
+    /// (e.g. from a crash between image-write and store-save) don't accumulate.
     /// Index entries whose image file is missing are kept — the UI renders a
     /// placeholder for them.
     private func reconcileOrphans() {
