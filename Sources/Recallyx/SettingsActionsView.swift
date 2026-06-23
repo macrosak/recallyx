@@ -96,6 +96,10 @@ struct SettingsActionsView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(theme.textDim)
                 .frame(width: 24, height: 22)
+                // Without this, .plain only hit-tests the opaque glyph pixels, so
+                // clicks in the transparent area around a thin +/−/↻ glyph never
+                // fired the action. Make the whole frame clickable.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
