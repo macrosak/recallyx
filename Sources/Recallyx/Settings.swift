@@ -82,6 +82,9 @@ final class SettingsStore: ObservableObject {
 
     @Published var settings: AppSettings {
         didSet {
+            if settings.actions.count != oldValue.actions.count {
+                Log.info("settings.actions count changed → \(settings.actions.count)")
+            }
             scheduleSave()
             if settings != oldValue { onChange?(settings) }
         }
@@ -127,14 +130,16 @@ final class SettingsStore: ObservableObject {
         do {
             let data = try JSONEncoder().encode(settings)
             defaults.set(data, forKey: storageKey)
+            Log.info("settings persisted: \(settings.actions.count) actions")
         } catch {
-            Log.error("SettingsStore encode failed: \(error.localizedDescription)")
+            Log.error("settings persist FAILED: \(error.localizedDescription)")
         }
     }
 
     func flush() {
         saveTask?.cancel()
         saveTask = nil
+        Log.info("settings flush: persisting \(settings.actions.count) actions")
         Self.persist(settings, to: defaults)
     }
 }

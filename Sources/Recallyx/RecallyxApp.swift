@@ -76,6 +76,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The lazy-MenuBarExtra lesson from AI Replace means all launch wiring
         // must live here, NOT on the MenuBarExtra content's `.task`.
 
+        // Diagnostic: what did the settings store load from disk at launch?
+        let loadedActions = settingsStore.settings.actions
+        Log.info("actions loaded (\(loadedActions.count)): [\(loadedActions.map(\.name).joined(separator: ", "))]")
+
         notifier.requestAuthorizationIfNeeded()
         state.historyCount = store.items.count
         store.onChange = { [weak self] in

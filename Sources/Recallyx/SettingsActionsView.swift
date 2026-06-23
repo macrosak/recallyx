@@ -194,10 +194,19 @@ struct SettingsActionsView: View {
     }
 
     private func deleteSelected() {
-        guard let id = selectedID,
-              let removedIndex = settingsStore.settings.actions.firstIndex(where: { $0.id == id })
-        else { return }
+        let countBefore = settingsStore.settings.actions.count
+        guard let id = selectedID else {
+            Log.info("delete requested: no selectedID — nothing to delete (count=\(countBefore))")
+            return
+        }
+        guard let removedIndex = settingsStore.settings.actions.firstIndex(where: { $0.id == id }) else {
+            Log.info("delete requested: selectedID=\(id) matched NO action (count=\(countBefore))")
+            return
+        }
+        let matchedName = settingsStore.settings.actions[removedIndex].name
+        Log.info("delete requested: selectedID=\(id) matchedName=\(matchedName) countBefore=\(countBefore)")
         settingsStore.settings.actions.remove(at: removedIndex)
+        Log.info("delete done: countAfter=\(settingsStore.settings.actions.count)")
         // Keep selection on the neighbor: the action now at the deleted index
         // (the next one down), or the previous one if we removed the last row;
         // nil only when the list is now empty.
@@ -222,7 +231,11 @@ struct SettingsActionsView: View {
     private func restoreBuiltins() {
         let before = settingsStore.settings.actions
         let merged = Action.appendingMissingBuiltins(into: before)
-        guard merged.count != before.count else { return }
+        guard merged.count != before.count else {
+            Log.info("restore built-ins: nothing missing (count=\(before.count))")
+            return
+        }
+        Log.info("restore built-ins: appended \(merged.count - before.count) (\(before.count) → \(merged.count))")
         settingsStore.settings.actions = merged
         if selectedID == nil { selectedID = merged.first?.id }
         settingsStore.flush()
