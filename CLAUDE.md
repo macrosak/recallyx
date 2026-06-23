@@ -103,6 +103,7 @@ Or run the binary directly: `./Recallyx.app/Contents/MacOS/Recallyx` (stderr mir
 - **Chromium/Electron silently drop `kAXSelectedText` writes** — re-read to verify, fall back to synthesized ⌘V at `.cghidEventTap`. (Phase 2 paste path.)
 - **Chromium/Gmail don't expose `kAXSelectedText` reads either** (error or empty even with a selection) — fall back to synthesized ⌘C + pasteboard `changeCount` polling. AI Replace dodged this with a separate manual-copy hotkey (⌘⌥V); Recallyx synthesizes the copy itself.
 - **OpenSSL 3 PBES2 p12 is rejected by macOS Security** — `create-signing-identity.sh` uses `/usr/bin/openssl` (LibreSSL).
+- **SwiftUI `.buttonStyle(.plain)` icon buttons only hit-test the glyph's opaque pixels** — add `.contentShape(Rectangle())` so the whole frame is clickable (a thin +/−/↻ glyph otherwise drops most clicks; caused the action-delete "can't click minus" bug).
 
 ## When the user reports a problem
 1. App-side log: the `log stream` predicate above (info-level os_log is **not** persisted to disk — `log show` won't have it; use live `log stream`, or run the binary directly for the stderr mirror).
