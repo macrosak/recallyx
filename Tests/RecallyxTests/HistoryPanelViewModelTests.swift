@@ -615,4 +615,161 @@ struct HistoryPanelViewModelTests {
         #expect(vm.filtered.first?.id == existing.id)                    // bumped to top
         #expect(vm.selectedItem?.id == original.id)                      // selection preserved
     }
+
+    // MARK: - parseKindFilter (the `:img` / `kind:image` search token)
+
+    @Test func parseKindFilter_imgAlias_loneToken() {
+        let r = HistoryPanelViewModel.parseKindFilter(":img")
+        #expect(r.kind == .image)
+        #expect(r.residual == "")
+    }
+
+    @Test func parseKindFilter_kindImage_loneToken() {
+        let r = HistoryPanelViewModel.parseKindFilter("kind:image")
+        #expect(r.kind == .image)
+        #expect(r.residual == "")
+    }
+
+    @Test func parseKindFilter_txtAlias_loneToken() {
+        let r = HistoryPanelViewModel.parseKindFilter(":txt")
+        #expect(r.kind == .text)
+        #expect(r.residual == "")
+    }
+
+    @Test func parseKindFilter_kindText_loneToken() {
+        let r = HistoryPanelViewModel.parseKindFilter("kind:text")
+        #expect(r.kind == .text)
+        #expect(r.residual == "")
+    }
+
+    @Test func parseKindFilter_imgWithResidual_stripsTokenAndOneSpace() {
+        let r = HistoryPanelViewModel.parseKindFilter(":img figma")
+        #expect(r.kind == .image)
+        #expect(r.residual == "figma")
+    }
+
+    @Test func parseKindFilter_kindImageWithResidual() {
+        let r = HistoryPanelViewModel.parseKindFilter("kind:image figma")
+        #expect(r.kind == .image)
+        #expect(r.residual == "figma")
+    }
+
+    @Test func parseKindFilter_txtWithResidual() {
+        let r = HistoryPanelViewModel.parseKindFilter(":txt hello world")
+        #expect(r.kind == .text)
+        #expect(r.residual == "hello world")    // only the first space is stripped
+    }
+
+    @Test func parseKindFilter_caseInsensitiveToken() {
+        #expect(HistoryPanelViewModel.parseKindFilter(":IMG").kind == .image)
+        #expect(HistoryPanelViewModel.parseKindFilter("KIND:IMAGE foo").kind == .image)
+        #expect(HistoryPanelViewModel.parseKindFilter(":IMG Figma").residual == "Figma")  // residual case preserved
+    }
+
+    @Test func parseKindFilter_leadingWhitespaceTrimmed() {
+        let r = HistoryPanelViewModel.parseKindFilter("   :img logo")
+        #expect(r.kind == .image)
+        #expect(r.residual == "logo")
+    }
+
+    @Test func parseKindFilter_partialToken_passesThrough() {
+        for partial in [":", ":i", ":im", "kind", "kind:", "kind:ima"] {
+            let r = HistoryPanelViewModel.parseKindFilter(partial)
+            #expect(r.kind == nil)
+            #expect(r.residual == partial)
+        }
+    }
+
+    @Test func parseKindFilter_tokenMustEndOrBeFollowedBySpace() {
+        // `:imgx` / `kind:images` are NOT tokens — they pass through verbatim.
+        #expect(HistoryPanelViewModel.parseKindFilter(":imgx").kind == nil)
+        #expect(HistoryPanelViewModel.parseKindFilter(":imgx").residual == ":imgx")
+        #expect(HistoryPanelViewModel.parseKindFilter("kind:images").kind == nil)
+        #expect(HistoryPanelViewModel.parseKindFilter("kind:images").residual == "kind:images")
+    }
+
+    @Test func parseKindFilter_plainQuery_passesThrough() {
+        let r = HistoryPanelViewModel.parseKindFilter("invoice")
+        #expect(r.kind == nil)
+        #expect(r.residual == "invoice")
+    }
+
+    @Test func parseKindFilter_emptyQuery_passesThrough() {
+        let r = HistoryPanelViewModel.parseKindFilter("")
+        #expect(r.kind == nil)
+        #expect(r.residual == "")
+    }
+
+    // MARK: - kind token applied to the live clip search
+
+    @Test func kindToken_img_filtersToImageClipsOnly() {
+        let vm = makeVM([textItem("alpha"), imageItem(), textItem("beta")])
+        vm.query = ":img"
+        #expect(vm.filtered.allSatisfy { $0.kind == .image })
+        #expect(vm.filtered.count == 1)
+    }
+
+    @Test func kindToken_kindImage_filtersToImageClipsOnly() {
+        let vm = makeVM([textItem("alpha"), imageItem(), textItem("beta")])
+        vm.query = "kind:image"
+        #expect(vm.filtered.allSatisfy { $0.kind == .image })
+        #expect(vm.filtered.count == 1)
+    }
+
+    @Test func kindToken_txt_filtersToTextClipsOnly() {
+        let vm = makeVM([textItem("alpha"), imageItem(), textItem("beta")])
+        vm.query = ":txt"
+        #expect(vm.filtered.allSatisfy { $0.kind == .text })
+        #expect(vm.filtered.count == 2)
+    }
+
+    @Test func kindToken_imgWithResidual_furtherFiltersImages() {
+        // Two images with distinguishing preview text; the residual matches one.
+        var figma = imageItem()
+        figma.preview = "Figma screenshot"
+        figma.contentHash = "figma-img"
+        figma.id = UUID()
+        var other = imageItem()
+        other.preview = "Random photo"
+        other.contentHash = "other-img"
+        other.id = UUID()
+        let vm = makeVM([figma, other, textItem("figma notes")])
+        vm.query = ":img figma"
+        #expect(vm.filtered.allSatisfy { $0.kind == .image })
+        #expect(vm.filtered.contains { $0.id == figma.id })
+        #expect(!vm.filtered.contains { $0.id == other.id })
+        #expect(!vm.filtered.contains { $0.kind == .text })   // the text "figma notes" is excluded
+    }
+
+    @Test func plainQuery_unaffectedByKindFilter() {
+        let vm = makeVM([textItem("alpha"), imageItem(), textItem("alpine")])
+        vm.query = "alp"
+        // Normal fuzzy search across all kinds — text clips matching "alp".
+        #expect(vm.filtered.allSatisfy { $0.kind == .text })
+        #expect(vm.filtered.count == 2)
+    }
+
+    @Test func kindToken_loneToken_isRecencyOrderOfThatKind() {
+        // A lone token reuses the empty-query (recency) path, kind-filtered.
+        let vm = makeVM([textItem("a", age: 0), imageItem(), textItem("b", age: 1)])
+        vm.query = ":txt"
+        #expect(vm.filtered.map(\.kind) == [.text, .text])
+        #expect(vm.filtered.map(\.text) == ["a", "b"])   // recency order preserved
+    }
+
+    @Test func kindToken_noOpInActionSearchMode() {
+        // In action-search mode `:img` is just menu-filter text — it must not
+        // touch the clip list or be treated as a kind filter.
+        let actions = [Action(name: "Image describe", icon: "sparkles", steps: [])]
+        let vm = HistoryPanelViewModel(items: [textItem("x"), imageItem()], actions: actions,
+            onBuiltin: { _, _ in }, onDismiss: {})
+        vm.tab()                          // → actions mode, query cleared
+        #expect(vm.mode == .actions)
+        let clipsBefore = vm.filtered.map(\.id)
+        vm.query = ":img"
+        // The clip list (`filtered`) is untouched in action mode.
+        #expect(vm.filtered.map(\.id) == clipsBefore)
+        // And the menu filter ran over the literal token (no kind magic).
+        #expect(vm.mode == .actions)
+    }
 }
