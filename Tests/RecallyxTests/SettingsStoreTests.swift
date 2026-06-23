@@ -52,6 +52,61 @@ struct SettingsStoreTests {
         #expect(store.settings.ollamaBaseURL == AppSettings.defaultOllamaBaseURL)
     }
 
+    @Test func deletingActions_staysDeletedAfterReload() {
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        let originalCount = store.settings.actions.count
+        #expect(originalCount > 1)
+
+        // Delete one action (mirrors SettingsActionsView.deleteSelected).
+        let removedID = store.settings.actions[0].id
+        store.settings.actions.removeAll { $0.id == removedID }
+        store.flush()
+        #expect(store.settings.actions.count == originalCount - 1)
+
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.actions.count == originalCount - 1)
+        #expect(!reloaded.settings.actions.contains { $0.id == removedID })
+    }
+
+    @Test func deletingAllActions_staysEmptyAfterReload() {
+        // The user deleted every action on purpose — reload must NOT resurrect
+        // Action.defaults(). An explicit empty array is a real choice, distinct
+        // from a first run where the key is absent.
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.actions.isEmpty == false)
+
+        store.settings.actions.removeAll()
+        store.flush()
+        #expect(store.settings.actions.isEmpty)
+
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.actions.isEmpty)
+    }
+
+    @Test func malformedFieldDoesNotResurrectDeletedActions() throws {
+        // A user who has deleted actions saves an empty array, but some OTHER
+        // field in the blob is malformed (e.g. written by a different build).
+        // Decoding the whole AppSettings throws → load() returns nil → the store
+        // falls back to AppSettings(), whose actions = Action.defaults().
+        // That silently resurrects every action the user deleted.
+        let defaults = makeDefaults()
+        // Valid actions:[] but a Shortcut object missing required fields.
+        let blob: [String: Any] = [
+            "retentionCap": 1000,
+            "actions": [],
+            "searchHistoryShortcut": ["bogus": 1],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: blob)
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        // The user deleted their actions; a malformed neighbor field must not
+        // bring them back.
+        #expect(store.settings.actions.isEmpty)
+    }
+
     @Test func ollamaBaseURL_defaultsAndRoundTrips() {
         let defaults = makeDefaults()
         let store = SettingsStore(defaults: defaults)
