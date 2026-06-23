@@ -188,12 +188,32 @@ struct SettingsActionsView: View {
         let action = Action(name: "New action", icon: "sparkles", steps: [Step(type: .ai)])
         settingsStore.settings.actions.append(action)
         selectedID = action.id
+        // Structural edit: persist immediately rather than waiting on the
+        // debounce, which a kill (e.g. install.sh's killall) can outrun.
+        settingsStore.flush()
     }
 
     private func deleteSelected() {
-        guard let id = selectedID else { return }
-        settingsStore.settings.actions.removeAll { $0.id == id }
-        selectedID = settingsStore.settings.actions.first?.id
+        guard let id = selectedID,
+              let removedIndex = settingsStore.settings.actions.firstIndex(where: { $0.id == id })
+        else { return }
+        settingsStore.settings.actions.remove(at: removedIndex)
+        // Keep selection on the neighbor: the action now at the deleted index
+        // (the next one down), or the previous one if we removed the last row;
+        // nil only when the list is now empty.
+        selectedID = SettingsActionsView.neighborSelection(
+            in: settingsStore.settings.actions, removedIndex: removedIndex
+        )
+        settingsStore.flush()
+    }
+
+    /// Which action to select after removing the one at `removedIndex`: the item
+    /// that now occupies that index (the next one down), the new last item if the
+    /// removed row was last, or nil when the list is empty. Pure for testing.
+    static func neighborSelection(in actions: [Action], removedIndex: Int) -> UUID? {
+        guard !actions.isEmpty else { return nil }
+        let index = min(removedIndex, actions.count - 1)
+        return actions[index].id
     }
 
     /// Append any shipped built-in actions the user is missing (append-only,
@@ -205,6 +225,7 @@ struct SettingsActionsView: View {
         guard merged.count != before.count else { return }
         settingsStore.settings.actions = merged
         if selectedID == nil { selectedID = merged.first?.id }
+        settingsStore.flush()
     }
 
     private func moveAction(from: Int, to: Int) {
@@ -213,6 +234,7 @@ struct SettingsActionsView: View {
         let action = list.remove(at: from)
         list.insert(action, at: to)
         settingsStore.settings.actions = list
+        settingsStore.flush()
     }
 
     private func addStep(to action: Binding<Action>) {
