@@ -138,6 +138,26 @@ every rebuild, which makes macOS drop the Accessibility grant each time; a self-
 `Recallyx Dev` cert keeps the grant across rebuilds
 ([Apple's recommendation](https://developer.apple.com/forums/thread/730043)).
 
+### Optional: an Xcode project
+
+The release path above (`bundle.sh`) needs only the Command Line Tools. If you'd rather
+build/run from Xcode, there's an optional [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+spec (`project.yml`) that generates an Xcode project for the macOS app. The generated
+`Recallyx.xcodeproj` and your local signing settings are gitignored.
+
+```bash
+brew install xcodegen
+cp Local.xcconfig.example Local.xcconfig   # then set DEVELOPMENT_TEAM to your own team id
+xcodegen generate                          # writes Recallyx.xcodeproj
+open Recallyx.xcodeproj
+```
+
+A blank team builds unsigned, which is fine for a compile check:
+
+```bash
+xcodebuild -project Recallyx.xcodeproj -scheme Recallyx build CODE_SIGNING_ALLOWED=NO
+```
+
 The clipboard history (⌘⇧V) works with no special permission. **⌃⇧V** (grab selection +
 paste results) needs Accessibility: on first use the app shows an **Open Settings** alert →
 toggle **Recallyx** on under **Privacy & Security → Accessibility** → **quit and relaunch**

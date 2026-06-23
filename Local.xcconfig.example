@@ -1,0 +1,11 @@
+// Local.xcconfig.example — copy to Local.xcconfig (gitignored) for Xcode builds.
+//
+//   cp Local.xcconfig.example Local.xcconfig
+//
+// Then set DEVELOPMENT_TEAM to your own Apple Developer team id. The real value
+// must NEVER be committed — Local.xcconfig is gitignored on purpose.
+//
+// Leaving this blank builds unsigned (fine for a compile check / CI), e.g.:
+//   xcodebuild -project Recallyx.xcodeproj -scheme Recallyx build CODE_SIGNING_ALLOWED=NO
+
+DEVELOPMENT_TEAM = // your personal team id
