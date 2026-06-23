@@ -34,6 +34,60 @@ struct FuzzyMatcherTests {
         #expect(FuzzyMatcher.score("abcdef", query: "eca") == nil) // out of order
     }
 
+    // MARK: - Sparse-span gate (short-query noise suppression)
+
+    @Test func sparseSubsequence_acrossLongClip_isRejected() {
+        // "image" with its characters scattered across a long script must NOT match:
+        // the chars appear in order but spread over thousands of bytes.
+        let script = """
+        #!/usr/bin/env bash
+        for f in *.png; do
+          echo "processing $f"
+          \(String(repeating: "x", count: 2000))
+          gzip --keep "$f"
+        done
+        echo "everything done"
+        """
+        // No literal "image" substring; the i/m/a/g/e only appear far apart.
+        #expect(!script.lowercased().contains("image"))
+        #expect(FuzzyMatcher.score(script, query: "image") == nil)
+    }
+
+    @Test func nearContiguousSubsequence_isStillKept() {
+        // The classic loose-but-tight fuzzy hit survives the span gate.
+        #expect(FuzzyMatcher.score("lemongrass", query: "log") != nil) // l..o..g, span 6
+    }
+
+    @Test func contiguousSubstring_neverGatedOut() {
+        // A real substring match is in a higher band than subsequence — the sparse
+        // gate must never touch it, even inside a long document.
+        let doc = String(repeating: "z", count: 5000) + " imageMetadata " + String(repeating: "z", count: 5000)
+        #expect(FuzzyMatcher.score(doc, query: "image") != nil)
+    }
+
+    @Test func tighterSubsequence_outranksLooserOne() {
+        // Length-normalized subsequence band: less slack between matched chars ranks higher.
+        let tight = FuzzyMatcher.score("a_b_c", query: "abc")!   // span 5, slack 2
+        let loose = FuzzyMatcher.score("a__b__c", query: "abc")! // span 7, slack 4
+        #expect(tight > loose)
+    }
+
+    @Test func rank_shortQuery_dropsScatteredLongClip_keepsIntendedShort() {
+        // Typing "url" should keep the short clip and drop a long script where u/r/l
+        // only appear scattered.
+        let intended = item(text: "url")
+        let scattered = item(text: """
+        function update() {
+          \(String(repeating: "q", count: 1500))
+          return result.value;
+        }
+        """)
+        // sanity: no literal "url" substring in the scattered clip
+        #expect(!scattered.text!.lowercased().contains("url"))
+        let kept = FuzzyMatcher.rank([scattered, intended], query: "url")
+        #expect(kept.map(\.text) == ["url"])
+    }
+
     @Test func rank_preservesInputOrder_ignoringScore() {
         // Filter-only: matches keep their recency (input) order regardless of how
         // strongly each one matched.

@@ -72,8 +72,18 @@ public enum FuzzyMatcher {
 
     /// All query chars appear in order, with a penalty for gaps and a bonus for
     /// adjacency. Lower band than substring matches.
+    ///
+    /// A subsequence match is only meaningful when the matched characters sit
+    /// reasonably close together. Without this, a short query (`image`, `url`,
+    /// `key`) "matches" almost any long clip (script/JSON/log) because its few
+    /// characters appear *scattered* across thousands of bytes — flooding the
+    /// filtered list with noise. We therefore reject matches whose **span**
+    /// (distance from the first to the last matched character) is far larger than
+    /// the query — the match has to be dense, not spread across the whole clip.
     private static func subsequenceScore(_ candidate: String, _ query: String) -> Int? {
+        let qCount = query.count
         var qi = query.startIndex
+        var firstMatch: Int?
         var lastMatch: Int?
         var gapPenalty = 0
         var adjacencyBonus = 0
@@ -84,11 +94,31 @@ public enum FuzzyMatcher {
                     let gap = pos - last - 1
                     if gap == 0 { adjacencyBonus += 5 } else { gapPenalty += gap }
                 }
+                if firstMatch == nil { firstMatch = pos }
                 lastMatch = pos
                 qi = query.index(after: qi)
             }
         }
-        guard qi == query.endIndex else { return nil }
-        return 1_000 - gapPenalty + adjacencyBonus
+        guard qi == query.endIndex, let first = firstMatch, let last = lastMatch
+        else { return nil }
+
+        // Span density gate: keep only matches packed within a bounded window.
+        // The window scales with the query so longer queries get more slack, but a
+        // few characters can never legitimately span a whole document.
+        let span = last - first + 1
+        let maxSpan = max(qCount * sparseSpanFactor, qCount + sparseSpanFloor)
+        guard span <= maxSpan else { return nil }
+
+        // Length-normalize within the subsequence band: a tighter span (less
+        // padding between the query's own characters) ranks higher.
+        let slack = span - qCount  // extra chars threaded between matches
+        return 1_000 - gapPenalty - slack + adjacencyBonus
     }
+
+    /// Span-gate tuning: a subsequence match is kept only when its span is within
+    /// `max(qCount * factor, qCount + floor)` characters. Tight enough to drop
+    /// chars-scattered-across-a-script noise, loose enough to keep genuine
+    /// near-contiguous fuzzy hits (e.g. "log" in "lemongrass").
+    private static let sparseSpanFactor = 4
+    private static let sparseSpanFloor = 12
 }
