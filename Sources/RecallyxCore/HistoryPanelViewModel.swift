@@ -46,6 +46,10 @@ public final class HistoryPanelViewModel: ObservableObject {
     /// search; Esc brings the clip search back).
     private var savedClipQuery: String = ""
 
+    /// The id of the clip the cursor was on when we entered an action state, so
+    /// Esc can restore the cursor to that clip instead of snapping to the top.
+    private var savedClipID: UUID?
+
     /// Placeholder + count adapt to the active search domain.
     public var searchPlaceholder: String { mode == .list ? "Search clipboard…" : "Search actions…" }
     public var countText: String {
@@ -246,9 +250,11 @@ public final class HistoryPanelViewModel: ObservableObject {
             guard let item = selectedItem else { return }
             actionItem = item
             menuItems = buildMenu(for: item)
-            // Hand the search field to the action list: stash the clip query,
-            // clear it, then filter the menu (empty query → all).
+            // Hand the search field to the action list: stash the clip query
+            // (and the cursor's clip id, so Esc can restore the cursor), clear
+            // it, then filter the menu (empty query → all).
             savedClipQuery = query
+            savedClipID = item.id
             mode = .actions
             query = ""
             applyMenuFilter()
@@ -405,6 +411,13 @@ public final class HistoryPanelViewModel: ObservableObject {
         } else {
             refreshClips()           // same value (or allItems changed) — refresh explicitly
         }
+        // refreshClips reset the cursor to 0; restore it to the clip we entered
+        // on (by id, since pinned-first ordering / filtering can shift indices).
+        // Falls back to 0 if that clip is gone (e.g. deleted while in actions).
+        if let id = savedClipID, let idx = filtered.firstIndex(where: { $0.id == id }) {
+            selectedIndex = idx
+        }
+        savedClipID = nil
     }
 
     // MARK: - Filtering

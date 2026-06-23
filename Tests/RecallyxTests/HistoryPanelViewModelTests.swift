@@ -280,6 +280,56 @@ struct HistoryPanelViewModelTests {
         #expect(vm.searchPlaceholder == "Search clipboard…")
     }
 
+    @Test func escFromActions_restoresCursorToSameClip_emptyQuery() {
+        // Regression: ⇥ into actions on the 3rd clip then Esc must land back on
+        // that clip, not snap the cursor to the top.
+        let vm = makeVM([textItem("a", age: 0), textItem("b", age: 1), textItem("c", age: 2)])
+        // List order: a (newest), b, c.
+        vm.moveDown(); vm.moveDown()       // cursor on "c"
+        #expect(vm.selectedItem?.text == "c")
+        let targetID = vm.selectedItem?.id
+        vm.tab()                           // open actions on "c"
+        vm.cancel()                        // Esc back to list
+        #expect(vm.mode == .list)
+        #expect(vm.selectedIndex != 0)
+        #expect(vm.selectedItem?.id == targetID)
+        #expect(vm.selectedItem?.text == "c")
+    }
+
+    @Test func escFromActions_restoresCursorToSameClip_nonEmptyQuery() {
+        let vm = makeVM([textItem("alpha", age: 0), textItem("alpine", age: 1), textItem("beta", age: 2)])
+        vm.query = "alp"                   // filters to alpha, alpine
+        vm.moveDown()                      // cursor on the 2nd match ("alpine")
+        let targetID = vm.selectedItem?.id
+        #expect(vm.selectedItem?.text == "alpine")
+        vm.tab()                           // open actions
+        #expect(vm.query == "")
+        vm.cancel()                        // Esc → restores query "alp" and cursor
+        #expect(vm.mode == .list)
+        #expect(vm.query == "alp")
+        #expect(vm.selectedItem?.id == targetID)
+        #expect(vm.selectedItem?.text == "alpine")
+    }
+
+    @Test func escFromActions_stashedClipGone_fallsBackToTop() {
+        // If the clip we entered actions on is removed while in the menu, Esc
+        // can't restore it → fall back to index 0.
+        var deleted: HistoryItem?
+        let vm = makeVM([textItem("a", age: 0), textItem("b", age: 1), textItem("c", age: 2)]) { action, item in
+            if action == .delete { deleted = item }
+        }
+        vm.moveDown(); vm.moveDown()       // cursor on "c"
+        #expect(vm.selectedItem?.text == "c")
+        vm.tab()                           // open actions on "c"
+        // Delete "c" (removes locally + returnToList). Its stashed id is gone.
+        vm.actionIndex = vm.menuItems.firstIndex { $0.id == "builtin.delete" }!
+        vm.confirm()
+        #expect(deleted?.text == "c")
+        #expect(vm.mode == .list)
+        #expect(vm.selectedIndex == 0)
+        #expect(vm.selectedItem?.text == "a")
+    }
+
     // MARK: - Pinning
 
     private func pinnedTextItem(_ s: String) -> HistoryItem {
