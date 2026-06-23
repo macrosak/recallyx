@@ -69,6 +69,47 @@ struct SettingsStoreTests {
         #expect(!reloaded.settings.actions.contains { $0.id == removedID })
     }
 
+    @Test func debouncedSave_doesNotPersistBeforeKill() async {
+        // Documents the durability gap that lost deletes. A bare @Published
+        // mutation only schedules a 200ms debounced write; the only flush()
+        // callers were app-termination paths. A menu-bar (LSUIElement) app does
+        // NOT reliably get applicationWillTerminate on `killall`, and install.sh
+        // `killall`s on every reinstall — so a delete made within the debounce
+        // window before a kill never reached disk. Here we mutate, do NOT flush,
+        // and immediately reload (simulating the kill): the change is absent.
+        // The fix is to flush structural edits immediately at the call site
+        // (SettingsActionsView) — see deletingAction_immediatePersist below.
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        let removedID = store.settings.actions[0].id
+
+        store.settings.actions.removeAll { $0.id == removedID }
+        // No flush — abrupt kill before the 200ms debounce fires.
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.actions.contains { $0.id == removedID },
+                "without an immediate flush the debounced delete is lost on kill")
+    }
+
+    @Test func deletingAction_immediatePersist_survivesKill() {
+        // The fix: structural edits flush immediately, so the delete survives an
+        // abrupt kill (no debounce wait, no termination callback). Mirrors
+        // SettingsActionsView.deleteSelected, which now calls flush() after the
+        // mutation.
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        let originalCount = store.settings.actions.count
+        #expect(originalCount > 1)
+
+        let removedID = store.settings.actions[0].id
+        store.settings.actions.removeAll { $0.id == removedID }
+        store.flush()  // immediate persist, as deleteSelected now does
+
+        // Simulate an abrupt kill: no sleep, no second flush.
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.actions.count == originalCount - 1)
+        #expect(!reloaded.settings.actions.contains { $0.id == removedID })
+    }
+
     @Test func deletingAllActions_staysEmptyAfterReload() {
         // The user deleted every action on purpose — reload must NOT resurrect
         // Action.defaults(). An explicit empty array is a real choice, distinct

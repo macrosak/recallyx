@@ -7,7 +7,7 @@ import RecallyxCore
 /// first launch. The title bar is transparent + full-size content so the custom
 /// header sits behind the native traffic lights, matching the design.
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let settingsStore: SettingsStore
     private let clearHistory: () -> Void
     private let shortcutActions: ShortcutActions
@@ -27,6 +27,14 @@ final class SettingsWindowController {
         self.shortcutActions = shortcutActions
         self.revealUsageJournal = revealUsageJournal
         self.clearUsageJournal = clearUsageJournal
+        super.init()
+    }
+
+    /// Closing the Settings window isn't a termination path, so the debounced
+    /// save could still be pending. Flush so any just-made edit reaches disk
+    /// even if the app is killed (e.g. install.sh's killall) right after.
+    func windowWillClose(_ notification: Notification) {
+        settingsStore.flush()
     }
 
     func show(tab: SettingsTab = .general) {
@@ -58,6 +66,7 @@ final class SettingsWindowController {
         window.isReleasedWhenClosed = false
         window.setContentSize(NSSize(width: 820, height: 740))
         window.center()
+        window.delegate = self
         self.window = window
 
         NSApp.activate(ignoringOtherApps: true)
