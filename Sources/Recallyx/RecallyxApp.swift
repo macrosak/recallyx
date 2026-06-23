@@ -126,6 +126,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onRunAction: { [weak self] action, item, app in
                 self?.runAction(action, item: item, into: app)
             },
+            onCopySelection: { [weak self] copied, sourceClip in
+                self?.handleCopiedSelection(copied, fromClip: sourceClip)
+            },
             log: { [weak self] event, fields in self?.journal.log(event, fields) }
         )
         self.historyPanel = historyPanel
@@ -259,6 +262,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 markSelfWrite: { [weak self] in self?.watcher?.markSelfWrite() }
             )
         }
+    }
+
+    /// The user copied a substring of the viewed clip in the detail pane (⌘C).
+    /// Add it as a new text clip — inheriting the *viewed* clip's provenance, not
+    /// "Recallyx" — and hand the stored item back so the panel can fold it into
+    /// the open list while keeping the original clip selected.
+    ///
+    /// Returns nil (no clip added) for empty/whitespace-only selections. The text
+    /// view already wrote the pasteboard, so `markSelfWrite()` first keeps the
+    /// watcher's next tick from re-capturing the same content (dedupe is the
+    /// backstop if the timing races).
+    private func handleCopiedSelection(_ text: String, fromClip src: HistoryItem) -> HistoryItem? {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        watcher?.markSelfWrite()
+        let clip = CapturedClip(
+            kind: .text, text: text, imageData: nil,
+            preview: String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280)),
+            byteSize: text.utf8.count,
+            sourceAppBundleID: src.sourceAppBundleID,
+            sourceAppName: src.sourceAppName,
+            sourceAppPath: src.sourceAppPath,
+            contentHash: ContentHash.of(text: text), imageDimensions: nil
+        )
+        let id = store.add(clip)
+        journal.log("copy_selection", ["length": text.count])
+        Log.info("detail-pane copy captured len=\(text.count) — added as new clip")
+        return store.items.first { $0.id == id }
     }
 
     /// Run a saved (or transient) action over a clip's text and paste the result

@@ -9,6 +9,10 @@ struct HistoryPanelView: View {
     let imageURL: (HistoryItem) -> URL?
     /// Default model name shown in the Custom… footer.
     var defaultModel: String = ModelCatalog.default
+    /// Called when the user copies (⌘C) a substring of the viewed text clip in
+    /// the detail pane: `(copied substring, the clip it was copied from)`. The
+    /// app adds it as a new stack clip while keeping the original selected.
+    var onCopySelection: ((String, HistoryItem) -> Void)?
 
     /// Which control holds keyboard focus. Search in list mode; the ad-hoc AI
     /// editor in custom/edit mode; nothing in the action menu (so typed letters
@@ -198,7 +202,17 @@ struct HistoryPanelView: View {
     @ViewBuilder
     private func detail(_ item: HistoryItem?) -> some View {
         if let item {
-            DetailPaneView(item: item, theme: theme, imageURL: imageURL(item))
+            DetailPaneView(
+                item: item,
+                theme: theme,
+                imageURL: imageURL(item),
+                // Only the list-mode detail (the clip you're reading) captures
+                // copies; in action modes the copy hook stays off so a stray ⌘C
+                // doesn't spawn clips behind the menu.
+                onCopySelection: viewModel.mode == .list
+                    ? onCopySelection.map { handler in { copied in handler(copied, item) } }
+                    : nil
+            )
         } else {
             Color.clear
         }
@@ -291,6 +305,10 @@ struct DetailPaneView: View {
     let item: HistoryItem
     let theme: RXTheme
     let imageURL: URL?
+    /// Fired with the copied substring when the user ⌘C's a selection in a text
+    /// clip's detail view. Nil for image clips (no text selection) and outside
+    /// list mode.
+    var onCopySelection: ((String) -> Void)?
 
     /// Holds the asynchronously loaded preview image for image clips.
     /// Cache hit in `imagePreview` renders synchronously; this state is only
@@ -337,7 +355,7 @@ struct DetailPaneView: View {
                 }
             }
         } else {
-            LargeTextView(text: item.text ?? "", itemID: item.id, theme: theme)
+            LargeTextView(text: item.text ?? "", itemID: item.id, theme: theme, onCopy: onCopySelection)
         }
     }
 
