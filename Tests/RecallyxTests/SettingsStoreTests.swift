@@ -159,4 +159,67 @@ struct SettingsStoreTests {
         let reloaded = SettingsStore(defaults: defaults)
         #expect(reloaded.settings.ollamaBaseURL == "http://192.168.1.10:11434")
     }
+
+    // MARK: - providers migration / round-trip
+
+    @Test func providers_absentInBlob_seedFromReality() throws {
+        // An old blob with no `providers` key must decode to a SEEDED list, not
+        // an empty one — so a working setup never loses its providers. We can't
+        // assert the exact seeded set (it reads the live keychain/OS), but Ollama
+        // is always seeded, so the list is never empty.
+        let defaults = makeDefaults()
+        let partial = try JSONSerialization.data(withJSONObject: ["retentionCap": 500])
+        defaults.set(partial, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(!store.settings.providers.isEmpty)
+        #expect(store.settings.providers.contains { $0.type == .ollama })
+    }
+
+    @Test func providers_presentInBlob_decodeUnchanged() throws {
+        // A blob WITH an explicit providers list decodes exactly as written —
+        // the migration seeding must not override a stored list.
+        let id = UUID()
+        let stored = AppSettings(
+            providers: [
+                ProviderConfig(id: id, type: .openAICompatible, displayName: "Groq",
+                               baseURL: "https://api.groq.com/openai/v1",
+                               keychainAccount: "custom-x", models: ["llama-3.1-70b"]),
+            ]
+        )
+        let data = try JSONEncoder().encode(stored)
+        let defaults = makeDefaults()
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providers.count == 1)
+        #expect(store.settings.providers.first?.id == id)
+        #expect(store.settings.providers.first?.displayName == "Groq")
+        #expect(store.settings.providers.first?.models == ["llama-3.1-70b"])
+    }
+
+    @Test func providers_explicitEmptyList_isPreserved() throws {
+        // The user removed every provider on purpose — an explicit [] must NOT
+        // re-seed (distinct from an absent key on an old blob).
+        let stored = AppSettings(providers: [])
+        let data = try JSONEncoder().encode(stored)
+        let defaults = makeDefaults()
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providers.isEmpty)
+    }
+
+    @Test func providers_roundTripThroughStore() {
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        let custom = ProviderConfig(type: .openAICompatible, displayName: "Together",
+                                    baseURL: "https://api.together.xyz/v1",
+                                    keychainAccount: "custom-y", models: ["m1", "m2"])
+        store.settings.providers.append(custom)
+        store.flush()
+
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.providers.contains { $0.displayName == "Together" && $0.models == ["m1", "m2"] })
+    }
 }

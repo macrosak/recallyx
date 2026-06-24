@@ -28,6 +28,11 @@ struct AppSettings: Codable, Equatable {
     var actions: [Action]
     /// Base URL of the local Ollama server used by `ollama:*` models.
     var ollamaBaseURL: String
+    /// The user's explicit AI-provider list, surfaced in the Providers Settings
+    /// tab. An enabled entry makes that provider's models appear in the pickers
+    /// (replacing the old keychain-presence/always-on availability heuristic).
+    /// Holds only references — secrets stay in the Keychain.
+    var providers: [ProviderConfig]
     /// ⌘⇧V by default — opens the history panel.
     var searchHistoryShortcut: Shortcut
     /// ⌃⇧V by default — grabs the selection and opens its actions.
@@ -42,6 +47,7 @@ struct AppSettings: Codable, Equatable {
         defaultModel: String = ModelCatalog.default,
         actions: [Action] = Action.defaults(),
         ollamaBaseURL: String = AppSettings.defaultOllamaBaseURL,
+        providers: [ProviderConfig]? = nil,
         searchHistoryShortcut: Shortcut = .searchHistoryDefault,
         transformSelectionShortcut: Shortcut = .transformSelectionDefault
     ) {
@@ -53,6 +59,10 @@ struct AppSettings: Codable, Equatable {
         self.defaultModel = defaultModel
         self.actions = actions
         self.ollamaBaseURL = ollamaBaseURL
+        // nil → seed from current reality (keychain keys present + Ollama always +
+        // Apple if available). A fresh first run with no keys yields just Ollama;
+        // an existing install keeps every configured provider on migration.
+        self.providers = providers ?? ProviderConfig.seedFromCurrentReality(ollamaBaseURL: ollamaBaseURL)
         self.searchHistoryShortcut = searchHistoryShortcut
         self.transformSelectionShortcut = transformSelectionShortcut
     }
@@ -79,6 +89,12 @@ struct AppSettings: Codable, Equatable {
         // deleted them all) decodes to [] and is preserved.
         actions = (try? c.decodeIfPresent([Action].self, forKey: .actions)) ?? Action.defaults()
         ollamaBaseURL = (try? c.decodeIfPresent(String.self, forKey: .ollamaBaseURL)) ?? AppSettings.defaultOllamaBaseURL
+        // Absent → seed the provider list from current reality so an existing
+        // setup never loses its configured providers (see seedFromCurrentReality).
+        // A present list (incl. an explicit []) decodes unchanged. A malformed
+        // value also re-seeds rather than blanking AI entirely.
+        providers = (try? c.decodeIfPresent([ProviderConfig].self, forKey: .providers))
+            ?? ProviderConfig.seedFromCurrentReality(ollamaBaseURL: ollamaBaseURL)
         searchHistoryShortcut = (try? c.decodeIfPresent(Shortcut.self, forKey: .searchHistoryShortcut)) ?? .searchHistoryDefault
         transformSelectionShortcut = (try? c.decodeIfPresent(Shortcut.self, forKey: .transformSelectionShortcut)) ?? .transformSelectionDefault
     }
