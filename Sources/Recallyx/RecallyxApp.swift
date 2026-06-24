@@ -72,6 +72,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Reflect the persisted preference into the on-disk log sink before the
+        // first Log call so a disabled log never writes. Default is ON.
+        FileLog.shared.enabled = settingsStore.settings.fileLogEnabled
         Log.info("applicationDidFinishLaunching")
         // The lazy-MenuBarExtra lesson from AI Replace means all launch wiring
         // must live here, NOT on the MenuBarExtra content's `.task`.
@@ -94,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsStore.onChange = { [weak self] settings in
             self?.store.cap = settings.retentionCap
             self?.journal.enabled = settings.usageJournalEnabled
+            FileLog.shared.enabled = settings.fileLogEnabled
         }
 
         // The watcher reads the "Capture sensitive data" flag live from settings.
@@ -115,7 +119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 resume: { [weak self] in self?.resumeHotkeys() }
             ),
             revealUsageJournal: { [weak self] in self?.revealUsageJournal() },
-            clearUsageJournal: { [weak self] in self?.journal.clear() }
+            clearUsageJournal: { [weak self] in self?.journal.clear() },
+            revealFileLog: { [weak self] in self?.revealFileLog() },
+            clearFileLog: { Task { await FileLog.shared.clear() } }
         )
         self.settingsWindow = settingsWindow
 
@@ -354,7 +360,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Category from the error TYPE only — never the raw message,
                 // which can echo user text / script output.
                 journal.log("action_error", ["name": action.name, "category": Self.errorCategory(error)])
-                Log.error("action failed: \(error.localizedDescription)")
+                // Log the error CATEGORY, never the raw message — a failing
+                // script step carries its stderr and an AI client carries the
+                // API response body, both of which can echo the clip text. The
+                // persistent file log must stay content-free. `state.lastError`
+                // / the notification are transient in-memory/UI surfaces (not
+                // persisted) so they keep the human-readable detail.
+                Log.error("action failed: category=\(Self.errorCategory(error))")
                 state.lastError = error.localizedDescription
                 state.flash(.error("action failed"))
                 notifier.notify(body: error.localizedDescription)
@@ -496,6 +508,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// never enabled, or just cleared), open the containing folder instead.
     private func revealUsageJournal() {
         let url = journal.url
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            NSWorkspace.shared.open(url.deletingLastPathComponent())
+        }
+    }
+
+    /// Reveal the diagnostic log file in Finder. If it doesn't exist yet (logging
+    /// disabled, or just cleared), open the containing folder instead.
+    private func revealFileLog() {
+        let url = FileLog.shared.url
         if FileManager.default.fileExists(atPath: url.path) {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {
