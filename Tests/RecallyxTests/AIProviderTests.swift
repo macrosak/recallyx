@@ -32,6 +32,108 @@ struct AIProviderTests {
         #expect(AIProvider.provider(for: "ollama:deepseek-r1:7b") == .ollama)
     }
 
+    @Test func routesCustomPrefixToOpenAICompatible() {
+        let id = UUID().uuidString.lowercased()
+        #expect(AIProvider.provider(for: "custom:\(id):gpt-4o") == .openAICompatible)
+        #expect(AIProvider.provider(for: "custom:abc:llama-3.1-70b") == .openAICompatible)
+        // Case-insensitive prefix.
+        #expect(AIProvider.provider(for: "CUSTOM:abc:m") == .openAICompatible)
+        // Custom takes priority over substrings it might otherwise contain.
+        #expect(AIProvider.provider(for: "custom:abc:gemini-2.5-pro") == .openAICompatible)
+        #expect(AIProvider.provider(for: "custom:abc:claude-x") == .openAICompatible)
+    }
+
+    @Test func parseCustomModelSplitsIDAndModel() {
+        #expect(AIProvider.parseCustomModel("custom:abc:gpt-4o")?.providerID == "abc")
+        #expect(AIProvider.parseCustomModel("custom:abc:gpt-4o")?.model == "gpt-4o")
+        // A model name with colons is preserved (only the first two `:` split).
+        let parsed = AIProvider.parseCustomModel("custom:abc:org/model:tag")
+        #expect(parsed?.providerID == "abc")
+        #expect(parsed?.model == "org/model:tag")
+        // Non-custom or malformed ids return nil.
+        #expect(AIProvider.parseCustomModel("gpt-4o") == nil)
+        #expect(AIProvider.parseCustomModel("custom:abc:") == nil)
+        #expect(AIProvider.parseCustomModel("custom::model") == nil)
+        #expect(AIProvider.parseCustomModel("custom:abc") == nil)
+    }
+
+    @Test func customProviderHasNoFixedKeychainAndIsVisionCapable() {
+        #expect(AIProvider.openAICompatible.keychain == nil)
+        #expect(AIProvider.openAICompatible.supportsVision == true)
+        // Treated as vision-capable so the server (not us) decides.
+        #expect(AIProvider.supportsVision(forModel: "custom:abc:gpt-4o") == true)
+    }
+
+    @Test func openAICompatibleDisplayName() {
+        #expect(AIProvider.openAICompatible.displayName == "Custom (OpenAI-compatible)")
+    }
+
+    @Test func chatCompletionsURLAppendsPath() {
+        #expect(OpenAIClient.chatCompletionsURL(baseURL: "https://api.groq.com/openai/v1")?.absoluteString
+            == "https://api.groq.com/openai/v1/chat/completions")
+        // Trailing slash tolerated.
+        #expect(OpenAIClient.chatCompletionsURL(baseURL: "https://api.together.xyz/v1/")?.absoluteString
+            == "https://api.together.xyz/v1/chat/completions")
+        // A full endpoint URL is used as-is.
+        #expect(OpenAIClient.chatCompletionsURL(baseURL: "https://x.test/v1/chat/completions")?.absoluteString
+            == "https://x.test/v1/chat/completions")
+        // Empty → nil.
+        #expect(OpenAIClient.chatCompletionsURL(baseURL: "   ") == nil)
+    }
+
+    /// The facade resolves a custom id to its base URL + key and dispatches to
+    /// the OpenAI-compatible path. With no server at the resolved URL the request
+    /// fails (network), but crucially it does NOT throw `customEndpointUnavailable`
+    /// (resolution succeeded) — proving the resolver + prefix-stripping ran.
+    @Test func facadeResolvesCustomEndpoint() async throws {
+        let id = "abc-123"
+        var resolvedID: String?
+        let client = AIClient(customEndpoint: { providerID in
+            resolvedID = providerID
+            // Unused port so the dispatch fails fast without a real server.
+            return (baseURL: "http://127.0.0.1:1/v1", keychainAccount: "custom-test-account")
+        })
+        do {
+            _ = try await client.complete(prompt: "hi", model: "custom:\(id):gpt-4o", input: "x")
+            Issue.record("expected a network error from the unused port")
+        } catch let error as ActionError {
+            if case .customEndpointUnavailable = error {
+                Issue.record("resolver returned an endpoint, should not be unavailable")
+            }
+        } catch {
+            // Network / OpenAIError — fine; resolution happened.
+        }
+        #expect(resolvedID == id)
+    }
+
+    /// An unresolvable custom id (provider removed) throws `customEndpointUnavailable`.
+    @Test func facadeThrowsWhenCustomEndpointUnresolvable() async throws {
+        let client = AIClient(customEndpoint: { _ in nil })
+        do {
+            _ = try await client.complete(prompt: "hi", model: "custom:gone:gpt-4o", input: "x")
+            Issue.record("expected customEndpointUnavailable")
+        } catch let error as ActionError {
+            guard case .customEndpointUnavailable = error else {
+                Issue.record("expected .customEndpointUnavailable, got \(error)")
+                return
+            }
+        }
+    }
+
+    /// A malformed custom id (no model component) is also treated as unavailable.
+    @Test func facadeThrowsForMalformedCustomID() async throws {
+        let client = AIClient(customEndpoint: { _ in (baseURL: "http://127.0.0.1:1", keychainAccount: "a") })
+        do {
+            _ = try await client.complete(prompt: "hi", model: "custom:onlyid", input: "x")
+            Issue.record("expected customEndpointUnavailable for malformed id")
+        } catch let error as ActionError {
+            guard case .customEndpointUnavailable = error else {
+                Issue.record("expected .customEndpointUnavailable, got \(error)")
+                return
+            }
+        }
+    }
+
     @Test func routesApplePrefixToApple() {
         #expect(AIProvider.provider(for: "apple:on-device") == .apple)
         // A custom override the user might type — suffix is ignored downstream.

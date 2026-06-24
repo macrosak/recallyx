@@ -20,27 +20,48 @@ public enum OpenAIError: LocalizedError {
     }
 }
 
-/// Chat-completions client. Copied from AI Replace.
+/// Chat-completions client. Copied from AI Replace; the same code serves the
+/// built-in OpenAI provider and user-added OpenAI-compatible endpoints (Groq /
+/// Together / OpenRouter / LM Studio / vLLM / …) via a configurable `baseURL`.
 public struct OpenAIClient {
     public init() {}
-    private static let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
+    /// The OpenAI API base — the default `baseURL`. Custom endpoints pass their own.
+    public static let defaultBaseURL = "https://api.openai.com/v1"
     private static let maxTokens = AIClientDefaults.maxOutputTokens
+
+    /// Resolves the chat-completions endpoint from a provider base URL. Accepts a
+    /// base like `https://api.groq.com/openai/v1` (→ `…/v1/chat/completions`) or a
+    /// full `…/chat/completions` URL (used as-is). Trailing slashes are tolerated.
+    public static func chatCompletionsURL(baseURL: String) -> URL? {
+        var trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmed.hasSuffix("/") { trimmed.removeLast() }
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasSuffix("/chat/completions") { return URL(string: trimmed) }
+        return URL(string: trimmed + "/chat/completions")
+    }
 
     /// `imageData` (PNG bytes) opt-in: when non-nil, the user message `content`
     /// becomes a vision array `[{text}, {image_url: data:image/png;base64,…}]`;
     /// otherwise the existing plain-text shape (unchanged).
+    ///
+    /// `baseURL` defaults to OpenAI's; custom OpenAI-compatible providers pass
+    /// their own endpoint base.
     public func complete(
         apiKey: String,
+        baseURL: String = OpenAIClient.defaultBaseURL,
         model: String,
         promptTemplate: String,
         text: String,
         imageData: Data? = nil
     ) async throws -> String {
         guard !apiKey.isEmpty else { throw OpenAIError.missingApiKey }
+        guard let endpoint = Self.chatCompletionsURL(baseURL: baseURL) else {
+            throw OpenAIError.invalidResponse
+        }
 
         let fullPrompt = applyPromptTemplate(promptTemplate, text: text)
 
-        var request = URLRequest(url: Self.endpoint)
+        var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

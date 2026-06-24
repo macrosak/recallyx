@@ -11,20 +11,30 @@ public struct KeychainStore {
         self.account = account
     }
 
+    /// The bundle-id Keychain service all Recallyx items share. Custom-endpoint
+    /// keys (addressed by a per-provider account) store under this same service.
+    public static let recallyxService = "io.github.macrosak.recallyx"
+
     public static let openAIKey = KeychainStore(
-        service: "io.github.macrosak.recallyx",
+        service: recallyxService,
         account: "openai-api-key"
     )
 
     public static let anthropicKey = KeychainStore(
-        service: "io.github.macrosak.recallyx",
+        service: recallyxService,
         account: "anthropic-api-key"
     )
 
     public static let geminiKey = KeychainStore(
-        service: "io.github.macrosak.recallyx",
+        service: recallyxService,
         account: "gemini-api-key"
     )
+
+    /// Builds a store for a custom OpenAI-compatible provider's API key, keyed by
+    /// the provider's per-id account (`ProviderConfig.customKeychainAccount(for:)`).
+    public static func custom(account: String) -> KeychainStore {
+        KeychainStore(service: recallyxService, account: account)
+    }
 
     public func read() -> String? {
         var query: [String: Any] = baseQuery

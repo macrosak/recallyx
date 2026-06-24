@@ -68,7 +68,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let accessibility = AccessibilityClient()
     private lazy var actionRunner = ActionRunner(
         defaultModel: { [settingsStore] in settingsStore.settings.defaultModel },
-        ollamaBaseURL: { [settingsStore] in settingsStore.settings.ollamaBaseURL }
+        ollamaBaseURL: { [settingsStore] in settingsStore.settings.ollamaBaseURL },
+        // Resolve a `custom:<id>:<model>` step to its endpoint: find the enabled
+        // provider by id in the live settings list and hand the facade its base
+        // URL + keychain account (the secret stays in the Keychain).
+        customEndpoint: { [settingsStore] providerID in
+            guard let provider = settingsStore.settings.providers.first(where: {
+                $0.type == .openAICompatible && $0.enabled
+                    && $0.id.uuidString.lowercased() == providerID.lowercased()
+            }),
+            let baseURL = provider.baseURL, !baseURL.isEmpty else { return nil }
+            let account = provider.keychainAccount ?? ProviderConfig.customKeychainAccount(for: provider.id)
+            return (baseURL: baseURL, keychainAccount: account)
+        }
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -403,6 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .gemini: return "gemini"
         case .ollama: return "ollama"
         case .apple: return "apple"
+        case .openAICompatible: return "custom"
         }
     }
 
