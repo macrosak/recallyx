@@ -22,6 +22,8 @@ struct SettingsView: View {
     let shortcutActions: ShortcutActions
     let revealUsageJournal: () -> Void
     let clearUsageJournal: () -> Void
+    let revealFileLog: () -> Void
+    let clearFileLog: () -> Void
     @State private var tab: SettingsTab
 
     private let tabs: [SettingsTab] = [.general, .actions]
@@ -35,6 +37,8 @@ struct SettingsView: View {
         shortcutActions: ShortcutActions,
         revealUsageJournal: @escaping () -> Void = {},
         clearUsageJournal: @escaping () -> Void = {},
+        revealFileLog: @escaping () -> Void = {},
+        clearFileLog: @escaping () -> Void = {},
         initialTab: SettingsTab = .general
     ) {
         self.settingsStore = settingsStore
@@ -42,6 +46,8 @@ struct SettingsView: View {
         self.shortcutActions = shortcutActions
         self.revealUsageJournal = revealUsageJournal
         self.clearUsageJournal = clearUsageJournal
+        self.revealFileLog = revealFileLog
+        self.clearFileLog = clearFileLog
         self._tab = State(initialValue: initialTab)
     }
 
@@ -51,7 +57,7 @@ struct SettingsView: View {
             switch tab {
             case .general:
                 ScrollView {
-                    SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, revealUsageJournal: revealUsageJournal, clearUsageJournal: clearUsageJournal, theme: theme)
+                    SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, revealUsageJournal: revealUsageJournal, clearUsageJournal: clearUsageJournal, revealFileLog: revealFileLog, clearFileLog: clearFileLog, theme: theme)
                         .padding(.horizontal, 22)
                         .padding(.vertical, 20)
                 }

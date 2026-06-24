@@ -13,6 +13,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let shortcutActions: ShortcutActions
     private let revealUsageJournal: () -> Void
     private let clearUsageJournal: () -> Void
+    private let revealFileLog: () -> Void
+    private let clearFileLog: () -> Void
     private var window: NSWindow?
 
     init(
@@ -20,13 +22,17 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         clearHistory: @escaping () -> Void,
         shortcutActions: ShortcutActions,
         revealUsageJournal: @escaping () -> Void = {},
-        clearUsageJournal: @escaping () -> Void = {}
+        clearUsageJournal: @escaping () -> Void = {},
+        revealFileLog: @escaping () -> Void = {},
+        clearFileLog: @escaping () -> Void = {}
     ) {
         self.settingsStore = settingsStore
         self.clearHistory = clearHistory
         self.shortcutActions = shortcutActions
         self.revealUsageJournal = revealUsageJournal
         self.clearUsageJournal = clearUsageJournal
+        self.revealFileLog = revealFileLog
+        self.clearFileLog = clearFileLog
         super.init()
     }
 
@@ -50,6 +56,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             shortcutActions: shortcutActions,
             revealUsageJournal: revealUsageJournal,
             clearUsageJournal: clearUsageJournal,
+            revealFileLog: revealFileLog,
+            clearFileLog: clearFileLog,
             initialTab: tab
         )
         let hosting = NSHostingController(rootView: view)

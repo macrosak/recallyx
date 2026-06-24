@@ -17,6 +17,11 @@ struct AppSettings: Codable, Equatable {
     /// Opt-in, off-by-default local usage journal (see `UsageJournal`). Never
     /// transmits anything; records non-sensitive events to a file on this Mac.
     var usageJournalEnabled: Bool
+    /// On-by-default rotating diagnostic file log (see `FileLog`). Content-free
+    /// (lengths/categories/counts, never clip text) and local-only; the persisted
+    /// counterpart to the otherwise-ephemeral stderr/os_log output, so a bug is
+    /// already captured on disk when the user reports it.
+    var fileLogEnabled: Bool
     /// Model used by AI steps that don't override it.
     var defaultModel: String
     /// User-defined script/AI action pipelines shown in the Tab menu.
@@ -33,6 +38,7 @@ struct AppSettings: Codable, Equatable {
         captureSensitive: Bool = false,
         launchAtLogin: Bool = false,
         usageJournalEnabled: Bool = false,
+        fileLogEnabled: Bool = true,
         defaultModel: String = ModelCatalog.default,
         actions: [Action] = Action.defaults(),
         ollamaBaseURL: String = AppSettings.defaultOllamaBaseURL,
@@ -43,6 +49,7 @@ struct AppSettings: Codable, Equatable {
         self.captureSensitive = captureSensitive
         self.launchAtLogin = launchAtLogin
         self.usageJournalEnabled = usageJournalEnabled
+        self.fileLogEnabled = fileLogEnabled
         self.defaultModel = defaultModel
         self.actions = actions
         self.ollamaBaseURL = ollamaBaseURL
@@ -64,6 +71,9 @@ struct AppSettings: Codable, Equatable {
         captureSensitive = (try? c.decodeIfPresent(Bool.self, forKey: .captureSensitive)) ?? false
         launchAtLogin = (try? c.decodeIfPresent(Bool.self, forKey: .launchAtLogin)) ?? false
         usageJournalEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .usageJournalEnabled)) ?? false
+        // Default ON: absent (older blobs) or malformed → enabled, so existing
+        // installs start persisting logs without any user action.
+        fileLogEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .fileLogEnabled)) ?? true
         defaultModel = (try? c.decodeIfPresent(String.self, forKey: .defaultModel)) ?? ModelCatalog.default
         // Absent or malformed → seed defaults; a present-but-empty [] (the user
         // deleted them all) decodes to [] and is preserved.

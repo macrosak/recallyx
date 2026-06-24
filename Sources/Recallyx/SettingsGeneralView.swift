@@ -9,6 +9,8 @@ struct SettingsGeneralView: View {
     let shortcutActions: ShortcutActions
     var revealUsageJournal: () -> Void = {}
     var clearUsageJournal: () -> Void = {}
+    var revealFileLog: () -> Void = {}
+    var clearFileLog: () -> Void = {}
     let theme: SettingsTheme
 
     @State private var capText: String = ""
@@ -380,6 +382,25 @@ struct SettingsGeneralView: View {
                 ) {
                     SettingsButton(title: "Reveal in Finder", theme: theme, action: revealUsageJournal)
                     SettingsButton(title: "Clear", kind: .danger, theme: theme, action: clearUsageJournal)
+                }
+                SettingsRow(
+                    label: "Diagnostic log (local only)",
+                    desc: "Keeps a rotating, content-free log on this Mac so a problem is captured for a bug report. Never includes clipboard contents and is never sent anywhere.",
+                    theme: theme
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { settingsStore.settings.fileLogEnabled },
+                        set: { settingsStore.settings.fileLogEnabled = $0 }
+                    ))
+                    .toggleStyle(.switch).labelsHidden().tint(theme.accent)
+                }
+                SettingsRow(
+                    label: "Diagnostic log data",
+                    desc: "Inspect or delete the local log file.",
+                    theme: theme
+                ) {
+                    SettingsButton(title: "Reveal in Finder", theme: theme, action: revealFileLog)
+                    SettingsButton(title: "Clear", kind: .danger, theme: theme, action: clearFileLog)
                 }
                 SettingsRow(
                     label: "Clear history",

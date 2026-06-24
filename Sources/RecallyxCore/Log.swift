@@ -35,5 +35,10 @@ public enum Log {
 
     private static func write(_ line: String) {
         FileHandle.standardError.write(Data("\(line)\n".utf8))
+        // Persist to a rotating on-disk file too — info-level os_log is not kept
+        // on disk, so this is what's available when a user reports a bug. The
+        // sink is content-free: it writes exactly these (length/category/count)
+        // strings, never clip text.
+        FileLog.shared.write(line)
     }
 }
