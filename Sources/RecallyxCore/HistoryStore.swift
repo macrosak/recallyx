@@ -111,7 +111,12 @@ public final class HistoryStore: ObservableObject {
                 try data.write(to: url, options: .atomic)
                 imageFilename = filename
             } catch {
-                Log.error("history image write failed: \(error.localizedDescription)")
+                // The PNG is the clip's entire payload — without it an image item
+                // would be permanently broken and undisplayable. Drop the capture
+                // rather than insert a corrupt row. The fresh id is returned but
+                // never referenced (the watcher discards it for image clips).
+                Log.error("history image write failed, dropping clip: \(error.localizedDescription)")
+                return id
             }
         }
 
