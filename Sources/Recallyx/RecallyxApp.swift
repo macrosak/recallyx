@@ -346,6 +346,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 journal.log("action_error", ["name": action.name, "category": "invalidApiKey"])
                 state.flash(.error("invalid key"))
                 notifier.notify(body: "Anthropic rejected the API key (401). Update it in Settings.", action: .openSettings)
+            } catch GeminiError.invalidApiKey {
+                journal.log("action_error", ["name": action.name, "category": "invalidApiKey"])
+                state.flash(.error("invalid key"))
+                notifier.notify(body: "Google Gemini rejected the API key (401). Update it in Settings.", action: .openSettings)
             } catch {
                 // Category from the error TYPE only — never the raw message,
                 // which can echo user text / script output.
