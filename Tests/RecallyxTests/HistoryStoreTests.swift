@@ -141,6 +141,24 @@ struct HistoryStoreTests {
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
+    @Test func add_imageWriteFailure_dropsClipInsteadOfInsertingBrokenRow() {
+        let (store, base) = makeStore()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // Force the PNG write to fail: replace the `images/` directory (created in
+        // init) with a regular file, so `data.write(to: images/<id>.png)` can't
+        // resolve a parent directory and throws.
+        let imagesDir = base.appendingPathComponent("images", isDirectory: true)
+        try? FileManager.default.removeItem(at: imagesDir)
+        try! Data([0]).write(to: imagesDir)
+
+        store.add(imageClip([1, 2, 3, 4]))
+
+        // The clip was dropped — no broken `.image`-with-nil-filename row.
+        #expect(store.items.isEmpty)
+        #expect(!store.items.contains { $0.kind == .image && $0.imageFilename == nil })
+    }
+
     @Test func setPinned_flipsFlagAndPersists() {
         let (store, base) = makeStore()
         defer { try? FileManager.default.removeItem(at: base) }
