@@ -115,6 +115,45 @@ public final class HistoryPanelViewModel: ObservableObject {
         }.map(\.element)
     }
 
+    /// Parse a leading kind token off a clip-search query. A query that *starts*
+    /// with `:img` / `kind:image` filters the list to image clips; `:txt` /
+    /// `kind:text` to text clips. The token (and one following space) is stripped;
+    /// the rest is the residual query applied as a normal search over that kind.
+    ///
+    /// Only a *complete* token at the start triggers — partial input (`:`, `:im`)
+    /// passes through unchanged as ordinary search text. Case-insensitive. A lone
+    /// token (`:img`) yields `(.image, "")` → recency order of that kind. Pure;
+    /// the wiring restricts the candidate set before the existing search runs.
+    public static func parseKindFilter(_ query: String) -> (kind: ClipKind?, residual: String) {
+        // Trim only leading whitespace — trailing/inner spacing belongs to the
+        // residual the search then sees.
+        let trimmed = String(query.drop { $0 == " " || $0 == "\t" })
+        let lower = trimmed.lowercased()
+
+        // Longest aliases first so `kind:image` isn't shadowed by a shorter token.
+        let tokens: [(token: String, kind: ClipKind)] = [
+            ("kind:image", .image),
+            ("kind:text", .text),
+            (":img", .image),
+            (":txt", .text),
+        ]
+
+        for (token, kind) in tokens where lower.hasPrefix(token) {
+            let afterToken = trimmed.index(trimmed.startIndex, offsetBy: token.count)
+            // The token must end the string or be followed by whitespace — so
+            // `:imgx` / `:txterm` are NOT tokens (they pass through as search).
+            if afterToken == trimmed.endIndex {
+                return (kind, "")
+            }
+            let next = trimmed[afterToken]
+            guard next == " " || next == "\t" else { continue }
+            // Strip the token and exactly one following space, keep the rest verbatim.
+            let residual = String(trimmed[trimmed.index(after: afterToken)...])
+            return (kind, residual)
+        }
+        return (nil, query)
+    }
+
     public var selectedItem: HistoryItem? {
         guard filtered.indices.contains(selectedIndex) else { return nil }
         return filtered[selectedIndex]
@@ -272,8 +311,9 @@ public final class HistoryPanelViewModel: ObservableObject {
     /// shared body of `refreshClips`'s sync pass, without touching the cursor or
     /// scheduling the async deep search (the caller re-pins selection by id).
     private func rebuildFiltered() {
-        let q = query
-        filtered = q.isEmpty ? allItems : FuzzyMatcher.rank(allItems, query: q)
+        let (kind, q) = Self.parseKindFilter(query)
+        let candidates = kind.map { k in allItems.filter { $0.kind == k } } ?? allItems
+        filtered = q.isEmpty ? candidates : FuzzyMatcher.rank(candidates, query: q)
     }
 
     /// ⇥ — list: open the action menu; actions: edit-before-run the highlighted
@@ -468,11 +508,18 @@ public final class HistoryPanelViewModel: ObservableObject {
         searchTask?.cancel()
         searchTask = nil
 
-        let q = query
-        // Empty query: show all in pinned-first order (don't run through the
-        // fuzzy ranker, which would rank by match quality and interleave pins).
+        // A leading `:img` / `kind:image` (or `:txt` / `kind:text`) token
+        // restricts the candidate set to that kind; the rest is the residual
+        // query, searched normally over the kind-filtered clips. List mode only —
+        // this is the only place clip search runs (action search is separate).
+        let (kind, q) = Self.parseKindFilter(query)
+        let candidates = kind.map { k in allItems.filter { $0.kind == k } } ?? allItems
+
+        // Empty (residual) query: show all in pinned-first order (don't run
+        // through the fuzzy ranker, which would rank by match quality and
+        // interleave pins).
         guard !q.isEmpty else {
-            filtered = allItems
+            filtered = candidates
             selectedIndex = 0
             // Don't journal the empty query (clearing the field / opening the panel).
             searchLogTask?.cancel()
@@ -481,7 +528,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         }
 
         // Sync pass: instant result from bounded prefix.
-        let syncResult = FuzzyMatcher.rank(allItems, query: q)
+        let syncResult = FuzzyMatcher.rank(candidates, query: q)
         filtered = syncResult
         selectedIndex = 0
         scheduleSearchLog(queryLength: q.count, resultCount: syncResult.count)
@@ -490,7 +537,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         // Task.detached is required — an unqualified Task { } inherits @MainActor
         // and would block the main thread for the entire scan.
         let syncIDs = Set(syncResult.map(\.id))
-        let deepCandidates = allItems.filter { item in
+        let deepCandidates = candidates.filter { item in
             guard !syncIDs.contains(item.id),
                   let text = item.text,
                   text.utf8.count > FuzzyMatcher.searchPrefixLimit else { return false }
@@ -498,7 +545,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         }
         guard !deepCandidates.isEmpty else { return }
 
-        let allItemsSnapshot = allItems
+        let allItemsSnapshot = candidates
         searchTask = Task.detached(priority: .userInitiated) { [weak self] in
             var deepMatchIDs = Set<UUID>()
             for item in deepCandidates {
@@ -538,7 +585,9 @@ public final class HistoryPanelViewModel: ObservableObject {
         deepMatchIDs: Set<UUID>, syncIDs: Set<UUID>,
         snapshot: [HistoryItem], capturedQuery: String
     ) {
-        guard capturedQuery == query, !Task.isCancelled else { return }
+        // Compare against the residual of the *current* query so a kind token
+        // (`:img foo`) doesn't make this look stale (capturedQuery is the residual).
+        guard capturedQuery == Self.parseKindFilter(query).residual, !Task.isCancelled else { return }
         let allMatchIDs = syncIDs.union(deepMatchIDs)
         let selectedID = selectedItem?.id
         // Rebuild in recency order; re-find cursor by ID so selection doesn't jump.
