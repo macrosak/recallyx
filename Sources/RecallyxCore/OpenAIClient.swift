@@ -184,10 +184,10 @@ public enum ModelCatalog {
         }
     }
 
-    /// Pure, hermetic grouping — produces the provider sections to show, gated
-    /// purely by the passed flags. Order is fixed: OpenAI, Anthropic, Google
-    /// Gemini, Ollama, Apple. Test THIS; `availableGroups()` computes the flags
-    /// from live config.
+    /// Pure, hermetic flag-driven grouping — kept for its unit tests. Order is
+    /// fixed: OpenAI, Anthropic, Google Gemini, Ollama, Apple. **No longer drives
+    /// live availability** — `groups(forProviders:)` (the explicit provider list)
+    /// does; this stays as a pure reference/test surface.
     public static func groups(openAI: Bool, anthropic: Bool, gemini: Bool, ollama: Bool, apple: Bool) -> [ModelGroup] {
         var result: [ModelGroup] = []
         if openAI { result.append(ModelGroup(title: "OpenAI", models: self.openAI)) }
