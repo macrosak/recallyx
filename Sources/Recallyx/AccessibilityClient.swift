@@ -84,21 +84,69 @@ final class AccessibilityClient {
         // Apps commit the copy asynchronously; poll briefly (~500ms worst case).
         for _ in 0..<10 {
             try? await Task.sleep(nanoseconds: 50_000_000)
-            guard pasteboard.changeCount != before else { continue }
-            let copied = pasteboard.string(forType: .string)
-            // Read first, then put the user's prior clipboard back and mark the
-            // restore as a self-write so the watcher ignores it.
-            snapshot.restore(to: pasteboard)
-            markSelfWrite?()
-            guard let text = copied, !text.isEmpty else {
-                throw AccessibilityError.noSelection // copied, but not text
+            switch harvestCopiedSelection(
+                from: pasteboard, since: before, restoring: snapshot, markSelfWrite: markSelfWrite
+            ) {
+            case .pending:
+                continue // copy hasn't landed yet — keep polling
+            case .captured(let text):
+                return (text, sourceApp)
+            case .restoredNoText:
+                // A copy landed but wasn't text; the snapshot is already restored.
+                throw AccessibilityError.noSelection
             }
-            Log.info("⌘C fallback captured len=\(text.count) — clipboard restored")
-            return (text, sourceApp)
         }
-        // Nothing was copied (no selection) — the pasteboard was never touched,
-        // so there's nothing to restore.
-        throw AccessibilityError.noSelection
+        // The loop exited without seeing the copy *while polling*, but a slow app
+        // (contended main thread, late commit at ~510ms) may have landed it just
+        // after the 10th tick. Re-check ONCE: if the copy did land, the user's
+        // clipboard is already clobbered — `harvestCopiedSelection` restores it
+        // here too (and marks the write) before we report the result.
+        switch harvestCopiedSelection(
+            from: pasteboard, since: before, restoring: snapshot, markSelfWrite: markSelfWrite
+        ) {
+        case .captured(let text):
+            return (text, sourceApp)
+        case .pending, .restoredNoText:
+            // Either nothing was ever copied (board untouched, nothing to restore)
+            // or a late non-text copy that `harvest` already restored.
+            throw AccessibilityError.noSelection
+        }
+    }
+
+    /// Outcome of inspecting the pasteboard for the synth-⌘C result.
+    enum CopyHarvest: Equatable {
+        case pending         // change count hasn't moved — no copy yet
+        case captured(String) // a non-empty text selection (board already restored)
+        case restoredNoText  // a copy landed but wasn't text (board already restored)
+    }
+
+    /// Shared by the poll loop and the final late-copy re-check so the
+    /// read → restore → mark logic can't drift between the two call sites.
+    ///
+    /// If `pasteboard.changeCount` has moved past `before` a copy landed: read
+    /// its text, put the user's prior clipboard back from `snapshot`, mark the
+    /// restore as a self-write, and report `.captured` (non-empty text) or
+    /// `.restoredNoText`. If the change count hasn't moved, reports `.pending`
+    /// and leaves the board untouched. Restoring here — not only on the fast
+    /// path — is what stops a *late* copy from silently eating the user's clip.
+    ///
+    /// `internal` (not `private`) so `PasteboardSnapshotTests` can exercise the
+    /// restore/return decision without the AppKit synth-⌘C timing.
+    func harvestCopiedSelection(
+        from pasteboard: NSPasteboard,
+        since before: Int,
+        restoring snapshot: PasteboardSnapshot,
+        markSelfWrite: (() -> Void)?
+    ) -> CopyHarvest {
+        guard pasteboard.changeCount != before else { return .pending }
+        let copied = pasteboard.string(forType: .string)
+        // Read first, then put the user's prior clipboard back and mark the
+        // restore as a self-write so the watcher ignores it.
+        snapshot.restore(to: pasteboard)
+        markSelfWrite?()
+        guard let text = copied, !text.isEmpty else { return .restoredNoText }
+        Log.info("⌘C fallback captured len=\(text.count) — clipboard restored")
+        return .captured(text)
     }
 
     private func showAlert() {
