@@ -773,3 +773,81 @@ struct HistoryPanelViewModelTests {
         #expect(vm.mode == .actions)
     }
 }
+
+/// Pure clamp helper for the floating panel's origin: keeps the whole window
+/// inside the screen's visible frame (the multi-display visual is AppKit
+/// runtime behavior and not headlessly verifiable; the math is).
+@MainActor
+@Suite("HistoryPanelController.clampedOrigin")
+struct PanelClampTests {
+    // 760×562 panel, like the real one, on a 1440×900 visible frame at origin 0.
+    private let size = CGSize(width: 760, height: 562)
+    private let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+
+    @Test("Fits as-is — origin unchanged")
+    func fitsUnchanged() {
+        let proposed = CGPoint(x: 340, y: 300)   // fully inside
+        let origin = HistoryPanelController.clampedOrigin(forSize: size, proposed: proposed, in: screen)
+        #expect(origin == proposed)
+    }
+
+    @Test("Overflow top — pinned down so the top edge stays visible (the bug)")
+    func overflowTop() {
+        // y+height = 600+562 = 1162 > maxY(900): would clip above the top.
+        let proposed = CGPoint(x: 340, y: 600)
+        let origin = HistoryPanelController.clampedOrigin(forSize: size, proposed: proposed, in: screen)
+        #expect(origin.y == screen.maxY - size.height)   // 900 - 562 = 338
+        #expect(origin.x == proposed.x)
+        #expect(origin.y + size.height <= screen.maxY)
+    }
+
+    @Test("Overflow bottom — pinned up to the visible bottom")
+    func overflowBottom() {
+        let proposed = CGPoint(x: 340, y: -100)
+        let origin = HistoryPanelController.clampedOrigin(forSize: size, proposed: proposed, in: screen)
+        #expect(origin.y == screen.minY)
+        #expect(origin.y >= screen.minY)
+    }
+
+    @Test("Overflow left — pinned to the leading edge")
+    func overflowLeft() {
+        let proposed = CGPoint(x: -200, y: 300)
+        let origin = HistoryPanelController.clampedOrigin(forSize: size, proposed: proposed, in: screen)
+        #expect(origin.x == screen.minX)
+    }
+
+    @Test("Overflow right — pinned so the trailing edge stays visible")
+    func overflowRight() {
+        let proposed = CGPoint(x: 1200, y: 300)   // 1200+760 = 1960 > maxX(1440)
+        let origin = HistoryPanelController.clampedOrigin(forSize: size, proposed: proposed, in: screen)
+        #expect(origin.x == screen.maxX - size.width)   // 1440 - 760 = 680
+        #expect(origin.x + size.width <= screen.maxX)
+    }
+
+    @Test("Window taller than the screen — keeps the top edge visible")
+    func tallerThanScreen() {
+        let shortScreen = CGRect(x: 0, y: 0, width: 1440, height: 400)   // 400 < 562
+        let proposed = CGPoint(x: 340, y: 100)
+        let origin = HistoryPanelController.clampedOrigin(forSize: size, proposed: proposed, in: shortScreen)
+        // Top sits at the visible top; the bottom necessarily spills below.
+        #expect(origin.y == shortScreen.maxY - size.height)
+        #expect(origin.y + size.height == shortScreen.maxY)
+    }
+
+    @Test("Window wider than the screen — keeps the leading edge visible")
+    func widerThanScreen() {
+        let narrowScreen = CGRect(x: 100, y: 0, width: 500, height: 900)   // 500 < 760
+        let proposed = CGPoint(x: 50, y: 300)
+        let origin = HistoryPanelController.clampedOrigin(forSize: size, proposed: proposed, in: narrowScreen)
+        #expect(origin.x == narrowScreen.minX)
+    }
+
+    @Test("Non-zero screen origin (external display offset) clamps into that frame")
+    func offsetScreen() {
+        let offset = CGRect(x: 2000, y: -300, width: 1440, height: 900)
+        let proposed = CGPoint(x: 5000, y: 5000)   // far past the top-right
+        let origin = HistoryPanelController.clampedOrigin(forSize: size, proposed: proposed, in: offset)
+        #expect(origin.x == offset.maxX - size.width)
+        #expect(origin.y == offset.maxY - size.height)
+    }
+}
