@@ -130,4 +130,72 @@ struct ModelCatalogTests {
         #expect(result.map(\.title) == ["Configured"])
         #expect(result.first?.models == ["gpt-4o"])
     }
+
+    // MARK: - groups(forProviders:) — driven by the explicit provider list
+
+    @Test func providerGroups_emptyListIsEmpty() {
+        #expect(ModelCatalog.groups(forProviders: []).isEmpty)
+    }
+
+    @Test func providerGroups_disabledEntriesAreSkipped() {
+        let providers = [
+            ProviderConfig(type: .openai, enabled: false),
+            ProviderConfig(type: .ollama, enabled: true),
+        ]
+        let groups = ModelCatalog.groups(forProviders: providers)
+        #expect(groups.map(\.title) == ["Ollama (local)"])
+        #expect(groups.first?.models == ModelCatalog.ollama)
+    }
+
+    @Test func providerGroups_useListOrderAndBuiltinModels() {
+        // Order follows the list (drag-reorder = picker order), not a fixed order.
+        let providers = [
+            ProviderConfig(type: .apple),
+            ProviderConfig(type: .openai),
+        ]
+        let groups = ModelCatalog.groups(forProviders: providers)
+        #expect(groups.map(\.title) == ["Apple Intelligence (on-device)", "OpenAI"])
+        #expect(groups[0].models == ModelCatalog.apple)
+        #expect(groups[1].models == ModelCatalog.openAI)
+    }
+
+    @Test func providerGroups_customProviderTagsModelsWithNamespace() {
+        let id = UUID()
+        let custom = ProviderConfig(
+            id: id, type: .openAICompatible, displayName: "Groq",
+            baseURL: "https://api.groq.com/openai/v1",
+            keychainAccount: "custom-x", models: ["llama-3.1-70b", "mixtral-8x7b"]
+        )
+        let groups = ModelCatalog.groups(forProviders: [custom])
+        #expect(groups.count == 1)
+        #expect(groups[0].title == "Groq")
+        #expect(groups[0].models == [
+            "custom:\(id.uuidString.lowercased()):llama-3.1-70b",
+            "custom:\(id.uuidString.lowercased()):mixtral-8x7b",
+        ])
+        // Each tagged model routes back to the custom provider.
+        for model in groups[0].models {
+            #expect(AIProvider.provider(for: model) == .openAICompatible)
+        }
+    }
+
+    @Test func providerGroups_customWithNoModelsIsSkipped() {
+        let blank = ProviderConfig(type: .openAICompatible, displayName: "Empty", baseURL: "https://x.test", models: [])
+        let whitespace = ProviderConfig(type: .openAICompatible, displayName: "WS", baseURL: "https://y.test", models: ["  ", ""])
+        #expect(ModelCatalog.groups(forProviders: [blank, whitespace]).isEmpty)
+    }
+
+    @Test func providerGroups_useDisplayNameAsGroupTitle() {
+        // A renamed built-in provider keeps its custom display name as the title.
+        let renamed = ProviderConfig(type: .openai, displayName: "Work OpenAI")
+        let groups = ModelCatalog.groups(forProviders: [renamed])
+        #expect(groups.first?.title == "Work OpenAI")
+        #expect(groups.first?.models == ModelCatalog.openAI)
+    }
+
+    @Test func availableGroupsForProviders_forwardsToBuilder() {
+        let providers = [ProviderConfig(type: .gemini), ProviderConfig(type: .ollama)]
+        #expect(ModelCatalog.availableGroups(for: providers).map(\.title)
+            == ModelCatalog.groups(forProviders: providers).map(\.title))
+    }
 }

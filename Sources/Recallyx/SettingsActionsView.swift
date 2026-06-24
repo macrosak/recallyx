@@ -145,6 +145,7 @@ struct SettingsActionsView: View {
                     StepCard(
                         step: action.steps[idx],
                         theme: theme,
+                        availableGroups: ModelCatalog.availableGroups(for: settingsStore.settings.providers),
                         canMoveUp: idx > 0,
                         canMoveDown: idx < action.wrappedValue.steps.count - 1,
                         onMoveUp: { move(action, from: idx, to: idx - 1) },
@@ -266,6 +267,9 @@ struct SettingsActionsView: View {
 struct StepCard: View {
     @Binding var step: Step
     let theme: SettingsTheme
+    /// Available model groups for the per-step model-override picker, derived from
+    /// the user's enabled providers (passed in so the picker shares one source).
+    let availableGroups: [ModelCatalog.ModelGroup]
     let canMoveUp: Bool
     let canMoveDown: Bool
     let onMoveUp: () -> Void
@@ -343,7 +347,7 @@ struct StepCard: View {
                     )) {
                         Text("Use default").tag("")
                         ForEach(ModelCatalog.groupsPreservingSelection(
-                            ModelCatalog.availableGroups(),
+                            availableGroups,
                             selected: step.model ?? ""
                         )) { group in
                             Section(group.title) {

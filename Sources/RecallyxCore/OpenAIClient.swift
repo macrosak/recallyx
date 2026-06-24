@@ -198,22 +198,49 @@ public enum ModelCatalog {
         return result
     }
 
-    /// Live-config convenience used by the views: cloud providers appear only
-    /// when their Keychain key is set, Apple only when the OS can run it, Ollama
-    /// always (local, keyless — deliberate v1 choice). Reads the keychain + OS
-    /// each call so newly-saved keys show up on the next view appearance.
-    public static func availableGroups() -> [ModelGroup] {
-        func keySet(_ store: KeychainStore) -> Bool {
-            guard let key = store.read() else { return false }
-            return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    /// The selectable model groups derived from the user's explicit provider
+    /// list — the source of truth that replaced the keychain-presence/always-on
+    /// availability heuristic. **Pure and order-preserving:** each *enabled*
+    /// entry, in list order (drag-reorder = picker group order), contributes one
+    /// `ModelGroup`:
+    /// - built-in cloud/Ollama/Apple → the catalog's fixed model list under the
+    ///   provider's `displayName`,
+    /// - a custom (`openAICompatible`) provider → its user-entered `models`
+    ///   tagged as `custom:<id>:<model>` (empty/blank model lists are skipped).
+    ///
+    /// Drives both Settings pickers + the Actions step picker so they share one
+    /// source. Test THIS; `availableGroups(for:)` just forwards the live list.
+    public static func groups(forProviders providers: [ProviderConfig]) -> [ModelGroup] {
+        var result: [ModelGroup] = []
+        for provider in providers where provider.enabled {
+            switch provider.type {
+            case .openai:
+                result.append(ModelGroup(title: provider.displayName, models: openAI))
+            case .anthropic:
+                result.append(ModelGroup(title: provider.displayName, models: anthropic))
+            case .gemini:
+                result.append(ModelGroup(title: provider.displayName, models: gemini))
+            case .ollama:
+                result.append(ModelGroup(title: provider.displayName, models: ollama))
+            case .apple:
+                result.append(ModelGroup(title: provider.displayName, models: apple))
+            case .openAICompatible:
+                let models = (provider.models ?? [])
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .map { provider.customModelID($0) }
+                if !models.isEmpty {
+                    result.append(ModelGroup(title: provider.displayName, models: models))
+                }
+            }
         }
-        return groups(
-            openAI: keySet(.openAIKey),
-            anthropic: keySet(.anthropicKey),
-            gemini: keySet(.geminiKey),
-            ollama: true,
-            apple: AppleClient.isAvailable
-        )
+        return result
+    }
+
+    /// Live convenience used by the views: forwards the user's explicit provider
+    /// list to the pure `groups(forProviders:)` builder.
+    public static func availableGroups(for providers: [ProviderConfig]) -> [ModelGroup] {
+        groups(forProviders: providers)
     }
 
     /// Keeps the `Picker`'s current selection selectable: a SwiftUI `Picker`

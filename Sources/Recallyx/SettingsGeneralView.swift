@@ -102,7 +102,7 @@ struct SettingsGeneralView: View {
                         set: { settingsStore.settings.defaultModel = $0 }
                     )) {
                         ForEach(ModelCatalog.groupsPreservingSelection(
-                            ModelCatalog.availableGroups(),
+                            ModelCatalog.availableGroups(for: settingsStore.settings.providers),
                             selected: settingsStore.settings.defaultModel
                         )) { group in
                             Section(group.title) {
