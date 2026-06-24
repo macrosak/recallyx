@@ -127,9 +127,18 @@ extension ProviderConfig {
         return result
     }
 
-    /// Whether a keychain item currently holds a non-empty key.
+    /// Whether a keychain item currently exists and is silently readable.
+    ///
+    /// Uses `KeychainStore.existsWithoutPrompt()` — a NON-interactive
+    /// `SecItemCopyMatching` — NOT the shared `read()`, because this runs at
+    /// launch inside the settings decoder's migration. A `read()` whose ACL no
+    /// longer matches the current build would pop a Keychain password prompt at
+    /// launch, which we must never do. The trade-off: if a key exists but reading
+    /// it would prompt (stale ACL), the migration treats it as absent and does not
+    /// seed that provider — the user re-adds it in the Providers tab, which writes
+    /// a fresh ACL-correct entry. No silent prompt is preferable to a launch-time
+    /// dialog.
     public static func keychainHasKey(_ store: KeychainStore) -> Bool {
-        guard let key = store.read() else { return false }
-        return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        store.existsWithoutPrompt()
     }
 }

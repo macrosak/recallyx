@@ -210,6 +210,68 @@ struct SettingsStoreTests {
         #expect(store.settings.providers.isEmpty)
     }
 
+    // MARK: - providers migration is one-shot (Part B)
+
+    @Test func providers_absentInBlob_persistsSeedOnce() throws {
+        // Part B: an existing (legacy) blob with no `providers` key gets seeded by
+        // the decoder; SettingsStore.init must persist that seed immediately so the
+        // launch-time keychain existence-checks don't recur every launch.
+        let defaults = makeDefaults()
+        // Legacy blob: real keys but NO providers key (the pre-feature shape).
+        let legacy = try JSONSerialization.data(withJSONObject: [
+            "retentionCap": 500,
+            "actions": [],
+        ])
+        defaults.set(legacy, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providersWereSeededOnDecode)
+        #expect(!store.settings.providers.isEmpty)
+
+        // The seed was written back: the persisted blob now carries an explicit
+        // `providers` key, so a re-decode is NOT a re-seed (one-shot).
+        let persisted = defaults.data(forKey: SettingsStore.storageKey)!
+        let json = try JSONSerialization.jsonObject(with: persisted) as! [String: Any]
+        #expect(json["providers"] != nil)
+
+        // Reloading the now-migrated blob decodes the stored list unchanged and
+        // does NOT flag a re-seed — the checks don't recur.
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.providersWereSeededOnDecode == false)
+        #expect(reloaded.settings.providers.map(\.id) == store.settings.providers.map(\.id))
+    }
+
+    @Test func providers_explicitEmptyList_notReSeededOrRePersisted() throws {
+        // An explicit [] is a deliberate choice — it must not be flagged for a
+        // re-seed and the stored blob must be left byte-identical (no needless
+        // re-persist).
+        let stored = AppSettings(providers: [])
+        let data = try JSONEncoder().encode(stored)
+        let defaults = makeDefaults()
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providers.isEmpty)
+        #expect(store.settings.providersWereSeededOnDecode == false)
+        #expect(defaults.data(forKey: SettingsStore.storageKey) == data)
+    }
+
+    @Test func providers_presentList_notReSeededOrRePersisted() throws {
+        // A present list decodes unchanged and is not re-persisted by init.
+        let stored = AppSettings(providers: [
+            ProviderConfig(type: .openai, keychainAccount: KeychainStore.openAIKey.account),
+            ProviderConfig(type: .ollama, baseURL: "http://localhost:11434"),
+        ])
+        let data = try JSONEncoder().encode(stored)
+        let defaults = makeDefaults()
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providers.count == 2)
+        #expect(store.settings.providersWereSeededOnDecode == false)
+        #expect(defaults.data(forKey: SettingsStore.storageKey) == data)
+    }
+
     @Test func providers_roundTripThroughStore() {
         let defaults = makeDefaults()
         let store = SettingsStore(defaults: defaults)

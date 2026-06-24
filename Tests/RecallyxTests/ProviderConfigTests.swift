@@ -93,4 +93,28 @@ struct ProviderConfigTests {
         )
         #expect(seeded.allSatisfy { $0.enabled })
     }
+
+    // MARK: - Non-interactive migration keychain check (Part A)
+
+    @Test func keychainHasKey_isFalse_forAbsentAccount_noPrompt() {
+        // The migration's existence check must use the non-interactive read so it
+        // never prompts at launch. A guaranteed-absent account returns false (and,
+        // per `existsWithoutPrompt`, would have failed silently rather than
+        // prompting even if its ACL mismatched). Verifies keychainHasKey is wired
+        // to existsWithoutPrompt, not the prompting read().
+        let absent = KeychainStore(
+            service: KeychainStore.recallyxService,
+            account: "test-absent-\(UUID().uuidString)-api-key"
+        )
+        #expect(absent.existsWithoutPrompt() == false)
+        #expect(ProviderConfig.keychainHasKey(absent) == false)
+    }
+
+    @Test func keychainHasKey_matchesExistsWithoutPrompt() {
+        // keychainHasKey delegates to existsWithoutPrompt for every store — they
+        // must agree (this is the wiring contract Part A establishes).
+        for store in [KeychainStore.openAIKey, .anthropicKey, .geminiKey] {
+            #expect(ProviderConfig.keychainHasKey(store) == store.existsWithoutPrompt())
+        }
+    }
 }

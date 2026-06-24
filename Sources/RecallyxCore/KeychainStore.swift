@@ -54,6 +54,31 @@ public struct KeychainStore {
         return string
     }
 
+    /// Non-interactive existence check: does this item exist AND can it be read
+    /// *without* showing any UI? Returns `true` only on `errSecSuccess`.
+    ///
+    /// Unlike `read()`, this MUST NEVER pop a Keychain password prompt — it runs
+    /// at launch (inside the settings decoder's provider-list migration), where a
+    /// prompt is unacceptable. We pass `kSecUseAuthenticationUI: .fail` so a read
+    /// that *would* require user interaction (e.g. the item's ACL was bound to a
+    /// different/older code signature and no longer silently matches this build)
+    /// fails with `errSecInteractionNotAllowed` instead of prompting. We also skip
+    /// returning the data (`kSecReturnData: false`) — we only need presence, not
+    /// the secret. Net behavior for the migration: key exists and is silently
+    /// readable → seed; key absent OR reading would prompt → don't seed, no dialog.
+    public func existsWithoutPrompt() -> Bool {
+        var query: [String: Any] = baseQuery
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnData as String] = false
+        // `kSecUseAuthenticationUIFail` is the modern key (macOS 10.11+); it makes
+        // any operation that would need UI return errSecInteractionNotAllowed
+        // rather than presenting it. Compiles on the macOS 13+ floor.
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        return status == errSecSuccess
+    }
+
     @discardableResult
     public func write(_ value: String) -> Bool {
         let data = Data(value.utf8)
