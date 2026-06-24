@@ -29,22 +29,20 @@ struct SettingsActionsView: View {
 
     private var actionList: some View {
         VStack(spacing: 0) {
-            // Native List so rows reorder by drag (.onMove gives the system drag
-            // affordance for free). Styled down to read like the rest of Settings:
-            // no inset grouping, transparent backgrounds, our own row chrome.
+            // Fully native sidebar List: Finder-sidebar look + feel — subtle
+            // rounded selection drawn by the List itself (via the selection
+            // binding), and the WHOLE row initiates a .onMove drag. No custom
+            // background/overlay on the row, which would intercept hit-testing
+            // and limit the drag grab area to the row edges.
             List(selection: $selectedID) {
                 ForEach(actions) { action in
                     actionRow(action)
-                        .listRowInsets(EdgeInsets(top: 1, leading: 6, bottom: 1, trailing: 6))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
                         .tag(action.id)
                 }
                 .onMove(perform: moveActions)
             }
-            .listStyle(.plain)
+            .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .environment(\.defaultMinListRowHeight, 0)
             HStack(spacing: 2) {
                 toolbarButton("plus") { addAction() }
                 toolbarButton("minus") { deleteSelected() }
@@ -59,25 +57,19 @@ struct SettingsActionsView: View {
     }
 
     private func actionRow(_ action: Action) -> some View {
-        let on = action.id == selectedID
-        return HStack(spacing: 9) {
+        // Content only — no custom selection background/overlay. The sidebar
+        // List draws the selection highlight itself (and adapts the row's text
+        // color for the selected state), so the whole row stays draggable.
+        HStack(spacing: 9) {
             Image(systemName: action.icon)
                 .font(.system(size: 14))
-                .foregroundStyle(on ? .white : theme.textDim)
+                .foregroundStyle(theme.textDim)
                 .frame(width: 18)
             Text(action.name)
                 .font(.system(size: 13))
-                .foregroundStyle(on ? .white : theme.text)
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 7).fill(on ? theme.accent : .clear))
-        .contentShape(Rectangle())
-        // List selection binding handles clicks, but a tap keeps selection
-        // responsive even on the row's transparent padding.
-        .onTapGesture { selectedID = action.id }
     }
 
     private func toolbarButton(_ symbol: String, action: @escaping () -> Void) -> some View {
