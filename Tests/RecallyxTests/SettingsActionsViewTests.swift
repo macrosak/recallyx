@@ -41,4 +41,27 @@ struct SettingsActionsViewTests {
         let selected = SettingsActionsView.neighborSelection(in: [], removedIndex: 0)
         #expect(selected == nil)
     }
+
+    // MARK: - Drag reorder (.onMove math)
+
+    @Test func dragRowDownReorders() {
+        // [A0, A1, A2, A3]; drag A0 down to sit before index 2 → [A1, A0, A2, A3].
+        let list = actions(4)
+        let moved = SettingsActionsView.moving(list, fromOffsets: IndexSet(integer: 0), toOffset: 2)
+        #expect(moved.map(\.name) == ["A1", "A0", "A2", "A3"])
+    }
+
+    @Test func dragRowUpReorders() {
+        // [A0, A1, A2, A3]; drag A3 up to the front → [A3, A0, A1, A2].
+        let list = actions(4)
+        let moved = SettingsActionsView.moving(list, fromOffsets: IndexSet(integer: 3), toOffset: 0)
+        #expect(moved.map(\.name) == ["A3", "A0", "A1", "A2"])
+    }
+
+    @Test func dragToSamePositionIsNoOp() {
+        // Dropping right back where it started leaves the order unchanged.
+        let list = actions(3)
+        let moved = SettingsActionsView.moving(list, fromOffsets: IndexSet(integer: 1), toOffset: 1)
+        #expect(moved.map(\.id) == list.map(\.id))
+    }
 }

@@ -29,14 +29,22 @@ struct SettingsActionsView: View {
 
     private var actionList: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 1) {
-                    ForEach(Array(actions.enumerated()), id: \.element.id) { idx, action in
-                        actionRow(action, idx: idx)
-                    }
+            // Native List so rows reorder by drag (.onMove gives the system drag
+            // affordance for free). Styled down to read like the rest of Settings:
+            // no inset grouping, transparent backgrounds, our own row chrome.
+            List(selection: $selectedID) {
+                ForEach(actions) { action in
+                    actionRow(action)
+                        .listRowInsets(EdgeInsets(top: 1, leading: 6, bottom: 1, trailing: 6))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .tag(action.id)
                 }
-                .padding(8)
+                .onMove(perform: moveActions)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 0)
             HStack(spacing: 2) {
                 toolbarButton("plus") { addAction() }
                 toolbarButton("minus") { deleteSelected() }
@@ -50,7 +58,7 @@ struct SettingsActionsView: View {
         .background(theme.isDark ? Color(white: 0, opacity: 0.12) : Color(white: 0, opacity: 0.02))
     }
 
-    private func actionRow(_ action: Action, idx: Int) -> some View {
+    private func actionRow(_ action: Action) -> some View {
         let on = action.id == selectedID
         return HStack(spacing: 9) {
             Image(systemName: action.icon)
@@ -62,32 +70,14 @@ struct SettingsActionsView: View {
                 .foregroundStyle(on ? .white : theme.text)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            if on && actions.count > 1 {
-                actionReorder(idx: idx)
-            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 7).fill(on ? theme.accent : .clear))
         .contentShape(Rectangle())
+        // List selection binding handles clicks, but a tap keeps selection
+        // responsive even on the row's transparent padding.
         .onTapGesture { selectedID = action.id }
-    }
-
-    private func actionReorder(idx: Int) -> some View {
-        let canMoveUp = idx > 0
-        let canMoveDown = idx < actions.count - 1
-        return HStack(spacing: 1) {
-            Button { moveAction(from: idx, to: idx - 1) } label: {
-                Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold))
-            }
-            .buttonStyle(.plain).disabled(!canMoveUp)
-            .foregroundStyle(canMoveUp ? Color.white : Color.white.opacity(0.35))
-            Button { moveAction(from: idx, to: idx + 1) } label: {
-                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
-            }
-            .buttonStyle(.plain).disabled(!canMoveDown)
-            .foregroundStyle(canMoveDown ? Color.white : Color.white.opacity(0.35))
-        }
     }
 
     private func toolbarButton(_ symbol: String, action: @escaping () -> Void) -> some View {
@@ -245,13 +235,26 @@ struct SettingsActionsView: View {
         settingsStore.flush()
     }
 
-    private func moveAction(from: Int, to: Int) {
-        var list = settingsStore.settings.actions
-        guard list.indices.contains(from), list.indices.contains(to) else { return }
-        let action = list.remove(at: from)
-        list.insert(action, at: to)
-        settingsStore.settings.actions = list
+    /// Drag-reorder handler for the actions `List`. Selection rides along by id,
+    /// so the dragged action stays selected without extra bookkeeping.
+    private func moveActions(from source: IndexSet, to destination: Int) {
+        let reordered = SettingsActionsView.moving(
+            settingsStore.settings.actions, fromOffsets: source, toOffset: destination
+        )
+        guard reordered.map(\.id) != settingsStore.settings.actions.map(\.id) else { return }
+        settingsStore.settings.actions = reordered
+        // Structural edit: persist immediately so a reorder survives an immediate
+        // quit (e.g. install.sh's killall), like add/delete.
         settingsStore.flush()
+    }
+
+    /// Pure `.onMove` array move (drag a row from `source` offsets to land before
+    /// `destination`). Mirrors `Array.move(fromOffsets:toOffset:)`; extracted so
+    /// the reorder math is unit-testable without the drag gesture.
+    static func moving<T>(_ array: [T], fromOffsets source: IndexSet, toOffset destination: Int) -> [T] {
+        var copy = array
+        copy.move(fromOffsets: source, toOffset: destination)
+        return copy
     }
 
     private func addStep(to action: Binding<Action>) {
