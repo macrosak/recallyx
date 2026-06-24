@@ -3,11 +3,13 @@ import RecallyxCore
 
 enum SettingsTab: String, Hashable {
     case general
+    case providers
     case actions
 
     var title: String {
         switch self {
         case .general: return "General"
+        case .providers: return "Providers"
         case .actions: return "Actions"
         }
     }
@@ -26,7 +28,7 @@ struct SettingsView: View {
     let clearFileLog: () -> Void
     @State private var tab: SettingsTab
 
-    private let tabs: [SettingsTab] = [.general, .actions]
+    private let tabs: [SettingsTab] = [.general, .providers, .actions]
 
     @Environment(\.colorScheme) private var colorScheme
     private var theme: SettingsTheme { SettingsTheme.current(colorScheme) }
@@ -61,6 +63,8 @@ struct SettingsView: View {
                         .padding(.horizontal, 22)
                         .padding(.vertical, 20)
                 }
+            case .providers:
+                SettingsProvidersView(settingsStore: settingsStore, theme: theme)
             case .actions:
                 SettingsActionsView(settingsStore: settingsStore, theme: theme)
             }
