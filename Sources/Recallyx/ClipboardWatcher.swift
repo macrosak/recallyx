@@ -70,7 +70,7 @@ final class ClipboardWatcher {
         }
 
         let types = pasteboard.types ?? []
-        guard PrivacyFilter.shouldCapture(types: types, captureSensitive: captureSensitive()) else {
+        guard PrivacyFilter.shouldCapture(types: types.map(\.rawValue), captureSensitive: captureSensitive()) else {
             Log.debug("clipboard tick skipped (privacy hint) types=\(types.map(\.rawValue))")
             return
         }
