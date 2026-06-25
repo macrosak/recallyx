@@ -6,7 +6,8 @@
 #   ./scripts/debug.sh launch [DATA_DIR]  kill running instances, launch with hooks
 #                                         (DATA_DIR isolates history via RECALLYX_DATA_DIR)
 #   ./scripts/debug.sh cmd <name> [arg]   send a raw command:
-#                                           show-panel | show-actions | hide-panel | open-settings
+#                                           show-panel | show-actions | hide-panel
+#                                           open-settings [general|providers|actions]
 #                                           query <text> | text <text>
 #                                           key up|down|return|cmd-return|tab|esc
 #   ./scripts/debug.sh state              print panel state as JSON

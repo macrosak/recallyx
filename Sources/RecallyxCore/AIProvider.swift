@@ -34,13 +34,30 @@ public enum AIProvider {
     case gemini
     case ollama
     case apple
+    /// A user-added OpenAI-compatible endpoint (Groq / Together / OpenRouter /
+    /// LM Studio / vLLM / …). Models are addressed `custom:<providerID>:<model>`;
+    /// the facade resolves the id to a (baseURL, keychain account) and dispatches
+    /// to `OpenAIClient` pointed at that base URL.
+    case openAICompatible
 
     public static func provider(for model: String) -> AIProvider {
         let lower = model.lowercased()
+        if lower.hasPrefix("custom:") { return .openAICompatible }
         if lower.hasPrefix("apple:") { return .apple }
         if lower.hasPrefix("ollama:") { return .ollama }
         if lower.hasPrefix("gemini") { return .gemini }
         return lower.hasPrefix("claude") ? .anthropic : .openai
+    }
+
+    /// Splits a `custom:<providerID>:<model>` id into its provider id and the
+    /// real model name to send upstream. Returns `nil` for a non-custom or
+    /// malformed id (missing either component). The model name may itself contain
+    /// colons (e.g. `org/model:tag`), so only the first two `:` are separators.
+    public static func parseCustomModel(_ model: String) -> (providerID: String, model: String)? {
+        let parts = model.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count == 3, parts[0].lowercased() == "custom",
+              !parts[1].isEmpty, !parts[2].isEmpty else { return nil }
+        return (String(parts[1]), String(parts[2]))
     }
 
     /// Cloud providers store an API key in the Keychain; the local providers
@@ -51,7 +68,9 @@ public enum AIProvider {
         case .openai: return .openAIKey
         case .anthropic: return .anthropicKey
         case .gemini: return .geminiKey
-        case .ollama, .apple: return nil
+        // Local providers have no key; custom endpoints use a per-provider
+        // account the facade resolves from the model id (not a fixed store).
+        case .ollama, .apple, .openAICompatible: return nil
         }
     }
 
@@ -62,6 +81,7 @@ public enum AIProvider {
         case .gemini: return "Google Gemini"
         case .ollama: return "Ollama"
         case .apple: return "Apple Intelligence"
+        case .openAICompatible: return "Custom (OpenAI-compatible)"
         }
     }
 
@@ -72,7 +92,9 @@ public enum AIProvider {
     /// check at call sites that have a concrete model id.
     public var supportsVision: Bool {
         switch self {
-        case .openai, .anthropic, .gemini: return true
+        // Custom OpenAI-compatible endpoints vary; we don't pre-block — let the
+        // server reject an image if it can't handle one (see supportsVision(forModel:)).
+        case .openai, .anthropic, .gemini, .openAICompatible: return true
         case .ollama, .apple: return false
         }
     }
@@ -84,7 +106,9 @@ public enum AIProvider {
     /// on-device Apple Intelligence is text-only in v1.
     public static func supportsVision(forModel model: String) -> Bool {
         switch provider(for: model) {
-        case .openai, .anthropic, .gemini: return true
+        // Custom endpoints are treated as vision-capable — OpenAI-compatible
+        // servers differ, so we let the server reject rather than pre-block here.
+        case .openai, .anthropic, .gemini, .openAICompatible: return true
         case .apple: return false
         case .ollama: return isOllamaVisionModel(model)
         }
@@ -107,15 +131,24 @@ public enum AIProvider {
 /// `.ollama` is local (no key) — the facade dispatches straight to the client,
 /// reading the configured base URL.
 public struct AIClient {
+    /// Resolved config for a custom endpoint id: its base URL and the keychain
+    /// account that stores its API key.
+    public typealias CustomEndpoint = (baseURL: String, keychainAccount: String)
+
     private let openAI = OpenAIClient()
     private let anthropic = AnthropicClient()
     private let gemini = GeminiClient()
     private let ollama = OllamaClient()
     private let apple = AppleClient()
     private let ollamaBaseURL: () -> String
+    private let customEndpoint: (_ providerID: String) -> CustomEndpoint?
 
-    public init(ollamaBaseURL: @escaping () -> String = { recallyxDefaultOllamaBaseURL }) {
+    public init(
+        ollamaBaseURL: @escaping () -> String = { recallyxDefaultOllamaBaseURL },
+        customEndpoint: @escaping (_ providerID: String) -> CustomEndpoint? = { _ in nil }
+    ) {
         self.ollamaBaseURL = ollamaBaseURL
+        self.customEndpoint = customEndpoint
     }
 
     /// `imageData` (PNG bytes) opt-in: when non-nil the prompt runs as a vision
@@ -132,6 +165,23 @@ public struct AIClient {
             return try await apple.complete(model: model, promptTemplate: prompt, text: input)
         case .ollama:
             return try await ollama.complete(baseURL: ollamaBaseURL(), model: model, promptTemplate: prompt, text: input, imageData: imageData)
+        case .openAICompatible:
+            // `custom:<providerID>:<model>` → resolve the endpoint, strip the
+            // prefix to recover the real model, read its key, and dispatch to the
+            // OpenAI-compatible client at the configured base URL.
+            guard let parsed = AIProvider.parseCustomModel(model),
+                  let endpoint = customEndpoint(parsed.providerID) else {
+                throw ActionError.customEndpointUnavailable
+            }
+            let key = KeychainStore.custom(account: endpoint.keychainAccount).read() ?? ""
+            return try await openAI.complete(
+                apiKey: key,
+                baseURL: endpoint.baseURL,
+                model: parsed.model,
+                promptTemplate: prompt,
+                text: input,
+                imageData: imageData
+            )
         case .openai, .anthropic, .gemini:
             guard let apiKey = provider.keychain?.read(), !apiKey.isEmpty else {
                 throw ActionError.missingApiKey(provider)

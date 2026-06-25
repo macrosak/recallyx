@@ -28,10 +28,48 @@ struct AppSettings: Codable, Equatable {
     var actions: [Action]
     /// Base URL of the local Ollama server used by `ollama:*` models.
     var ollamaBaseURL: String
+    /// The user's explicit AI-provider list, surfaced in the Providers Settings
+    /// tab. An enabled entry makes that provider's models appear in the pickers
+    /// (replacing the old keychain-presence/always-on availability heuristic).
+    /// Holds only references — secrets stay in the Keychain.
+    var providers: [ProviderConfig]
     /// ⌘⇧V by default — opens the history panel.
     var searchHistoryShortcut: Shortcut
     /// ⌃⇧V by default — grabs the selection and opens its actions.
     var transformSelectionShortcut: Shortcut
+
+    /// Transient (never encoded, never compared): set by `init(from:)` when the
+    /// `providers` key was ABSENT from the decoded blob and the list was therefore
+    /// seeded from current reality. `SettingsStore.init` reads it to persist the
+    /// seed exactly once, so the seed's launch-time keychain existence-checks
+    /// don't recur on every launch. A present list (incl. an explicit `[]`) or a
+    /// fresh `AppSettings()` leaves it `false` — no needless re-persist.
+    var providersWereSeededOnDecode: Bool = false
+
+    /// Excludes `providersWereSeededOnDecode` from the persisted blob — it's a
+    /// decode-time signal, not stored state.
+    private enum CodingKeys: String, CodingKey {
+        case retentionCap, captureSensitive, launchAtLogin, usageJournalEnabled
+        case fileLogEnabled, defaultModel, actions, ollamaBaseURL, providers
+        case searchHistoryShortcut, transformSelectionShortcut
+    }
+
+    /// Custom equality that ignores the transient `providersWereSeededOnDecode`
+    /// flag (it must not make two otherwise-identical settings compare unequal —
+    /// `SettingsStore.didSet` gates `onChange` on `settings != oldValue`).
+    static func == (lhs: AppSettings, rhs: AppSettings) -> Bool {
+        lhs.retentionCap == rhs.retentionCap
+            && lhs.captureSensitive == rhs.captureSensitive
+            && lhs.launchAtLogin == rhs.launchAtLogin
+            && lhs.usageJournalEnabled == rhs.usageJournalEnabled
+            && lhs.fileLogEnabled == rhs.fileLogEnabled
+            && lhs.defaultModel == rhs.defaultModel
+            && lhs.actions == rhs.actions
+            && lhs.ollamaBaseURL == rhs.ollamaBaseURL
+            && lhs.providers == rhs.providers
+            && lhs.searchHistoryShortcut == rhs.searchHistoryShortcut
+            && lhs.transformSelectionShortcut == rhs.transformSelectionShortcut
+    }
 
     init(
         retentionCap: Int = 1000,
@@ -42,6 +80,7 @@ struct AppSettings: Codable, Equatable {
         defaultModel: String = ModelCatalog.default,
         actions: [Action] = Action.defaults(),
         ollamaBaseURL: String = AppSettings.defaultOllamaBaseURL,
+        providers: [ProviderConfig]? = nil,
         searchHistoryShortcut: Shortcut = .searchHistoryDefault,
         transformSelectionShortcut: Shortcut = .transformSelectionDefault
     ) {
@@ -53,6 +92,10 @@ struct AppSettings: Codable, Equatable {
         self.defaultModel = defaultModel
         self.actions = actions
         self.ollamaBaseURL = ollamaBaseURL
+        // nil → seed from current reality (keychain keys present + Ollama always +
+        // Apple if available). A fresh first run with no keys yields just Ollama;
+        // an existing install keeps every configured provider on migration.
+        self.providers = providers ?? ProviderConfig.seedFromCurrentReality(ollamaBaseURL: ollamaBaseURL)
         self.searchHistoryShortcut = searchHistoryShortcut
         self.transformSelectionShortcut = transformSelectionShortcut
     }
@@ -79,6 +122,24 @@ struct AppSettings: Codable, Equatable {
         // deleted them all) decodes to [] and is preserved.
         actions = (try? c.decodeIfPresent([Action].self, forKey: .actions)) ?? Action.defaults()
         ollamaBaseURL = (try? c.decodeIfPresent(String.self, forKey: .ollamaBaseURL)) ?? AppSettings.defaultOllamaBaseURL
+        // Absent → seed the provider list from current reality so an existing
+        // setup never loses its configured providers (see seedFromCurrentReality).
+        // A present list (incl. an explicit []) decodes unchanged. A malformed
+        // value also re-seeds rather than blanking AI entirely.
+        //
+        // Flag the ABSENT case so SettingsStore persists the seed once (Part B):
+        // an existing blob from before this feature has no `providers` key, so the
+        // seed lives only in memory and its keychain existence-checks would recur
+        // every launch until some later save. `contains(.providers)` is true only
+        // when the key was actually written — a present-but-malformed value still
+        // re-seeds but is NOT flagged (it can't round-trip cleanly, and we avoid
+        // overwriting a blob the user may still recover by other means).
+        if let decoded = (try? c.decodeIfPresent([ProviderConfig].self, forKey: .providers)) ?? nil {
+            providers = decoded
+        } else {
+            providers = ProviderConfig.seedFromCurrentReality(ollamaBaseURL: ollamaBaseURL)
+            providersWereSeededOnDecode = !c.contains(.providers)
+        }
         searchHistoryShortcut = (try? c.decodeIfPresent(Shortcut.self, forKey: .searchHistoryShortcut)) ?? .searchHistoryDefault
         transformSelectionShortcut = (try? c.decodeIfPresent(Shortcut.self, forKey: .transformSelectionShortcut)) ?? .transformSelectionDefault
     }
@@ -111,6 +172,15 @@ final class SettingsStore: ObservableObject {
         self.defaults = defaults
         self.settings = Self.load(from: defaults) ?? AppSettings()
         if defaults.data(forKey: Self.storageKey) == nil {
+            Self.persist(settings, to: defaults)
+        } else if settings.providersWereSeededOnDecode {
+            // Part B — one-shot migration: an existing blob lacked the `providers`
+            // key and the decoder just seeded it. Persist immediately so the seed
+            // is written exactly once; otherwise the seed's launch-time keychain
+            // existence-checks (`seedFromCurrentReality`) would recur every launch.
+            // The already-persisted blob now carries an explicit list, so the next
+            // launch decodes it unchanged and this branch won't fire again.
+            Log.info("settings: seeded providers on first migration — persisting once")
             Self.persist(settings, to: defaults)
         }
     }

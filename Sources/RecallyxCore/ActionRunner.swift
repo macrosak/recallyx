@@ -4,12 +4,16 @@ public enum ActionError: LocalizedError {
     case imageNotSupported
     case scriptFirstOnImage
     case missingApiKey(AIProvider)
+    /// A `custom:<id>:<model>` step referenced a provider that's no longer in the
+    /// settings list (removed/disabled), so the facade can't resolve its endpoint.
+    case customEndpointUnavailable
 
     public var errorDescription: String? {
         switch self {
         case .imageNotSupported: return "Image actions need an OpenAI or Claude model"
         case .scriptFirstOnImage: return "The first step must be AI to run on an image"
         case .missingApiKey(let provider): return "Set your \(provider.displayName) API key in Settings"
+        case .customEndpointUnavailable: return "That custom provider is no longer configured — add it in Settings"
         }
     }
 }
@@ -31,11 +35,12 @@ public final class ActionRunner {
     public init(
         defaultModel: @escaping () -> String,
         ollamaBaseURL: @escaping () -> String = { recallyxDefaultOllamaBaseURL },
+        customEndpoint: @escaping (_ providerID: String) -> AIClient.CustomEndpoint? = { _ in nil },
         runScript: ((String, String) async throws -> String)? = nil,
         runAI: ((String, String?, String, Data?) async throws -> String)? = nil
     ) {
         self.runScript = runScript ?? { try await ScriptRunner.run(script: $0, input: $1) }
-        let aiClient = AIClient(ollamaBaseURL: ollamaBaseURL)
+        let aiClient = AIClient(ollamaBaseURL: ollamaBaseURL, customEndpoint: customEndpoint)
         self.runAI = runAI ?? { prompt, model, input, imageData in
             // Route by model id: `ollama:*` → local Ollama, `claude*` →
             // Anthropic, else OpenAI. The facade reads the matching provider's

@@ -159,4 +159,129 @@ struct SettingsStoreTests {
         let reloaded = SettingsStore(defaults: defaults)
         #expect(reloaded.settings.ollamaBaseURL == "http://192.168.1.10:11434")
     }
+
+    // MARK: - providers migration / round-trip
+
+    @Test func providers_absentInBlob_seedFromReality() throws {
+        // An old blob with no `providers` key must decode to a SEEDED list, not
+        // an empty one — so a working setup never loses its providers. We can't
+        // assert the exact seeded set (it reads the live keychain/OS), but Ollama
+        // is always seeded, so the list is never empty.
+        let defaults = makeDefaults()
+        let partial = try JSONSerialization.data(withJSONObject: ["retentionCap": 500])
+        defaults.set(partial, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(!store.settings.providers.isEmpty)
+        #expect(store.settings.providers.contains { $0.type == .ollama })
+    }
+
+    @Test func providers_presentInBlob_decodeUnchanged() throws {
+        // A blob WITH an explicit providers list decodes exactly as written —
+        // the migration seeding must not override a stored list.
+        let id = UUID()
+        let stored = AppSettings(
+            providers: [
+                ProviderConfig(id: id, type: .openAICompatible, displayName: "Groq",
+                               baseURL: "https://api.groq.com/openai/v1",
+                               keychainAccount: "custom-x", models: ["llama-3.1-70b"]),
+            ]
+        )
+        let data = try JSONEncoder().encode(stored)
+        let defaults = makeDefaults()
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providers.count == 1)
+        #expect(store.settings.providers.first?.id == id)
+        #expect(store.settings.providers.first?.displayName == "Groq")
+        #expect(store.settings.providers.first?.models == ["llama-3.1-70b"])
+    }
+
+    @Test func providers_explicitEmptyList_isPreserved() throws {
+        // The user removed every provider on purpose — an explicit [] must NOT
+        // re-seed (distinct from an absent key on an old blob).
+        let stored = AppSettings(providers: [])
+        let data = try JSONEncoder().encode(stored)
+        let defaults = makeDefaults()
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providers.isEmpty)
+    }
+
+    // MARK: - providers migration is one-shot (Part B)
+
+    @Test func providers_absentInBlob_persistsSeedOnce() throws {
+        // Part B: an existing (legacy) blob with no `providers` key gets seeded by
+        // the decoder; SettingsStore.init must persist that seed immediately so the
+        // launch-time keychain existence-checks don't recur every launch.
+        let defaults = makeDefaults()
+        // Legacy blob: real keys but NO providers key (the pre-feature shape).
+        let legacy = try JSONSerialization.data(withJSONObject: [
+            "retentionCap": 500,
+            "actions": [],
+        ])
+        defaults.set(legacy, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providersWereSeededOnDecode)
+        #expect(!store.settings.providers.isEmpty)
+
+        // The seed was written back: the persisted blob now carries an explicit
+        // `providers` key, so a re-decode is NOT a re-seed (one-shot).
+        let persisted = defaults.data(forKey: SettingsStore.storageKey)!
+        let json = try JSONSerialization.jsonObject(with: persisted) as! [String: Any]
+        #expect(json["providers"] != nil)
+
+        // Reloading the now-migrated blob decodes the stored list unchanged and
+        // does NOT flag a re-seed — the checks don't recur.
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.providersWereSeededOnDecode == false)
+        #expect(reloaded.settings.providers.map(\.id) == store.settings.providers.map(\.id))
+    }
+
+    @Test func providers_explicitEmptyList_notReSeededOrRePersisted() throws {
+        // An explicit [] is a deliberate choice — it must not be flagged for a
+        // re-seed and the stored blob must be left byte-identical (no needless
+        // re-persist).
+        let stored = AppSettings(providers: [])
+        let data = try JSONEncoder().encode(stored)
+        let defaults = makeDefaults()
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providers.isEmpty)
+        #expect(store.settings.providersWereSeededOnDecode == false)
+        #expect(defaults.data(forKey: SettingsStore.storageKey) == data)
+    }
+
+    @Test func providers_presentList_notReSeededOrRePersisted() throws {
+        // A present list decodes unchanged and is not re-persisted by init.
+        let stored = AppSettings(providers: [
+            ProviderConfig(type: .openai, keychainAccount: KeychainStore.openAIKey.account),
+            ProviderConfig(type: .ollama, baseURL: "http://localhost:11434"),
+        ])
+        let data = try JSONEncoder().encode(stored)
+        let defaults = makeDefaults()
+        defaults.set(data, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.providers.count == 2)
+        #expect(store.settings.providersWereSeededOnDecode == false)
+        #expect(defaults.data(forKey: SettingsStore.storageKey) == data)
+    }
+
+    @Test func providers_roundTripThroughStore() {
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        let custom = ProviderConfig(type: .openAICompatible, displayName: "Together",
+                                    baseURL: "https://api.together.xyz/v1",
+                                    keychainAccount: "custom-y", models: ["m1", "m2"])
+        store.settings.providers.append(custom)
+        store.flush()
+
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.providers.contains { $0.displayName == "Together" && $0.models == ["m1", "m2"] })
+    }
 }

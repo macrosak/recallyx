@@ -11,20 +11,30 @@ public struct KeychainStore {
         self.account = account
     }
 
+    /// The bundle-id Keychain service all Recallyx items share. Custom-endpoint
+    /// keys (addressed by a per-provider account) store under this same service.
+    public static let recallyxService = "io.github.macrosak.recallyx"
+
     public static let openAIKey = KeychainStore(
-        service: "io.github.macrosak.recallyx",
+        service: recallyxService,
         account: "openai-api-key"
     )
 
     public static let anthropicKey = KeychainStore(
-        service: "io.github.macrosak.recallyx",
+        service: recallyxService,
         account: "anthropic-api-key"
     )
 
     public static let geminiKey = KeychainStore(
-        service: "io.github.macrosak.recallyx",
+        service: recallyxService,
         account: "gemini-api-key"
     )
+
+    /// Builds a store for a custom OpenAI-compatible provider's API key, keyed by
+    /// the provider's per-id account (`ProviderConfig.customKeychainAccount(for:)`).
+    public static func custom(account: String) -> KeychainStore {
+        KeychainStore(service: recallyxService, account: account)
+    }
 
     public func read() -> String? {
         var query: [String: Any] = baseQuery
@@ -42,6 +52,31 @@ public struct KeychainStore {
             return nil
         }
         return string
+    }
+
+    /// Non-interactive existence check: does this item exist AND can it be read
+    /// *without* showing any UI? Returns `true` only on `errSecSuccess`.
+    ///
+    /// Unlike `read()`, this MUST NEVER pop a Keychain password prompt — it runs
+    /// at launch (inside the settings decoder's provider-list migration), where a
+    /// prompt is unacceptable. We pass `kSecUseAuthenticationUI: .fail` so a read
+    /// that *would* require user interaction (e.g. the item's ACL was bound to a
+    /// different/older code signature and no longer silently matches this build)
+    /// fails with `errSecInteractionNotAllowed` instead of prompting. We also skip
+    /// returning the data (`kSecReturnData: false`) — we only need presence, not
+    /// the secret. Net behavior for the migration: key exists and is silently
+    /// readable → seed; key absent OR reading would prompt → don't seed, no dialog.
+    public func existsWithoutPrompt() -> Bool {
+        var query: [String: Any] = baseQuery
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnData as String] = false
+        // `kSecUseAuthenticationUIFail` is the modern key (macOS 10.11+); it makes
+        // any operation that would need UI return errSecInteractionNotAllowed
+        // rather than presenting it. Compiles on the macOS 13+ floor.
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        return status == errSecSuccess
     }
 
     @discardableResult

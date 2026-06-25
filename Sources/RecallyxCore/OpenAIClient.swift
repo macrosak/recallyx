@@ -20,27 +20,48 @@ public enum OpenAIError: LocalizedError {
     }
 }
 
-/// Chat-completions client. Copied from AI Replace.
+/// Chat-completions client. Copied from AI Replace; the same code serves the
+/// built-in OpenAI provider and user-added OpenAI-compatible endpoints (Groq /
+/// Together / OpenRouter / LM Studio / vLLM / …) via a configurable `baseURL`.
 public struct OpenAIClient {
     public init() {}
-    private static let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
+    /// The OpenAI API base — the default `baseURL`. Custom endpoints pass their own.
+    public static let defaultBaseURL = "https://api.openai.com/v1"
     private static let maxTokens = AIClientDefaults.maxOutputTokens
+
+    /// Resolves the chat-completions endpoint from a provider base URL. Accepts a
+    /// base like `https://api.groq.com/openai/v1` (→ `…/v1/chat/completions`) or a
+    /// full `…/chat/completions` URL (used as-is). Trailing slashes are tolerated.
+    public static func chatCompletionsURL(baseURL: String) -> URL? {
+        var trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmed.hasSuffix("/") { trimmed.removeLast() }
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasSuffix("/chat/completions") { return URL(string: trimmed) }
+        return URL(string: trimmed + "/chat/completions")
+    }
 
     /// `imageData` (PNG bytes) opt-in: when non-nil, the user message `content`
     /// becomes a vision array `[{text}, {image_url: data:image/png;base64,…}]`;
     /// otherwise the existing plain-text shape (unchanged).
+    ///
+    /// `baseURL` defaults to OpenAI's; custom OpenAI-compatible providers pass
+    /// their own endpoint base.
     public func complete(
         apiKey: String,
+        baseURL: String = OpenAIClient.defaultBaseURL,
         model: String,
         promptTemplate: String,
         text: String,
         imageData: Data? = nil
     ) async throws -> String {
         guard !apiKey.isEmpty else { throw OpenAIError.missingApiKey }
+        guard let endpoint = Self.chatCompletionsURL(baseURL: baseURL) else {
+            throw OpenAIError.invalidResponse
+        }
 
         let fullPrompt = applyPromptTemplate(promptTemplate, text: text)
 
-        var request = URLRequest(url: Self.endpoint)
+        var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -163,10 +184,10 @@ public enum ModelCatalog {
         }
     }
 
-    /// Pure, hermetic grouping — produces the provider sections to show, gated
-    /// purely by the passed flags. Order is fixed: OpenAI, Anthropic, Google
-    /// Gemini, Ollama, Apple. Test THIS; `availableGroups()` computes the flags
-    /// from live config.
+    /// Pure, hermetic flag-driven grouping — kept for its unit tests. Order is
+    /// fixed: OpenAI, Anthropic, Google Gemini, Ollama, Apple. **No longer drives
+    /// live availability** — `groups(forProviders:)` (the explicit provider list)
+    /// does; this stays as a pure reference/test surface.
     public static func groups(openAI: Bool, anthropic: Bool, gemini: Bool, ollama: Bool, apple: Bool) -> [ModelGroup] {
         var result: [ModelGroup] = []
         if openAI { result.append(ModelGroup(title: "OpenAI", models: self.openAI)) }
@@ -177,22 +198,49 @@ public enum ModelCatalog {
         return result
     }
 
-    /// Live-config convenience used by the views: cloud providers appear only
-    /// when their Keychain key is set, Apple only when the OS can run it, Ollama
-    /// always (local, keyless — deliberate v1 choice). Reads the keychain + OS
-    /// each call so newly-saved keys show up on the next view appearance.
-    public static func availableGroups() -> [ModelGroup] {
-        func keySet(_ store: KeychainStore) -> Bool {
-            guard let key = store.read() else { return false }
-            return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    /// The selectable model groups derived from the user's explicit provider
+    /// list — the source of truth that replaced the keychain-presence/always-on
+    /// availability heuristic. **Pure and order-preserving:** each *enabled*
+    /// entry, in list order (drag-reorder = picker group order), contributes one
+    /// `ModelGroup`:
+    /// - built-in cloud/Ollama/Apple → the catalog's fixed model list under the
+    ///   provider's `displayName`,
+    /// - a custom (`openAICompatible`) provider → its user-entered `models`
+    ///   tagged as `custom:<id>:<model>` (empty/blank model lists are skipped).
+    ///
+    /// Drives both Settings pickers + the Actions step picker so they share one
+    /// source. Test THIS; `availableGroups(for:)` just forwards the live list.
+    public static func groups(forProviders providers: [ProviderConfig]) -> [ModelGroup] {
+        var result: [ModelGroup] = []
+        for provider in providers where provider.enabled {
+            switch provider.type {
+            case .openai:
+                result.append(ModelGroup(title: provider.displayName, models: openAI))
+            case .anthropic:
+                result.append(ModelGroup(title: provider.displayName, models: anthropic))
+            case .gemini:
+                result.append(ModelGroup(title: provider.displayName, models: gemini))
+            case .ollama:
+                result.append(ModelGroup(title: provider.displayName, models: ollama))
+            case .apple:
+                result.append(ModelGroup(title: provider.displayName, models: apple))
+            case .openAICompatible:
+                let models = (provider.models ?? [])
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .map { provider.customModelID($0) }
+                if !models.isEmpty {
+                    result.append(ModelGroup(title: provider.displayName, models: models))
+                }
+            }
         }
-        return groups(
-            openAI: keySet(.openAIKey),
-            anthropic: keySet(.anthropicKey),
-            gemini: keySet(.geminiKey),
-            ollama: true,
-            apple: AppleClient.isAvailable
-        )
+        return result
+    }
+
+    /// Live convenience used by the views: forwards the user's explicit provider
+    /// list to the pure `groups(forProviders:)` builder.
+    public static func availableGroups(for providers: [ProviderConfig]) -> [ModelGroup] {
+        groups(forProviders: providers)
     }
 
     /// Keeps the `Picker`'s current selection selectable: a SwiftUI `Picker`

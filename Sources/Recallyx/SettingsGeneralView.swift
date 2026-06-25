@@ -1,8 +1,8 @@
 import SwiftUI
 import RecallyxCore
 
-/// The General settings tab. Phase 1: Shortcuts, History, Startup. The OpenAI
-/// section (API key + model) is added with the AI layer.
+/// The General settings tab: Shortcuts, History, Startup, plus the cross-provider
+/// Default-model picker. Per-provider key/URL config moved to the Providers tab.
 struct SettingsGeneralView: View {
     @ObservedObject var settingsStore: SettingsStore
     let clearHistory: () -> Void
@@ -17,35 +17,9 @@ struct SettingsGeneralView: View {
     @State private var launchError: String?
     @State private var searchShortcutError: String?
     @State private var transformShortcutError: String?
-    @State private var apiKey: String = ""
-    @State private var showKey: Bool = false
-    @State private var testResult: KeyTestResult = .idle
-    @State private var anthropicApiKey: String = ""
-    @State private var showAnthropicKey: Bool = false
-    @State private var anthropicTestResult: KeyTestResult = .idle
-    @State private var geminiApiKey: String = ""
-    @State private var showGeminiKey: Bool = false
-    @State private var geminiTestResult: KeyTestResult = .idle
-    /// Bumped whenever a stored API key is written or cleared. The pickers'
-    /// `ModelCatalog.availableGroups()` reads the Keychain directly, so SwiftUI
-    /// has no other signal to re-evaluate `body`; tagging the default-model
-    /// picker with `.id(keychainRevision)` forces it to refresh after Save.
-    @State private var keychainRevision = 0
-
-    private let keychain = KeychainStore.openAIKey
-    private let anthropicKeychain = KeychainStore.anthropicKey
-    private let geminiKeychain = KeychainStore.geminiKey
-
-    private enum KeyTestResult: Equatable {
-        case idle, testing, ok, failed(String)
-    }
 
     var body: some View {
         VStack(spacing: 17) {
-            openAISection
-            anthropicSection
-            geminiSection
-            ollamaSection
             defaultModelSection
             shortcutsSection
             historySection
@@ -53,56 +27,26 @@ struct SettingsGeneralView: View {
         }
         .onAppear {
             capText = String(settingsStore.settings.retentionCap)
-            apiKey = keychain.read() ?? ""
-            anthropicApiKey = anthropicKeychain.read() ?? ""
-            geminiApiKey = geminiKeychain.read() ?? ""
-        }
-    }
-
-    // MARK: - OpenAI
-
-    private var openAISection: some View {
-        VStack(spacing: 0) {
-            SectionLabel(text: "OpenAI", theme: theme)
-            SettingsCard(theme: theme) {
-                SettingsRow(label: "API key", desc: apiKeyDesc, last: true, theme: theme) {
-                    if showKey {
-                        SettingsField(text: $apiKey, placeholder: "sk-…", mono: true, width: 150, theme: theme)
-                    } else {
-                        SecureField("sk-…", text: $apiKey)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12.5, design: .monospaced))
-                            .foregroundStyle(theme.text)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .frame(width: 150)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(theme.inputBg)
-                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.inputBorder, lineWidth: 0.5)))
-                    }
-                    SettingsButton(title: showKey ? "Hide" : "Show", theme: theme) { showKey.toggle() }
-                    SettingsButton(title: "Test", theme: theme) { Task { await testKey() } }
-                    SettingsButton(title: "Save", kind: .primary, theme: theme) { persistKey() }
-                }
-            }
         }
     }
 
     // MARK: - Default model
 
-    /// Cross-provider setting (its own section, not under OpenAI). Lists only
-    /// available providers via `ModelCatalog.availableGroups()`, plus the
+    /// Cross-provider setting: the model AI steps use when they don't override
+    /// it. Lists only enabled providers (`availableGroups(for:)`), plus the
     /// current value if it belongs to a now-unavailable provider so the Picker
     /// never renders blank.
     private var defaultModelSection: some View {
         VStack(spacing: 0) {
             SectionLabel(text: "Default model", theme: theme)
             SettingsCard(theme: theme) {
-                SettingsRow(label: "Default model", desc: "Used by AI steps without an override.", last: true, theme: theme) {
+                SettingsRow(label: "Default model", desc: "Used by AI steps without an override. Add providers in the Providers tab.", last: true, theme: theme) {
                     Picker("", selection: Binding(
                         get: { settingsStore.settings.defaultModel },
                         set: { settingsStore.settings.defaultModel = $0 }
                     )) {
                         ForEach(ModelCatalog.groupsPreservingSelection(
-                            ModelCatalog.availableGroups(),
+                            ModelCatalog.availableGroups(for: settingsStore.settings.providers),
                             selected: settingsStore.settings.defaultModel
                         )) { group in
                             Section(group.title) {
@@ -112,187 +56,8 @@ struct SettingsGeneralView: View {
                     }
                     .labelsHidden()
                     .frame(width: 150)
-                    // `availableGroups()` reads the Keychain, so re-key the Picker
-                    // on every key save/clear to refresh the provider list.
-                    .id(keychainRevision)
                 }
             }
-        }
-    }
-
-    // MARK: - Anthropic
-
-    private var anthropicSection: some View {
-        VStack(spacing: 0) {
-            SectionLabel(text: "Anthropic", theme: theme)
-            SettingsCard(theme: theme) {
-                SettingsRow(label: "API key", desc: anthropicApiKeyDesc, last: true, theme: theme) {
-                    if showAnthropicKey {
-                        SettingsField(text: $anthropicApiKey, placeholder: "sk-ant-…", mono: true, width: 150, theme: theme)
-                    } else {
-                        SecureField("sk-ant-…", text: $anthropicApiKey)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12.5, design: .monospaced))
-                            .foregroundStyle(theme.text)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .frame(width: 150)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(theme.inputBg)
-                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.inputBorder, lineWidth: 0.5)))
-                    }
-                    SettingsButton(title: showAnthropicKey ? "Hide" : "Show", theme: theme) { showAnthropicKey.toggle() }
-                    SettingsButton(title: "Test", theme: theme) { Task { await testAnthropicKey() } }
-                    SettingsButton(title: "Save", kind: .primary, theme: theme) { persistAnthropicKey() }
-                }
-            }
-        }
-    }
-
-    private var anthropicApiKeyDesc: String {
-        switch anthropicTestResult {
-        case .idle: return "Stored in your macOS Keychain."
-        case .testing: return "Testing key against \(ModelCatalog.anthropic.first ?? "claude-haiku-4-5")…"
-        case .ok: return "✓ API key is valid."
-        case .failed(let msg): return "✗ \(msg)"
-        }
-    }
-
-    private func persistAnthropicKey() {
-        let trimmed = anthropicApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { _ = anthropicKeychain.delete() } else { _ = anthropicKeychain.write(trimmed) }
-        keychainRevision += 1
-    }
-
-    /// Tests the key as typed in the field, WITHOUT persisting it (mirrors the
-    /// OpenAI Test). Uses the cheapest Claude model with a trivial prompt.
-    private func testAnthropicKey() async {
-        let trimmed = anthropicApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        anthropicTestResult = .testing
-        let model = ModelCatalog.anthropic.first ?? "claude-haiku-4-5"
-        do {
-            _ = try await AnthropicClient().complete(apiKey: trimmed, model: model, promptTemplate: "Reply with: ok", text: "")
-            anthropicTestResult = .ok
-        } catch AnthropicError.emptyResponse {
-            anthropicTestResult = .ok
-        } catch {
-            anthropicTestResult = .failed(error.localizedDescription)
-        }
-    }
-
-    // MARK: - Google Gemini
-
-    private var geminiSection: some View {
-        VStack(spacing: 0) {
-            SectionLabel(text: "Google Gemini", theme: theme)
-            SettingsCard(theme: theme) {
-                SettingsRow(label: "API key", desc: geminiApiKeyDesc, last: true, theme: theme) {
-                    if showGeminiKey {
-                        SettingsField(text: $geminiApiKey, placeholder: "AIza…", mono: true, width: 150, theme: theme)
-                    } else {
-                        SecureField("AIza…", text: $geminiApiKey)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12.5, design: .monospaced))
-                            .foregroundStyle(theme.text)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .frame(width: 150)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(theme.inputBg)
-                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.inputBorder, lineWidth: 0.5)))
-                    }
-                    SettingsButton(title: showGeminiKey ? "Hide" : "Show", theme: theme) { showGeminiKey.toggle() }
-                    SettingsButton(title: "Test", theme: theme) { Task { await testGeminiKey() } }
-                    SettingsButton(title: "Save", kind: .primary, theme: theme) { persistGeminiKey() }
-                }
-            }
-        }
-    }
-
-    private var geminiApiKeyDesc: String {
-        switch geminiTestResult {
-        case .idle: return "Stored in your macOS Keychain."
-        case .testing: return "Testing key against \(ModelCatalog.gemini.first ?? "gemini-3.5-flash")…"
-        case .ok: return "✓ API key is valid."
-        case .failed(let msg): return "✗ \(msg)"
-        }
-    }
-
-    private func persistGeminiKey() {
-        let trimmed = geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { _ = geminiKeychain.delete() } else { _ = geminiKeychain.write(trimmed) }
-        keychainRevision += 1
-    }
-
-    /// Tests the key as typed in the field, WITHOUT persisting it (mirrors the
-    /// OpenAI/Anthropic Tests). Uses the cheapest Gemini model with a trivial prompt.
-    private func testGeminiKey() async {
-        let trimmed = geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        geminiTestResult = .testing
-        let model = ModelCatalog.gemini.first ?? "gemini-3.5-flash"
-        do {
-            _ = try await GeminiClient().complete(apiKey: trimmed, model: model, promptTemplate: "Reply with: ok", text: "")
-            geminiTestResult = .ok
-        } catch GeminiError.emptyResponse {
-            geminiTestResult = .ok
-        } catch {
-            geminiTestResult = .failed(error.localizedDescription)
-        }
-    }
-
-    // MARK: - Ollama
-
-    private var ollamaSection: some View {
-        VStack(spacing: 0) {
-            SectionLabel(text: "Ollama (local)", theme: theme)
-            SettingsCard(theme: theme) {
-                SettingsRow(
-                    label: "Server URL",
-                    desc: "Local Ollama server for ollama:… models. No API key needed.",
-                    last: true,
-                    theme: theme
-                ) {
-                    SettingsField(
-                        text: Binding(
-                            get: { settingsStore.settings.ollamaBaseURL },
-                            set: { settingsStore.settings.ollamaBaseURL = $0 }
-                        ),
-                        placeholder: AppSettings.defaultOllamaBaseURL,
-                        mono: true,
-                        width: 200,
-                        theme: theme
-                    )
-                }
-            }
-        }
-    }
-
-    private var apiKeyDesc: String {
-        switch testResult {
-        case .idle: return "Stored in your macOS Keychain."
-        case .testing: return "Testing key against \(ModelCatalog.default)…"
-        case .ok: return "✓ API key is valid."
-        case .failed(let msg): return "✗ \(msg)"
-        }
-    }
-
-    private func persistKey() {
-        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { _ = keychain.delete() } else { _ = keychain.write(trimmed) }
-        keychainRevision += 1
-    }
-
-    /// Tests the key as typed in the field, WITHOUT persisting it — saving is
-    /// Save's job; testing a bad key must not overwrite a working one.
-    private func testKey() async {
-        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        testResult = .testing
-        do {
-            _ = try await OpenAIClient().complete(apiKey: trimmed, model: ModelCatalog.default, promptTemplate: "Reply with: ok", text: "")
-            testResult = .ok
-        } catch OpenAIError.emptyResponse {
-            testResult = .ok
-        } catch {
-            testResult = .failed(error.localizedDescription)
         }
     }
 
