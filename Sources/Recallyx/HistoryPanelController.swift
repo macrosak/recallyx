@@ -159,7 +159,37 @@ final class HistoryPanelController {
         let size = panel.frame.size
         let x = visible.minX + (visible.width - size.width) / 2
         let y = visible.minY + visible.height * 0.62 - size.height / 2
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        // Clamp so the whole panel stays on-screen — on a short external
+        // display the ~62%-up placement can push the top off the visible frame.
+        let origin = Self.clampedOrigin(forSize: size, proposed: NSPoint(x: x, y: y), in: visible)
+        panel.setFrameOrigin(origin)
+    }
+
+    /// Pins `proposed` so a window of `size` fits entirely inside `visibleFrame`.
+    /// Clamps x into `[minX, maxX - width]` and y into `[minY, maxY - height]`.
+    /// When the window is larger than the screen in a dimension, the clamp range
+    /// inverts; we then keep the **top/leading** edge visible (the title/search
+    /// bar) by pinning to that edge rather than the bottom/trailing. Pure and
+    /// side-effect-free so it's unit-testable without AppKit.
+    static func clampedOrigin(forSize size: CGSize, proposed: CGPoint, in visibleFrame: CGRect) -> CGPoint {
+        // x: keep the leading (min-x) edge visible if too wide.
+        let maxX = visibleFrame.maxX - size.width
+        let x: CGFloat
+        if maxX < visibleFrame.minX {
+            x = visibleFrame.minX
+        } else {
+            x = min(max(proposed.x, visibleFrame.minX), maxX)
+        }
+        // y is bottom-up (AppKit). To keep the top edge visible when too tall,
+        // pin the origin to maxY - height (so the top sits at the visible top).
+        let maxY = visibleFrame.maxY - size.height
+        let y: CGFloat
+        if maxY < visibleFrame.minY {
+            y = maxY
+        } else {
+            y = min(max(proposed.y, visibleFrame.minY), maxY)
+        }
+        return CGPoint(x: x, y: y)
     }
 
     private func installEventMonitors() {
