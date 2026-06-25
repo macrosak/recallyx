@@ -17,13 +17,13 @@ final class DebugHooks {
     static let notificationName = Notification.Name("io.github.macrosak.recallyx.debug")
 
     private let panel: HistoryPanelController
-    private let openSettings: () -> Void
+    private let openSettings: (SettingsTab) -> Void
     private let historyCount: () -> Int
     private var observer: NSObjectProtocol?
 
     init(
         panel: HistoryPanelController,
-        openSettings: @escaping () -> Void,
+        openSettings: @escaping (SettingsTab) -> Void,
         historyCount: @escaping () -> Int
     ) {
         self.panel = panel
@@ -52,10 +52,20 @@ final class DebugHooks {
         case "query": panel.debugSetQuery(arg ?? "")
         case "text": panel.debugSetText(arg ?? "")
         case "key": panel.debugKey(arg ?? "")
-        case "open-settings": openSettings()
+        case "open-settings": openSettings(settingsTab(from: arg))
         case "snapshot": snapshot(to: arg ?? "/tmp/recallyx-snap.png")
         case "state": writeState(to: arg ?? "/tmp/recallyx-state.json")
         default: Log.error("debug: unknown cmd '\(cmd)'")
+        }
+    }
+
+    /// Map the `open-settings` arg → tab. `"providers"`/`"actions"`/`"general"`
+    /// select that tab; anything else (incl. nil) falls back to General.
+    private func settingsTab(from arg: String?) -> SettingsTab {
+        switch arg {
+        case "providers": return .providers
+        case "actions": return .actions
+        default: return .general
         }
     }
 

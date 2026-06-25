@@ -173,7 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if DebugHooks.isEnabled {
             debugHooks = DebugHooks(
                 panel: historyPanel,
-                openSettings: { [weak self] in self?.openSettings() },
+                openSettings: { [weak self] tab in self?.openSettings(tab: tab) },
                 historyCount: { [store] in store.items.count }
             )
         }
@@ -515,6 +515,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func openSettings() {
         settingsWindow?.show()
+    }
+
+    /// Open Settings on a specific tab. Used by the debug command channel
+    /// (`open-settings [general|providers|actions]`); the no-arg `openSettings()`
+    /// (status menu / notification deep-links) stays on the default General tab.
+    func openSettings(tab: SettingsTab) {
+        settingsWindow?.show(tab: tab)
     }
 
     /// Reveal the usage-journal file in Finder. If it doesn't exist yet (journal
