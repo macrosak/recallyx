@@ -442,6 +442,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .paste:
             paste(item, into: app)
             return true
+        case .pasteAsKeystrokes:
+            typeKeystrokes(item, into: app)
+            return true
         case .copy:
             if let text = item.text {
                 Paster.setClipboardText(text)
@@ -499,6 +502,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             watcher?.markSelfWrite()
             await Paster.activateAndPaste(sourceApp: app)
+            state.flash(.success)
+        }
+    }
+
+    /// Type a text clip out as real keystrokes (the "Paste as keystrokes" action)
+    /// instead of a clipboard paste — dodges terminals' bracketed-paste collapse
+    /// (Claude Code's `[Pasted text]`). Text clips only; image clips never reach
+    /// here (not in `BuiltinAction.entries(for: .image)`). No pasteboard write, so
+    /// no `markSelfWrite()`. Bumps the clip like a normal paste.
+    private func typeKeystrokes(_ item: HistoryItem, into app: NSRunningApplication?) {
+        guard let text = item.text else { return }
+        guard Paster.isTypeable(text) else {
+            state.flash(.error("clip too long to type"))
+            notifier.notify(body: "Clip too long to type as keystrokes.")
+            return
+        }
+        store.bump(item.id)
+        journal.log("paste", ["via": "keystrokes", "clipKind": item.kind.rawValue])
+        Task { @MainActor in
+            await Paster.typeText(
+                text,
+                newlineKey: settingsStore.settings.pasteKeystrokeNewlineKey,
+                into: app
+            )
             state.flash(.success)
         }
     }

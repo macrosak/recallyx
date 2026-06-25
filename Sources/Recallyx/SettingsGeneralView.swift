@@ -82,7 +82,6 @@ struct SettingsGeneralView: View {
                 SettingsRow(
                     label: "Transform selection",
                     desc: transformShortcutError ?? "Grab the current selection and open its actions.",
-                    last: true,
                     theme: theme
                 ) {
                     ShortcutRecorder(
@@ -95,6 +94,23 @@ struct SettingsGeneralView: View {
                         error: $transformShortcutError,
                         theme: theme
                     )
+                }
+                SettingsRow(
+                    label: "Paste-as-keystrokes newline",
+                    desc: "Which Return chord “Paste as keystrokes” sends for each newline. ⌥Return is Claude Code's literal newline; a plain Return submits in many terminals.",
+                    last: true,
+                    theme: theme
+                ) {
+                    Picker("", selection: Binding(
+                        get: { settingsStore.settings.pasteKeystrokeNewlineKey },
+                        set: { settingsStore.settings.pasteKeystrokeNewlineKey = $0 }
+                    )) {
+                        ForEach(NewlineKey.allCases, id: \.self) { key in
+                            Text(key.title).tag(key)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 170)
                 }
             }
         }

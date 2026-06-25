@@ -4,6 +4,10 @@ import Foundation
 /// script/AI actions and the Custom… one-off are layered on in Phase 2.)
 public enum BuiltinAction: String, Identifiable, CaseIterable {
     case paste
+    /// Type the clip out as real keystrokes instead of a clipboard paste — dodges
+    /// terminals' bracketed-paste collapse (Claude Code's `[Pasted text]`). Text
+    /// clips only.
+    case pasteAsKeystrokes
     case copy
     case pin
     case unpin
@@ -17,6 +21,7 @@ public enum BuiltinAction: String, Identifiable, CaseIterable {
     public var title: String {
         switch self {
         case .paste: return "Paste"
+        case .pasteAsKeystrokes: return "Paste as keystrokes"
         case .copy: return "Copy"
         case .pin: return "Pin"
         case .unpin: return "Unpin"
@@ -30,6 +35,7 @@ public enum BuiltinAction: String, Identifiable, CaseIterable {
     public var subtitle: String? {
         switch self {
         case .copy: return "without pasting"
+        case .pasteAsKeystrokes: return "types it out, line by line"
         default: return nil
         }
     }
@@ -37,6 +43,7 @@ public enum BuiltinAction: String, Identifiable, CaseIterable {
     public var icon: String {
         switch self {
         case .paste: return "doc.on.clipboard"
+        case .pasteAsKeystrokes: return "keyboard"
         case .copy: return "doc.on.doc"
         case .pin: return "pin"
         case .unpin: return "pin.slash"
@@ -50,9 +57,10 @@ public enum BuiltinAction: String, Identifiable, CaseIterable {
     public var isDanger: Bool { self == .delete }
 
     /// The built-ins available for a given clip kind, in display order.
+    /// "Paste as keystrokes" is text-only — typing image bytes makes no sense.
     public static func entries(for kind: ClipKind) -> [BuiltinAction] {
         switch kind {
-        case .text: return [.paste, .copy, .delete]
+        case .text: return [.paste, .pasteAsKeystrokes, .copy, .delete]
         case .image: return [.paste, .openInPreview, .copyFilePath, .revealInFinder, .delete]
         }
     }
