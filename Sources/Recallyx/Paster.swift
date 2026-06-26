@@ -51,9 +51,9 @@ enum Paster {
     /// Put text on the clipboard without pasting (the "Copy" action; also the
     /// first half of a paste, split out so the caller can mark the write as
     /// self-written before the watcher's next tick).
-    static func setClipboardText(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+    static func setClipboardText(_ text: String, to pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 
     /// Image counterpart of `setClipboardText`. Writes the on-disk PNG bytes
@@ -78,44 +78,72 @@ enum Paster {
         synthesizePasteShortcut()
     }
 
-    // MARK: - Type as keystrokes
+    // MARK: - Paste line-by-line (the "Paste as keystrokes" mechanism)
 
-    /// Soft cap on how long a clip we'll type out as keystrokes. Typing is slow
-    /// (per-character HID events), so above this it's a poor experience and we'd
-    /// rather flash a notice than make the user watch a 1 MB clip tap out. Pure
-    /// `isTypeable(_:)` gates this so it's unit-testable.
+    /// Soft cap on how long a clip we'll paste line-by-line. The line-by-line
+    /// paste is slow (a ⌘V + settle per line), so above this it's a poor
+    /// experience and we'd rather flash a notice than make the user watch a 1 MB
+    /// clip tap out. Pure `isTypeable(_:)` gates this so it's unit-testable.
     nonisolated static let maxTypeableLength = 10_000
 
-    /// Whether a clip is short enough to type out as keystrokes (pure; tested).
-    /// Empty/whitespace-only text isn't worth typing either.
+    /// Whether a clip is short enough to paste line-by-line (pure; tested).
+    /// Empty/whitespace-only text isn't worth pasting either.
     nonisolated static func isTypeable(_ text: String) -> Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && text.count <= maxTypeableLength
     }
 
-    /// Default inter-keystroke delay (microseconds). Apps drop synthesized events
-    /// if typed too fast; ~2ms is a safe middle ground for terminals.
-    nonisolated static let defaultTypeDelayMicros: UInt32 = 2000
+    /// Default inter-step delay (microseconds) between a per-line ⌘V and the next
+    /// newline/paste, so the paste lands before the next keystroke. Terminals can
+    /// drop events that arrive too fast; ~30ms is a safe middle ground.
+    nonisolated static let defaultLineDelayMicros: UInt32 = 30_000
 
-    /// Activate `sourceApp`, then type `text` out as real keystrokes (NOT a
-    /// clipboard write + ⌘V). This dodges terminals' bracketed-paste mode, which
-    /// collapses a multi-line paste into a `[Pasted text]` placeholder — typed
-    /// keystrokes land as visible lines instead.
+    /// Split `text` into lines on `\n`, preserving empty lines (so blank lines in
+    /// the clip become blank lines in the output). Pure; unit-tested. This is the
+    /// unit the line-by-line paste iterates over.
+    nonisolated static func splitLines(_ text: String) -> [String] {
+        text.components(separatedBy: "\n")
+    }
+
+    /// Whether a given line should be pasted (a ⌘V) vs. skipped. Empty lines emit
+    /// only the newline keystroke — pasting an empty string would clear the
+    /// clipboard and synth-⌘V nothing. Pure; unit-tested.
+    nonisolated static func shouldPasteLine(_ line: String) -> Bool {
+        !line.isEmpty
+    }
+
+    /// Activate `sourceApp`, then paste `text` **line by line**: each line is
+    /// pasted with a single ⌘V and the newlines between lines are synthesized as
+    /// the configured `NewlineKey` Return chord.
     ///
-    /// Each character is posted via `keyboardSetUnicodeString` (layout- and
-    /// keycode-independent, handles Unicode/emoji), and each `\n` is sent as the
-    /// configured `NewlineKey` Return chord (a plain Return would submit in
-    /// submit-on-Enter TUIs). No pasteboard is touched, so no `markSelfWrite()`
-    /// is needed. Caller should pre-check `isTypeable(_:)`.
+    /// Why line-by-line instead of one paste: terminals' bracketed-paste mode
+    /// collapses a multi-line ⌘V into a `[Pasted text #N]` placeholder. A
+    /// *single-line* ⌘V never trips that, and a real Return keystroke between
+    /// lines is what terminals read. This also handles all Unicode correctly
+    /// (a real paste, not synthesized typing — synthesized unicode keystrokes are
+    /// dropped by terminals that read the keycode instead of the payload).
+    ///
+    /// The pasteboard is borrowed per line, so the user's clipboard is snapshotted
+    /// up front and restored at the end (the AccessibilityClient save/restore
+    /// pattern). Each clipboard write — every line plus the final restore — is
+    /// marked self-written so the watcher bumps/ignores rather than capturing our
+    /// own paste payloads. Caller should pre-check `isTypeable(_:)`.
     static func typeText(
         _ text: String,
         newlineKey: NewlineKey,
-        perCharDelay: UInt32 = defaultTypeDelayMicros,
+        lineDelay: UInt32 = defaultLineDelayMicros,
+        markSelfWrite: (() -> Void)? = nil,
+        pasteboard: NSPasteboard = .general,
         into sourceApp: NSRunningApplication?
     ) async {
+        let lines = splitLines(text)
+        // Snapshot the user's clipboard so we can restore it after borrowing the
+        // pasteboard for each line's ⌘V (non-lossy: every type on every item).
+        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
+
         if let sourceApp {
             sourceApp.activate(options: [])
-            // Let the activation settle before typing, else the first keystrokes
+            // Let the activation settle before the keystrokes, else the first ⌘V
             // can land in our own app (mirrors activateAndPaste).
             try? await Task.sleep(nanoseconds: 80_000_000)
         }
@@ -124,35 +152,27 @@ enum Paster {
         let returnKey: CGKeyCode = 0x24 // kVK_Return
         let newlineFlags = newlineKey.flags
 
-        for character in text {
-            if character == "\n" {
+        for (index, line) in lines.enumerated() {
+            if index > 0 {
                 postKey(source: source, virtualKey: returnKey, flags: newlineFlags)
-            } else {
-                postUnicode(source: source, string: String(character))
+                if lineDelay > 0 { usleep(lineDelay) }
             }
-            if perCharDelay > 0 { usleep(perCharDelay) }
+            if shouldPasteLine(line) {
+                setClipboardText(line, to: pasteboard)
+                markSelfWrite?()
+                synthesizePasteShortcut()
+                if lineDelay > 0 { usleep(lineDelay) }
+            }
         }
-    }
 
-    /// Post a down/up keystroke for a single Unicode scalar string via
-    /// `keyboardSetUnicodeString` (virtual key is a placeholder — the unicode
-    /// string is what the receiving app reads).
-    private static func postUnicode(source: CGEventSource?, string: String) {
-        let utf16 = Array(string.utf16)
-        guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
-        else { return }
-        utf16.withUnsafeBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return }
-            down.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: base)
-            up.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: base)
-        }
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        // Restore the user's original clipboard and mark the restore as our own
+        // write so the watcher's next tick ignores it.
+        snapshot.restore(to: pasteboard)
+        markSelfWrite?()
     }
 
     /// Post a down/up keystroke for a real virtual key with modifier flags
-    /// (used for the newline Return chord).
+    /// (used for the newline Return chord between lines).
     private static func postKey(source: CGEventSource?, virtualKey: CGKeyCode, flags: CGEventFlags) {
         let down = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: false)

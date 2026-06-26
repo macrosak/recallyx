@@ -506,11 +506,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Type a text clip out as real keystrokes (the "Paste as keystrokes" action)
-    /// instead of a clipboard paste — dodges terminals' bracketed-paste collapse
-    /// (Claude Code's `[Pasted text]`). Text clips only; image clips never reach
-    /// here (not in `BuiltinAction.entries(for: .image)`). No pasteboard write, so
-    /// no `markSelfWrite()`. Bumps the clip like a normal paste.
+    /// Paste a text clip out **line by line** (the "Paste as keystrokes" action)
+    /// instead of one multi-line ⌘V — dodges terminals' bracketed-paste collapse
+    /// (Claude Code's `[Pasted text]`): each line is a single-line ⌘V and the
+    /// newlines between them are real Return keystrokes. Text clips only; image
+    /// clips never reach here (not in `BuiltinAction.entries(for: .image)`). The
+    /// per-line pasteboard writes (and the final clipboard restore) are marked
+    /// self-written so the watcher ignores them. Bumps the clip like a normal paste.
     private func typeKeystrokes(_ item: HistoryItem, into app: NSRunningApplication?) {
         guard let text = item.text else { return }
         guard Paster.isTypeable(text) else {
@@ -524,6 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await Paster.typeText(
                 text,
                 newlineKey: settingsStore.settings.pasteKeystrokeNewlineKey,
+                markSelfWrite: { [weak self] in self?.watcher?.markSelfWrite() },
                 into: app
             )
             state.flash(.success)
