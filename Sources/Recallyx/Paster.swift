@@ -1,40 +1,6 @@
 import AppKit
 import RecallyxCore
 
-/// How a `\n` in a typed-out clip is keyed when "Paste as keystrokes" types the
-/// clip out. A plain Return submits in many TUIs (Claude Code, chat inputs), so
-/// newlines are sent as a modified Return instead. Pure value type; `Codable` so
-/// it round-trips in `AppSettings`. The default is `.optionReturn` — Claude
-/// Code's literal-newline chord.
-enum NewlineKey: String, Codable, CaseIterable {
-    /// ⌥Return — the literal-newline chord in Claude Code and many terminals.
-    case optionReturn
-    /// ⇧Return — the soft-newline chord in many web/chat inputs.
-    case shiftReturn
-    /// A bare Return — for fields where Return doesn't submit (multiline inputs).
-    case plain
-
-    static let `default`: NewlineKey = .optionReturn
-
-    /// The CGEvent modifier flags posted with the Return keystroke for this key.
-    var flags: CGEventFlags {
-        switch self {
-        case .optionReturn: return .maskAlternate
-        case .shiftReturn: return .maskShift
-        case .plain: return []
-        }
-    }
-
-    /// Human-readable label for the Settings picker.
-    var title: String {
-        switch self {
-        case .optionReturn: return "Option-Return (⌥↵)"
-        case .shiftReturn: return "Shift-Return (⇧↵)"
-        case .plain: return "Return (↵)"
-        }
-    }
-}
-
 /// Paste mechanics, extracted from AI Replace's `CorrectionController`:
 /// pre-populate the clipboard, re-activate the source app, then post a
 /// synthesized ⌘V at the HID event tap so the content lands where the user was
@@ -78,7 +44,12 @@ enum Paster {
         synthesizePasteShortcut()
     }
 
-    // MARK: - Paste line-by-line (the "Paste as keystrokes" mechanism)
+    // MARK: - Paste line-by-line (the "Paste as lines" mechanism)
+
+    /// The newline chord posted between lines: **⌥Return** (Option-Return) — Claude
+    /// Code's literal-newline chord, so a plain Return doesn't submit in
+    /// submit-on-Enter TUIs. Fixed (no longer user-configurable).
+    nonisolated static let newlineFlags: CGEventFlags = .maskAlternate
 
     /// Soft cap on how long a clip we'll paste line-by-line. The line-by-line
     /// paste is slow (a ⌘V + settle per line), so above this it's a poor
@@ -98,6 +69,15 @@ enum Paster {
     /// drop events that arrive too fast; ~30ms is a safe middle ground.
     nonisolated static let defaultLineDelayMicros: UInt32 = 30_000
 
+    /// Settle (microseconds) after the final per-line ⌘V before restoring the
+    /// user's clipboard. The synthesized ⌘V is delivered asynchronously (HID tap
+    /// → window server → target app's event queue → the app reads
+    /// `NSPasteboard.general`); restoring too soon clobbers the clip before the
+    /// target reads it, so the last line pastes the *old* clipboard or nothing.
+    /// Larger than `defaultLineDelayMicros` because there's no further keystroke
+    /// to mask the latency. ~250ms.
+    nonisolated static let restoreSettleMicros: UInt32 = 250_000
+
     /// Split `text` into lines on `\n`, preserving empty lines (so blank lines in
     /// the clip become blank lines in the output). Pure; unit-tested. This is the
     /// unit the line-by-line paste iterates over.
@@ -114,7 +94,7 @@ enum Paster {
 
     /// Activate `sourceApp`, then paste `text` **line by line**: each line is
     /// pasted with a single ⌘V and the newlines between lines are synthesized as
-    /// the configured `NewlineKey` Return chord.
+    /// the ⌥Return chord (`newlineFlags`).
     ///
     /// Why line-by-line instead of one paste: terminals' bracketed-paste mode
     /// collapses a multi-line ⌘V into a `[Pasted text #N]` placeholder. A
@@ -130,7 +110,6 @@ enum Paster {
     /// own paste payloads. Caller should pre-check `isTypeable(_:)`.
     static func typeText(
         _ text: String,
-        newlineKey: NewlineKey,
         lineDelay: UInt32 = defaultLineDelayMicros,
         markSelfWrite: (() -> Void)? = nil,
         pasteboard: NSPasteboard = .general,
@@ -140,6 +119,7 @@ enum Paster {
         // Snapshot the user's clipboard so we can restore it after borrowing the
         // pasteboard for each line's ⌘V (non-lossy: every type on every item).
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
+        Log.info("typeText start lines=\(lines.count) chars=\(text.count) sourceApp=\(sourceApp?.bundleIdentifier ?? "nil") lineDelay=\(lineDelay)")
 
         if let sourceApp {
             sourceApp.activate(options: [])
@@ -150,7 +130,7 @@ enum Paster {
 
         let source = CGEventSource(stateID: .hidSystemState)
         let returnKey: CGKeyCode = 0x24 // kVK_Return
-        let newlineFlags = newlineKey.flags
+        var pastedLines = 0
 
         for (index, line) in lines.enumerated() {
             if index > 0 {
@@ -161,14 +141,20 @@ enum Paster {
                 setClipboardText(line, to: pasteboard)
                 markSelfWrite?()
                 synthesizePasteShortcut()
+                pastedLines += 1
                 if lineDelay > 0 { usleep(lineDelay) }
             }
         }
+
+        // Let the final per-line ⌘V be consumed by the target before we restore
+        // the clipboard — restoring too soon races the paste (see the constant).
+        if pastedLines > 0 { usleep(restoreSettleMicros) }
 
         // Restore the user's original clipboard and mark the restore as our own
         // write so the watcher's next tick ignores it.
         snapshot.restore(to: pasteboard)
         markSelfWrite?()
+        Log.info("typeText done pastedLines=\(pastedLines)/\(lines.count)")
     }
 
     /// Post a down/up keystroke for a real virtual key with modifier flags

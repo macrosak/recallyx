@@ -442,8 +442,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .paste:
             paste(item, into: app)
             return true
-        case .pasteAsKeystrokes:
-            typeKeystrokes(item, into: app)
+        case .pasteAsLines:
+            typeLines(item, into: app)
             return true
         case .copy:
             if let text = item.text {
@@ -506,26 +506,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Paste a text clip out **line by line** (the "Paste as keystrokes" action)
+    /// Paste a text clip out **line by line** (the "Paste as lines" action)
     /// instead of one multi-line ⌘V — dodges terminals' bracketed-paste collapse
     /// (Claude Code's `[Pasted text]`): each line is a single-line ⌘V and the
-    /// newlines between them are real Return keystrokes. Text clips only; image
+    /// newlines between them are real ⌥Return keystrokes. Text clips only; image
     /// clips never reach here (not in `BuiltinAction.entries(for: .image)`). The
     /// per-line pasteboard writes (and the final clipboard restore) are marked
     /// self-written so the watcher ignores them. Bumps the clip like a normal paste.
-    private func typeKeystrokes(_ item: HistoryItem, into app: NSRunningApplication?) {
-        guard let text = item.text else { return }
-        guard Paster.isTypeable(text) else {
-            state.flash(.error("clip too long to type"))
-            notifier.notify(body: "Clip too long to type as keystrokes.")
+    private func typeLines(_ item: HistoryItem, into app: NSRunningApplication?) {
+        guard let text = item.text else {
+            Log.info("typeLines skipped: clip has no text (kind=\(item.kind.rawValue))")
             return
         }
+        guard Paster.isTypeable(text) else {
+            Log.info("typeLines skipped: not typeable chars=\(text.count) (empty/whitespace or over \(Paster.maxTypeableLength))")
+            state.flash(.error("clip too long to paste as lines"))
+            notifier.notify(body: "Clip too long to paste as lines.")
+            return
+        }
+        Log.info("typeLines invoked chars=\(text.count) sourceApp=\(app?.bundleIdentifier ?? "nil")")
         store.bump(item.id)
-        journal.log("paste", ["via": "keystrokes", "clipKind": item.kind.rawValue])
+        journal.log("paste", ["via": "lines", "clipKind": item.kind.rawValue])
         Task { @MainActor in
             await Paster.typeText(
                 text,
-                newlineKey: settingsStore.settings.pasteKeystrokeNewlineKey,
                 markSelfWrite: { [weak self] in self?.watcher?.markSelfWrite() },
                 into: app
             )

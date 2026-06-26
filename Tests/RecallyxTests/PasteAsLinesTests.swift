@@ -5,51 +5,21 @@ import Testing
 @testable import Recallyx
 @testable import RecallyxCore
 
-/// Pure-logic coverage for the "Paste as keystrokes" feature. The mechanism is a
-/// per-line ⌘V with synthesized Return keystrokes between lines; the actual
+/// Pure-logic coverage for the "Paste as lines" feature. The mechanism is a
+/// per-line ⌘V with synthesized ⌥Return keystrokes between lines; the actual
 /// CGEvent paste/Return into another app is HID/AppKit runtime behavior (verified
 /// attended via the debug harness, like the synth-⌘V/⌘C paths) — not unit-tested
 /// here. The line-splitting + "which lines paste" decision and the snapshot
 /// save/restore wiring are pure/testable and covered below.
 @MainActor
-@Suite("Paste as keystrokes")
-struct PasteKeystrokesTests {
-    // MARK: - NewlineKey → CGEventFlags mapping
+@Suite("Paste as lines")
+struct PasteAsLinesTests {
+    // MARK: - newline chord
 
-    @Test func optionReturn_mapsToAlternateFlag() {
-        #expect(NewlineKey.optionReturn.flags == .maskAlternate)
-    }
-
-    @Test func shiftReturn_mapsToShiftFlag() {
-        #expect(NewlineKey.shiftReturn.flags == .maskShift)
-    }
-
-    @Test func plain_mapsToNoFlags() {
-        #expect(NewlineKey.plain.flags == [])
-    }
-
-    @Test func defaultNewlineKey_isOptionReturn() {
-        // Claude Code's literal-newline chord — the whole point of the default.
-        #expect(NewlineKey.default == .optionReturn)
-    }
-
-    @Test func allCases_coverEveryKey() {
-        #expect(NewlineKey.allCases.count == 3)
-        #expect(Set(NewlineKey.allCases) == [.optionReturn, .shiftReturn, .plain])
-    }
-
-    @Test func titles_areNonEmptyAndDistinct() {
-        let titles = NewlineKey.allCases.map(\.title)
-        #expect(titles.allSatisfy { !$0.isEmpty })
-        #expect(Set(titles).count == titles.count)
-    }
-
-    @Test func newlineKey_codableRoundTrips() throws {
-        for key in NewlineKey.allCases {
-            let data = try JSONEncoder().encode(key)
-            let decoded = try JSONDecoder().decode(NewlineKey.self, from: data)
-            #expect(decoded == key)
-        }
+    @Test func newlineFlags_isOptionReturn() {
+        // ⌥Return — Claude Code's literal-newline chord; the fixed (no longer
+        // configurable) newline keystroke between pasted lines.
+        #expect(Paster.newlineFlags == .maskAlternate)
     }
 
     // MARK: - isTypeable (large-text cap + empty guard)
@@ -164,7 +134,6 @@ struct PasteKeystrokesTests {
         // contract here is the clipboard restore + markSelfWrite count.
         await Paster.typeText(
             "one\ntwo",
-            newlineKey: .optionReturn,
             lineDelay: 0,
             markSelfWrite: { marks += 1 },
             pasteboard: pb,
@@ -185,7 +154,6 @@ struct PasteKeystrokesTests {
         // "a\n\nb" → 2 pasted lines (the blank line is newline-only) + 1 restore.
         await Paster.typeText(
             "a\n\nb",
-            newlineKey: .plain,
             lineDelay: 0,
             markSelfWrite: { marks += 1 },
             pasteboard: pb,
@@ -198,24 +166,24 @@ struct PasteKeystrokesTests {
 
     // MARK: - BuiltinAction wiring (text-only)
 
-    @Test func pasteAsKeystrokes_offeredForTextOnly() {
+    @Test func pasteAsLines_offeredForTextOnly() {
         let textEntries = BuiltinAction.entries(for: .text)
         let imageEntries = BuiltinAction.entries(for: .image)
-        #expect(textEntries.contains(.pasteAsKeystrokes))
-        #expect(!imageEntries.contains(.pasteAsKeystrokes))
+        #expect(textEntries.contains(.pasteAsLines))
+        #expect(!imageEntries.contains(.pasteAsLines))
     }
 
-    @Test func pasteAsKeystrokes_sitsRightAfterPaste() {
+    @Test func pasteAsLines_sitsRightAfterPaste() {
         let textEntries = BuiltinAction.entries(for: .text)
         let pasteIdx = textEntries.firstIndex(of: .paste)
-        let keysIdx = textEntries.firstIndex(of: .pasteAsKeystrokes)
-        #expect(pasteIdx != nil && keysIdx != nil)
-        #expect(keysIdx == pasteIdx! + 1)
+        let linesIdx = textEntries.firstIndex(of: .pasteAsLines)
+        #expect(pasteIdx != nil && linesIdx != nil)
+        #expect(linesIdx == pasteIdx! + 1)
     }
 
-    @Test func pasteAsKeystrokes_hasTitleAndIcon() {
-        #expect(BuiltinAction.pasteAsKeystrokes.title == "Paste as keystrokes")
-        #expect(BuiltinAction.pasteAsKeystrokes.icon == "keyboard")
-        #expect(BuiltinAction.pasteAsKeystrokes.isDanger == false)
+    @Test func pasteAsLines_hasTitleAndIcon() {
+        #expect(BuiltinAction.pasteAsLines.title == "Paste as lines")
+        #expect(BuiltinAction.pasteAsLines.icon == "text.alignleft")
+        #expect(BuiltinAction.pasteAsLines.isDanger == false)
     }
 }

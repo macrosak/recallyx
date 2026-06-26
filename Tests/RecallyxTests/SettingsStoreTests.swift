@@ -148,32 +148,6 @@ struct SettingsStoreTests {
         #expect(store.settings.actions.isEmpty)
     }
 
-    @Test func pasteKeystrokeNewlineKey_defaultsToOptionReturn() {
-        let store = SettingsStore(defaults: makeDefaults())
-        #expect(store.settings.pasteKeystrokeNewlineKey == .optionReturn)
-    }
-
-    @Test func pasteKeystrokeNewlineKey_roundTrips() {
-        let defaults = makeDefaults()
-        let store = SettingsStore(defaults: defaults)
-        store.settings.pasteKeystrokeNewlineKey = .shiftReturn
-        store.flush()
-
-        let reloaded = SettingsStore(defaults: defaults)
-        #expect(reloaded.settings.pasteKeystrokeNewlineKey == .shiftReturn)
-    }
-
-    @Test func pasteKeystrokeNewlineKey_absentInBlob_defaultsToOptionReturn() throws {
-        // An old blob with no `pasteKeystrokeNewlineKey` key must decode to the
-        // ⌥Return default, like the other additive fields.
-        let defaults = makeDefaults()
-        let partial = try JSONSerialization.data(withJSONObject: ["retentionCap": 500])
-        defaults.set(partial, forKey: SettingsStore.storageKey)
-
-        let store = SettingsStore(defaults: defaults)
-        #expect(store.settings.pasteKeystrokeNewlineKey == .optionReturn)
-    }
-
     @Test func ollamaBaseURL_defaultsAndRoundTrips() {
         let defaults = makeDefaults()
         let store = SettingsStore(defaults: defaults)
