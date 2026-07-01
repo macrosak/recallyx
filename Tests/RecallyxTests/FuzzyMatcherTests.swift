@@ -110,6 +110,65 @@ struct FuzzyMatcherTests {
         #expect(FuzzyMatcher.rank(items, query: "apl").map(\.text) == ["apple"])
     }
 
+    // MARK: - Tightened short-query scoring (contiguous-run gate + short-query span clamp)
+
+    @Test func shortQuery_url_scatteredAcrossDeployScript_isRejected() {
+        // "url" typed at a deploy/grep script: u/r/l appear in order but spread far
+        // apart, so the tightened short-query span clamp drops it.
+        let script = """
+        git checkout -b feature/parser
+        npm run build && npm run lint
+        """
+        #expect(!script.lowercased().contains("url"))
+        #expect(FuzzyMatcher.score(script, query: "url") == nil)
+    }
+
+    @Test func shortQuery_key_scatteredAcrossBundleID_isRejected() {
+        // "key" against a bundle id: k…e…y are scattered (span 9), past the clamp.
+        let bundleID = "io.github.macrosak.recallyx"
+        #expect(!bundleID.lowercased().contains("key"))
+        #expect(FuzzyMatcher.score(bundleID, query: "key") == nil)
+    }
+
+    @Test func twoCharQuery_scatteredAcrossLongClip_isRejected() {
+        // 2-char queries are the worst offenders — their handful of chars land in
+        // almost any clip. Both "ls" and "vi" appear in-order but scattered here.
+        let clip = "SELECT value FROM inventory WHERE stock > 0 ORDER BY id;"
+        #expect(!clip.lowercased().contains("ls"))
+        #expect(!clip.lowercased().contains("vi"))
+        #expect(FuzzyMatcher.score(clip, query: "ls") == nil)
+        #expect(FuzzyMatcher.score(clip, query: "vi") == nil)
+    }
+
+    @Test func fourCharQuery_allSingletonScatter_rejectedByRunGate() {
+        // A 4-char query whose chars are each isolated is within the span gate's
+        // window (span 7 ≤ the qCount≥4 window) yet has no contiguous run — exactly
+        // what the contiguous-run gate exists to drop.
+        #expect(FuzzyMatcher.score("g_r_e_p", query: "grep") == nil)
+    }
+
+    @Test func exactPrefixSubstringBands_untouchedByGates() {
+        // The high bands never route through subsequenceScore, so no gate can touch
+        // them — even for short queries.
+        #expect(FuzzyMatcher.score("url", query: "url") != nil)          // exact
+        #expect(FuzzyMatcher.score("urls.txt", query: "url") != nil)     // prefix
+        #expect(FuzzyMatcher.score("the url here", query: "url") != nil) // substring
+    }
+
+    @Test func nearContiguousSubsequence_cfgInConfig_isKept() {
+        // "cfg" in "config" — c..f..g, span 6 — is a genuine near-contiguous fuzzy
+        // hit and must survive both gates (the run gate is inactive for ≤3 chars).
+        #expect(!"config".contains("cfg"))
+        #expect(FuzzyMatcher.score("config", query: "cfg") != nil)
+    }
+
+    @Test func denseSubsequence_withContiguousRun_isKept() {
+        // A dense hit whose matched chars form a real run passes the run gate: "abcd"
+        // in "abXcd" lands as "ab" + "cd" (longest run 2 ≥ the qCount-4 threshold).
+        #expect(!"abxcd".contains("abcd"))
+        #expect(FuzzyMatcher.score("abXcd", query: "abcd") != nil)
+    }
+
     // MARK: - Bounded prefix
 
     @Test func boundedPrefix_shortString_returnsWhole() {
