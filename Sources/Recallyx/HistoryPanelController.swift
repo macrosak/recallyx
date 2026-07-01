@@ -248,6 +248,20 @@ final class HistoryPanelController {
                 vm.runSavedAction(at: digit - 1)
                 return nil
             }
+            // Search-token completion popover (list mode only — `tokenPopoverVisible`
+            // is false in actions). ↑↓ move the highlight, ⇥/↵ accept, esc hides —
+            // none reach the clip list / paste / actions while it's up. Typed
+            // characters fall through to the search field (default → break).
+            if vm.tokenPopoverVisible {
+                switch event.keyCode {
+                case 0x7E: vm.moveTokenSuggestionUp();   return nil  // ↑
+                case 0x7D: vm.moveTokenSuggestionDown(); return nil  // ↓
+                case 0x24, 0x4C: vm.acceptTokenSuggestion(); return nil  // ↵
+                case 0x30: vm.acceptTokenSuggestion(); return nil        // ⇥
+                case 0x35: vm.dismissTokenSuggestion(); return nil       // esc
+                default: break
+                }
+            }
             switch event.keyCode {
             case 0x7E: vm.moveUp(); return nil
             case 0x7D: vm.moveDown(); return nil

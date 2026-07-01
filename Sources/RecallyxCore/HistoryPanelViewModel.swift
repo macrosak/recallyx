@@ -41,6 +41,20 @@ public final class HistoryPanelViewModel: ObservableObject {
     /// reset to false on dismiss so a stale held-state never sticks.
     @Published public var commandHeld: Bool = false
 
+    /// Search-token autocomplete (list mode only). When the leading search word
+    /// contains a `:` the popover suggests the matching kind-filter tokens
+    /// (`:img`/`:txt`/`kind:image`/`kind:text`); ↑↓ pick, ⇥/↵ accept, esc hides.
+    @Published public private(set) var tokenSuggestions: [(token: String, label: String)] = []
+    @Published public private(set) var tokenSuggestionIndex: Int = 0
+    /// Set by esc so the popover stays hidden until the query changes again.
+    private var tokenPopoverDismissed = false
+
+    /// The popover shows only in list mode, when there are suggestions and the
+    /// user hasn't dismissed it for the current query.
+    public var tokenPopoverVisible: Bool {
+        mode == .list && !tokenSuggestions.isEmpty && !tokenPopoverDismissed
+    }
+
     /// The clip search, stashed while we're in an action state so it can be
     /// restored when we return to the list (Tab clears the field for action
     /// search; Esc brings the clip search back).
@@ -124,21 +138,31 @@ public final class HistoryPanelViewModel: ObservableObject {
     /// passes through unchanged as ordinary search text. Case-insensitive. A lone
     /// token (`:img`) yields `(.image, "")` → recency order of that kind. Pure;
     /// the wiring restricts the candidate set before the existing search runs.
+    /// The kind-filter tokens recognized in clip search, longest-first. Single
+    /// source of truth for both `parseKindFilter` and the autocomplete popover.
+    /// Longest aliases first so `kind:image` isn't shadowed by a shorter token.
+    public static let kindTokens: [(token: String, kind: ClipKind)] = [
+        ("kind:image", .image),
+        ("kind:text", .text),
+        (":img", .image),
+        (":txt", .text),
+    ]
+
+    /// Display label for a completion-popover row: what the token filters to.
+    public static func kindLabel(_ kind: ClipKind) -> String {
+        switch kind {
+        case .image: return "images only"
+        case .text: return "text only"
+        }
+    }
+
     public static func parseKindFilter(_ query: String) -> (kind: ClipKind?, residual: String) {
         // Trim only leading whitespace — trailing/inner spacing belongs to the
         // residual the search then sees.
         let trimmed = String(query.drop { $0 == " " || $0 == "\t" })
         let lower = trimmed.lowercased()
 
-        // Longest aliases first so `kind:image` isn't shadowed by a shorter token.
-        let tokens: [(token: String, kind: ClipKind)] = [
-            ("kind:image", .image),
-            ("kind:text", .text),
-            (":img", .image),
-            (":txt", .text),
-        ]
-
-        for (token, kind) in tokens where lower.hasPrefix(token) {
+        for (token, kind) in Self.kindTokens where lower.hasPrefix(token) {
             let afterToken = trimmed.index(trimmed.startIndex, offsetBy: token.count)
             // The token must end the string or be followed by whitespace — so
             // `:imgx` / `:txterm` are NOT tokens (they pass through as search).
@@ -330,6 +354,7 @@ public final class HistoryPanelViewModel: ObservableObject {
             savedClipQuery = query
             savedClipID = item.id
             mode = .actions
+            clearTokenSuggestions()
             query = ""
             applyMenuFilter()
             actionIndex = 0
@@ -492,15 +517,83 @@ public final class HistoryPanelViewModel: ObservableObject {
             selectedIndex = idx
         }
         savedClipID = nil
+        // Coming back to the list shouldn't pop a completion (esc-back is a
+        // dismiss gesture); a fresh keystroke re-triggers it.
+        clearTokenSuggestions()
+    }
+
+    // MARK: - Search-token autocomplete (list mode)
+
+    /// Recompute the completion suggestions for the current query. Triggers only
+    /// when the leading search word contains a `:` — so real words starting with
+    /// "k" (e.g. "kind of thing") never pop the completion. Suggests the kind
+    /// tokens the leading word is a *strict* prefix of (the exact-complete case
+    /// is dropped — nothing left to complete). Any query change resets the cursor
+    /// and clears the esc-dismissed flag so the popover can reappear.
+    private func recomputeTokenSuggestions() {
+        tokenSuggestionIndex = 0
+        tokenPopoverDismissed = false
+        let leading = query.prefix { $0 != " " && $0 != "\t" }.lowercased()
+        guard leading.contains(":") else { tokenSuggestions = []; return }
+        tokenSuggestions = Self.kindTokens
+            .filter { $0.token.hasPrefix(leading) && $0.token != leading }
+            .map { (token: $0.token, label: Self.kindLabel($0.kind)) }
+    }
+
+    /// Clear the popover (mode changes / returns to the list). Also resets the
+    /// dismissed flag so a fresh keystroke can bring it back.
+    private func clearTokenSuggestions() {
+        tokenSuggestions = []
+        tokenSuggestionIndex = 0
+        tokenPopoverDismissed = false
+    }
+
+    public func moveTokenSuggestionUp() {
+        guard !tokenSuggestions.isEmpty else { return }
+        tokenSuggestionIndex = max(tokenSuggestionIndex - 1, 0)
+    }
+
+    public func moveTokenSuggestionDown() {
+        guard !tokenSuggestions.isEmpty else { return }
+        tokenSuggestionIndex = min(tokenSuggestionIndex + 1, tokenSuggestions.count - 1)
+    }
+
+    /// Replace the leading search word with the highlighted token plus a single
+    /// trailing space, preserving any residual text after the first whitespace.
+    /// Setting `query` re-filters via its `didSet`; since the leading word now
+    /// equals a complete token, `recomputeTokenSuggestions` empties the list and
+    /// the popover self-hides.
+    public func acceptTokenSuggestion() {
+        guard tokenSuggestions.indices.contains(tokenSuggestionIndex) else { return }
+        let token = tokenSuggestions[tokenSuggestionIndex].token
+        // Everything from the first whitespace on is the residual — keep it, with
+        // exactly one space between the token and it.
+        let residual = query.drop { $0 != " " && $0 != "\t" }.drop { $0 == " " || $0 == "\t" }
+        query = token + " " + residual
+    }
+
+    /// Accept the suggestion at `index` (a row click) — highlight it, then run
+    /// the normal accept. No-op if out of range. Mirrors `clickPaste(at:)`.
+    public func acceptTokenSuggestion(at index: Int) {
+        guard tokenSuggestions.indices.contains(index) else { return }
+        tokenSuggestionIndex = index
+        acceptTokenSuggestion()
+    }
+
+    /// esc — hide the popover but keep the panel + the typed query. Stays hidden
+    /// (via `tokenPopoverDismissed`) until the next query change.
+    public func dismissTokenSuggestion() {
+        tokenPopoverDismissed = true
+        tokenSuggestions = []
     }
 
     // MARK: - Filtering
 
     private func onQueryChanged() {
         switch mode {
-        case .list: refreshClips()
-        case .actions: applyMenuFilter(); actionIndex = 0
-        case .custom, .edit: break   // the field isn't the active control here
+        case .list: refreshClips(); recomputeTokenSuggestions()
+        case .actions: applyMenuFilter(); actionIndex = 0; clearTokenSuggestions()
+        case .custom, .edit: clearTokenSuggestions()   // the field isn't the active control here
         }
     }
 
