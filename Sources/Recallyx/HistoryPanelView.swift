@@ -49,6 +49,22 @@ struct HistoryPanelView: View {
         }
         .frame(width: 760)
         .background(theme.panelTint)
+        // The token-completion popover floats under the search bar (list mode
+        // only). Overlay so it never shifts the list/detail layout below it.
+        .overlay(alignment: .topLeading) {
+            if viewModel.tokenPopoverVisible {
+                SearchTokenPopover(
+                    suggestions: viewModel.tokenSuggestions,
+                    selectedIndex: viewModel.tokenSuggestionIndex,
+                    theme: theme,
+                    onTap: { idx in viewModel.acceptTokenSuggestion(at: idx) }
+                )
+                // Align under the search text (past the magnifier), just below
+                // the 54pt search bar.
+                .padding(.leading, 46)
+                .padding(.top, 54)
+            }
+        }
         .onAppear { focus = .search }
         .onChange(of: viewModel.mode) { syncFocus($0) }
     }
@@ -453,6 +469,56 @@ struct NoMatchesView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// Completion popover shown under the search bar (list mode only) when the user
+/// types a `:`: suggests the kind-filter tokens (`:img` / `:txt` /
+/// `kind:image` / `kind:text`). ↑↓ pick and ⇥/↵ accept are routed by the panel
+/// controller; rows are also click-to-accept. Mirrors the ActionMenu row style
+/// (fixed-height rows, accent-stroke active highlight, `RXTheme` tokens).
+struct SearchTokenPopover: View {
+    let suggestions: [(token: String, label: String)]
+    let selectedIndex: Int
+    let theme: RXTheme
+    let onTap: (Int) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(suggestions.enumerated()), id: \.element.token) { idx, s in
+                row(token: s.token, label: s.label, active: idx == selectedIndex)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onTap(idx) }
+            }
+        }
+        .padding(5)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 12).fill(theme.panelTint))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(theme.hairline, lineWidth: 0.5))
+        )
+        .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
+        .frame(width: 320)
+    }
+
+    private func row(token: String, label: String, active: Bool) -> some View {
+        HStack(spacing: 10) {
+            Text(token)
+                .font(.system(size: 13.5, design: .monospaced))
+                .foregroundStyle(active ? .white : theme.text)
+            Spacer(minLength: 8)
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(active ? .white.opacity(0.75) : theme.textFaint)
+        }
+        .padding(.horizontal, 11)
+        .frame(height: 34)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(active ? theme.sel : .clear)
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(active ? theme.accent : .clear, lineWidth: 1))
+        )
     }
 }
 

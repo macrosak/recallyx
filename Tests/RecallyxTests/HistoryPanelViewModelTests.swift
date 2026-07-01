@@ -772,6 +772,132 @@ struct HistoryPanelViewModelTests {
         // And the menu filter ran over the literal token (no kind magic).
         #expect(vm.mode == .actions)
     }
+
+    // MARK: - Search-token autocomplete popover (list mode)
+
+    @Test func tokenPopover_triggerOnColon() {
+        let vm = makeVM([textItem("x")])
+        vm.query = ":"
+        #expect(vm.tokenSuggestions.map(\.token) == [":img", ":txt"])
+        #expect(vm.tokenPopoverVisible)
+    }
+
+    @Test func tokenPopover_narrowsByPrefix() {
+        let vm = makeVM([textItem("x")])
+        vm.query = ":i"
+        #expect(vm.tokenSuggestions.map(\.token) == [":img"])
+        vm.query = "kind:"
+        #expect(vm.tokenSuggestions.map(\.token) == ["kind:image", "kind:text"])
+        vm.query = "kind:i"
+        #expect(vm.tokenSuggestions.map(\.token) == ["kind:image"])
+    }
+
+    @Test func tokenPopover_requiresColon() {
+        let vm = makeVM([textItem("x")])
+        for q in ["ki", "hello", "", "kind"] {
+            vm.query = q
+            #expect(vm.tokenSuggestions.isEmpty)
+            #expect(!vm.tokenPopoverVisible)
+        }
+    }
+
+    @Test func tokenPopover_exactCompleteYieldsNothing() {
+        let vm = makeVM([textItem("x")])
+        vm.query = ":img"                          // already complete
+        #expect(vm.tokenSuggestions.isEmpty)       // nothing left to complete
+        #expect(!vm.tokenPopoverVisible)
+        vm.query = "kind:text"
+        #expect(vm.tokenSuggestions.isEmpty)
+    }
+
+    @Test func tokenPopover_labelsDescribeKind() {
+        let vm = makeVM([textItem("x")])
+        vm.query = ":"
+        #expect(vm.tokenSuggestions.map(\.label) == ["images only", "text only"])
+    }
+
+    @Test func tokenPopover_acceptRewritesLeadingTokenWithTrailingSpace() {
+        let vm = makeVM([textItem("x")])
+        vm.query = ":i"
+        vm.acceptTokenSuggestion()
+        #expect(vm.query == ":img ")               // completed + single trailing space
+        #expect(vm.tokenSuggestions.isEmpty)       // leading word is now a complete token
+        #expect(!vm.tokenPopoverVisible)
+    }
+
+    @Test func tokenPopover_acceptPreservesResidual() {
+        let vm = makeVM([textItem("x")])
+        vm.query = ":i foo"
+        vm.acceptTokenSuggestion()
+        #expect(vm.query == ":img foo")            // residual after the first space kept
+    }
+
+    @Test func tokenPopover_acceptHonorsHighlightIndex() {
+        let vm = makeVM([textItem("x")])
+        vm.query = ":"
+        vm.moveTokenSuggestionDown()               // highlight :txt
+        vm.acceptTokenSuggestion()
+        #expect(vm.query == ":txt ")
+    }
+
+    @Test func tokenPopover_indexClamps() {
+        let vm = makeVM([textItem("x")])
+        vm.query = ":"                             // two suggestions
+        #expect(vm.tokenSuggestionIndex == 0)
+        vm.moveTokenSuggestionUp()
+        #expect(vm.tokenSuggestionIndex == 0)      // clamped at the top
+        vm.moveTokenSuggestionDown()
+        #expect(vm.tokenSuggestionIndex == 1)
+        vm.moveTokenSuggestionDown()
+        #expect(vm.tokenSuggestionIndex == 1)      // clamped at the bottom
+    }
+
+    @Test func tokenPopover_escDismissesUntilNextQueryChange() {
+        let vm = makeVM([textItem("x")])
+        vm.query = ":"
+        #expect(vm.tokenPopoverVisible)
+        vm.dismissTokenSuggestion()
+        #expect(!vm.tokenPopoverVisible)
+        #expect(vm.tokenSuggestions.isEmpty)
+        // A fresh keystroke re-triggers the popover.
+        vm.query = ":t"
+        #expect(vm.tokenSuggestions.map(\.token) == [":txt"])
+        #expect(vm.tokenPopoverVisible)
+    }
+
+    @Test func tokenPopover_notInActionMode() {
+        let vm = makeVM([textItem("x"), imageItem()])
+        vm.tab()                                   // → actions, query cleared
+        #expect(vm.mode == .actions)
+        vm.query = ":"
+        #expect(vm.tokenSuggestions.isEmpty)       // no kind magic in action search
+        #expect(!vm.tokenPopoverVisible)
+    }
+
+    @Test func tokenPopover_notInCustomMode() {
+        let vm = HistoryPanelViewModel(items: [textItem("x")], actions: [],
+            onBuiltin: { _, _ in }, onRunAction: { _, _ in }, onDismiss: {})
+        vm.tab()
+        vm.actionIndex = vm.menuItems.firstIndex { if case .custom = $0 { return true }; return false }!
+        vm.confirm()                               // → custom mode
+        #expect(vm.mode == .custom)
+        vm.query = ":"
+        #expect(vm.tokenSuggestions.isEmpty)
+        #expect(!vm.tokenPopoverVisible)
+    }
+
+    @Test func tokenPopover_notInEditMode() {
+        let saved = Action(name: "Tidy", icon: "sparkles", steps: [Step(type: .ai, prompt: "p")])
+        let vm = HistoryPanelViewModel(items: [textItem("x")], actions: [saved],
+            onBuiltin: { _, _ in }, onRunAction: { _, _ in }, onDismiss: {})
+        vm.tab()
+        vm.actionIndex = vm.menuItems.firstIndex { if case .saved = $0 { return true }; return false }!
+        vm.tab()                                   // → edit mode
+        #expect(vm.mode == .edit)
+        vm.query = ":"
+        #expect(vm.tokenSuggestions.isEmpty)
+        #expect(!vm.tokenPopoverVisible)
+    }
 }
 
 /// Pure clamp helper for the floating panel's origin: keeps the whole window
