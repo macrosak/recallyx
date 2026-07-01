@@ -222,7 +222,16 @@ public final class HistoryPanelViewModel: ObservableObject {
     /// Record a `paste` usage event (no-op when the journal is off). Logs only
     /// the paste method and the clip *kind* — never the clip contents.
     private func logPaste(_ item: HistoryItem, via: String) {
-        log("paste", ["via": via, "clipKind": item.kind.rawValue])
+        var fields: [String: Any] = ["via": via, "clipKind": item.kind.rawValue]
+        // When a search query is active, also record where the chosen clip sat in
+        // the filtered results — contentless (Ints only), for a search-quality MRR.
+        let q = query.trimmingCharacters(in: .whitespaces)
+        if !q.isEmpty, let idx = filtered.firstIndex(where: { $0.id == item.id }) {
+            fields["queryLength"] = q.count          // consistent with the `search` event
+            fields["rank"] = idx + 1                 // 1-based position in the filtered list
+            fields["resultCount"] = filtered.count   // context: rank 1 of 1 ≠ rank 1 of 40
+        }
+        log("paste", fields)
     }
 
     /// Run the Nth saved action (0-based) among the currently visible menu items —
