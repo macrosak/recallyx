@@ -57,19 +57,23 @@ struct KeychainStoreTests {
     }
 
     #if os(macOS)
+    /// Builds a non-nil `SecAccess` sentinel to inject into `makeAccess` so the
+    /// attach / retry paths run deterministically. `SecAccessCreate` builds an
+    /// in-memory ACL object (it does NOT touch the keychain), so it works even
+    /// in the locked CI keychain env; an empty trusted-app list is enough — the
+    /// tests only care that a non-nil access reaches the add query. `#require`
+    /// FAILS the test (never skips) if the object can't be built.
+    private func makeSentinelAccess() throws -> SecAccess {
+        var access: SecAccess?
+        let status = SecAccessCreate("Test" as CFString, [] as CFArray, &access)
+        #expect(status == errSecSuccess)
+        return try #require(access)
+    }
+
     /// When `makeAccess` yields an access, it is attached to the add query under
     /// `kSecAttrAccess` (the requirement-based-ACL path).
-    @Test func writeAttachesAccessWhenAvailable() {
-        // Build a real, harmless SecAccess to attach (trusted-app list = self).
-        var trustedApp: SecTrustedApplication?
-        _ = SecTrustedApplicationCreateFromPath(nil, &trustedApp)
-        var made: SecAccess?
-        if let app = trustedApp {
-            _ = SecAccessCreate("Test" as CFString, [app] as CFArray, &made)
-        }
-        // If the environment can't even build a SecAccess, skip the assertion —
-        // the fallback test below covers the nil path.
-        guard let access = made else { return }
+    @Test func writeAttachesAccessWhenAvailable() throws {
+        let access = try makeSentinelAccess()
 
         var attachedAccess: CFTypeRef?
         var store = KeychainStore(service: "test", account: "acl")
@@ -103,14 +107,8 @@ struct KeychainStoreTests {
     /// Lockout safety: if the add WITH the requirement ACL fails, `write()`
     /// retries once with the default ACL and still reports success — saving a
     /// key must never fail because the hardening failed.
-    @Test func writeRetriesWithDefaultACLWhenHardenedAddFails() {
-        var trustedApp: SecTrustedApplication?
-        _ = SecTrustedApplicationCreateFromPath(nil, &trustedApp)
-        var made: SecAccess?
-        if let app = trustedApp {
-            _ = SecAccessCreate("Test" as CFString, [app] as CFArray, &made)
-        }
-        guard let access = made else { return }
+    @Test func writeRetriesWithDefaultACLWhenHardenedAddFails() throws {
+        let access = try makeSentinelAccess()
 
         var attempts: [Bool] = []  // per add: did it carry kSecAttrAccess?
         var store = KeychainStore(service: "test", account: "retry")
