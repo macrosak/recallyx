@@ -116,13 +116,15 @@ public struct KeychainStore {
 
         // Best-effort: bind the item's ACL to this app's *designated
         // requirement* (signing cert + bundle id) rather than its per-build
-        // code hash. macOS "Always Allow" for a self-signed app otherwise pins
+        // code hash. macOS "Always Allow" for a cert-signed app otherwise pins
         // the specific binary; every reinstall ships a new binary (new cdhash)
         // and re-prompts. A requirement-based ACL is satisfied by any
-        // identically-signed rebuild, so the grant survives reinstalls.
-        // If the access can't be built (older OS, unsigned/ad-hoc build, any
-        // failing Security call) we fall through to a plain add with the
-        // default ACL — saving a key must NEVER fail because the hardening did.
+        // identically-signed rebuild, so the grant survives reinstalls. (For an
+        // ad-hoc build the captured record still pins the cdhash — same as the
+        // default ACL — so this is a harmless no-op there; see makeAccess.)
+        // If the access can't be built (older OS, unsigned binary, any failing
+        // Security call) we fall through to a plain add with the default ACL —
+        // saving a key must NEVER fail because the hardening did.
         #if os(macOS)
         let access = makeAccess()
         if let access {
@@ -178,12 +180,19 @@ public struct KeychainStore {
     /// signing cert + bundle id), not its per-build code hash — so the grant is
     /// satisfied by any "Recallyx Dev"-signed build across reinstalls.
     ///
-    /// Best-effort: returns `nil` on any failure (unsigned/ad-hoc build, or any
-    /// failing legacy Security call) so the caller falls back to a plain
-    /// default-ACL add. We require a valid designated requirement first
-    /// (`SecCodeCopyDesignatedRequirement` succeeds) so we only build an
-    /// explicit ACL for a properly signed binary — an ad-hoc build would only
-    /// pin its own hash and gain nothing.
+    /// Best-effort: returns `nil` on any failing legacy Security call so the
+    /// caller falls back to a plain default-ACL add. We require a valid
+    /// designated requirement first (`SecCodeCopyDesignatedRequirement`
+    /// succeeds); that guard only bails for a *truly unsigned* binary. An
+    /// ad-hoc-signed build DOES have a designated requirement (a cdhash `H"…"`
+    /// DR), so the guard passes for it and we proceed — but the captured
+    /// trusted-app record then pins that build's cdhash, which is equivalent to
+    /// the default `SecItemAdd` ACL: no reinstall benefit, no harm. The
+    /// reinstall win is real only for a **cert-signed** build, where the record
+    /// captures the stable signing identity that survives rebuilds. For ad-hoc
+    /// the actual fix is the keychain-access-groups entitlement (an Apple
+    /// Developer account) — out of reach here, so attaching the harmless
+    /// hash-pinned access is an accepted no-op.
     ///
     /// The `SecTrustedApplication*` / `SecAccess*` APIs are deprecated since
     /// 10.10 but remain functional on the macOS file keychain; they don't exist
@@ -196,10 +205,13 @@ public struct KeychainStore {
     /// behavior of `…CreateFromPath(nil,…)`. Whether that defeats the reinstall
     /// re-prompt is OS-level and must be verified on-device (see the manual gate).
     static func makeSelfRequirementAccess() -> SecAccess? {
-        // Precondition: the running code is signed with a designated
-        // requirement (cert + identifier, stable across rebuilds — NOT the
-        // cdhash). If this fails the binary is unsigned/ad-hoc and an explicit
-        // ACL would only pin the current hash, so bail to the default add.
+        // Precondition: the running code is signed (has a designated
+        // requirement). This fails ONLY for a truly unsigned binary — an
+        // ad-hoc build still has a DR (its cdhash), so the guard passes for it
+        // too. For a cert-signed build the DR is the stable signing identity
+        // (cert + identifier, survives rebuilds); for ad-hoc it's the per-build
+        // cdhash and the resulting ACL matches only this exact binary (no
+        // reinstall benefit, but harmless). Unsigned → bail to the default add.
         var selfCode: SecCode?
         guard SecCodeCopySelf(SecCSFlags(), &selfCode) == errSecSuccess,
               let code = selfCode else { return nil }
