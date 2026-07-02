@@ -202,6 +202,70 @@ struct HistoryPanelViewModelTests {
         #expect(pasted == nil)
     }
 
+    // MARK: - Paste usage-journal logging (search-quality MRR)
+
+    /// A VM that records the fields of every `paste` usage event it emits.
+    private func vmCapturingPaste(_ items: [HistoryItem], into store: PasteLogStore) -> HistoryPanelViewModel {
+        HistoryPanelViewModel(items: items, onBuiltin: { _, _ in }, onDismiss: {}) { event, fields in
+            if event == "paste" { store.last = fields }
+        }
+    }
+
+    /// Reference box so the injected `log` closure can write back without capturing `inout`.
+    private final class PasteLogStore { var last: [String: Any]? }
+
+    @Test func logPaste_activeQuery_recordsRankQueryLengthResultCount() {
+        let store = PasteLogStore()
+        // Both clips match "match"; the pasted one sits 2nd in `filtered`.
+        let vm = vmCapturingPaste([textItem("match one", age: 0), textItem("match two", age: 1)], into: store)
+        vm.query = "match"
+        #expect(vm.filtered.count == 2)
+        vm.pasteItem(at: 1)             // 2nd filtered row → rank 2
+
+        let fields = store.last
+        #expect(fields?["via"] as? String == "quickKey")
+        #expect(fields?["clipKind"] as? String == ClipKind.text.rawValue)
+        #expect(fields?["rank"] as? Int == 2)
+        #expect(fields?["queryLength"] as? Int == 5)
+        #expect(fields?["resultCount"] as? Int == 2)
+    }
+
+    @Test func logPaste_activeQuery_firstResultIsRank1() {
+        let store = PasteLogStore()
+        let vm = vmCapturingPaste([textItem("match one", age: 0), textItem("match two", age: 1)], into: store)
+        vm.query = "match"
+        vm.confirm()                    // pastes selectedItem == filtered[0] → rank 1
+
+        #expect(store.last?["rank"] as? Int == 1)
+        #expect(store.last?["resultCount"] as? Int == 2)
+        #expect(store.last?["queryLength"] as? Int == 5)
+    }
+
+    @Test func logPaste_emptyQuery_logsOnlyViaAndClipKind() {
+        let store = PasteLogStore()
+        let vm = vmCapturingPaste([textItem("a", age: 0), textItem("b", age: 1)], into: store)
+        // No search query active.
+        vm.pasteItem(at: 0)
+
+        let fields = store.last
+        #expect(fields?["via"] as? String == "quickKey")
+        #expect(fields?["clipKind"] as? String == ClipKind.text.rawValue)
+        #expect(fields?["rank"] == nil)
+        #expect(fields?["queryLength"] == nil)
+        #expect(fields?["resultCount"] == nil)
+    }
+
+    @Test func logPaste_whitespaceOnlyQuery_logsNoRankFields() {
+        let store = PasteLogStore()
+        let vm = vmCapturingPaste([textItem("a", age: 0), textItem("b", age: 1)], into: store)
+        vm.query = "   "               // whitespace-only → not an active search
+        vm.pasteItem(at: 0)
+
+        #expect(store.last?["rank"] == nil)
+        #expect(store.last?["queryLength"] == nil)
+        #expect(store.last?["resultCount"] == nil)
+    }
+
     @Test func runSavedAction_runsNthSavedAction() {
         let actions = [
             Action(name: "First", icon: "sparkles", steps: []),
