@@ -87,13 +87,22 @@ public enum FuzzyMatcher {
         var lastMatch: Int?
         var gapPenalty = 0
         var adjacencyBonus = 0
+        // Longest contiguous matched run: consecutive candidate positions that matched
+        // consecutive query chars. `currentRun` grows on an adjacent match (gap == 0)
+        // and resets to 1 on any gap; `longestRun` keeps the best seen.
+        var currentRun = 0
+        var longestRun = 0
         for (pos, ch) in candidate.enumerated() {
             guard qi < query.endIndex else { break }
             if ch == query[qi] {
                 if let last = lastMatch {
                     let gap = pos - last - 1
-                    if gap == 0 { adjacencyBonus += 5 } else { gapPenalty += gap }
+                    if gap == 0 { adjacencyBonus += 5; currentRun += 1 }
+                    else { gapPenalty += gap; currentRun = 1 }
+                } else {
+                    currentRun = 1
                 }
+                longestRun = max(longestRun, currentRun)
                 if firstMatch == nil { firstMatch = pos }
                 lastMatch = pos
                 qi = query.index(after: qi)
@@ -104,10 +113,28 @@ public enum FuzzyMatcher {
 
         // Span density gate: keep only matches packed within a bounded window.
         // The window scales with the query so longer queries get more slack, but a
-        // few characters can never legitimately span a whole document.
+        // few characters can never legitimately span a whole document. Short queries
+        // (≤3 chars) get a tight clamp — a handful of chars must not roam a whole line
+        // — while longer queries keep the original scaling exactly.
         let span = last - first + 1
-        let maxSpan = max(qCount * sparseSpanFactor, qCount + sparseSpanFloor)
+        let maxSpan: Int
+        if qCount <= 3 {
+            maxSpan = qCount + shortQuerySpanSlack
+        } else {
+            maxSpan = max(qCount * sparseSpanFactor, qCount + sparseSpanFloor)
+        }
         guard span <= maxSpan else { return nil }
+
+        // Contiguous-run gate: an all-singleton scatter (every matched char isolated)
+        // is the noise signature, so require roughly half the query to land as one
+        // contiguous run. Only applied to queries of 4+ chars, where "half the query
+        // as a run" is a meaningful signal: for 1–3 char queries a fully-scattered
+        // subsequence is still legitimate recall (e.g. "log" in "lemongrass", "cfg"
+        // in "config") and the short-query span clamp above already suppresses their
+        // noise — applying the run gate there would drop genuine hits.
+        if qCount >= contiguousRunGateMinQuery, longestRun < max(2, (qCount + 1) / 2) {
+            return nil
+        }
 
         // Length-normalize within the subsequence band: a tighter span (less
         // padding between the query's own characters) ranks higher.
@@ -121,4 +148,14 @@ public enum FuzzyMatcher {
     /// near-contiguous fuzzy hits (e.g. "log" in "lemongrass").
     private static let sparseSpanFactor = 4
     private static let sparseSpanFloor = 12
+
+    /// Short-query span clamp: for queries of ≤3 chars the window is `qCount + this`,
+    /// far tighter than the general floor (`+sparseSpanFloor`), so a 2–3 char query
+    /// can't legitimately match chars scattered across a whole line of a script/JSON.
+    private static let shortQuerySpanSlack = 4
+
+    /// The contiguous-run gate only applies from this query length up. Below it a
+    /// fully-scattered subsequence is still legitimate recall for short queries, and
+    /// the short-query span clamp already handles their noise.
+    private static let contiguousRunGateMinQuery = 4
 }
