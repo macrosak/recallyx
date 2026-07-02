@@ -232,7 +232,7 @@ public struct KeychainStore {
         // record captures the signing identity, so it matches any rebuild
         // sharing that identity rather than only this exact binary.
         var trustedApp: SecTrustedApplication?
-        guard SecTrustedApplicationCreateFromPath(nil, &trustedApp) == errSecSuccess,
+        guard Self.secTrustedApplicationCreateFromRunningPath(&trustedApp) == errSecSuccess,
               let app = trustedApp else { return nil }
 
         let trustedApps = [app] as CFArray
@@ -241,10 +241,42 @@ public struct KeychainStore {
         // wires it into the default decrypt/encrypt ACLs; that's exactly the
         // explicit trusted-app list we want on the new item.
         var access: SecAccess?
-        guard SecAccessCreate("Recallyx" as CFString, trustedApps, &access) == errSecSuccess,
+        guard Self.secAccessCreate("Recallyx" as CFString, trustedApps, &access) == errSecSuccess,
               let acc = access else { return nil }
 
         return acc
+    }
+
+    // `SecTrustedApplicationCreateFromPath` / `SecAccessCreate` are the only
+    // APIs that build the requirement-based ACL above, and both are deprecated
+    // since macOS 10.10 with no non-SecKeychain replacement short of a
+    // keychain-access-groups entitlement (an Apple Developer account — out of
+    // reach here). We resolve them through `dlsym` so the deliberate deprecated
+    // use is a contained runtime lookup rather than a compile-time warning
+    // smeared across every call site. The lookup can't fail on a real macOS
+    // install (both live in the always-loaded Security framework); the
+    // defensive `errSecUnimplemented` keeps write()'s best-effort fallback
+    // intact if it ever did. `bitPattern: -2` is `RTLD_DEFAULT` (not exposed to
+    // Swift), i.e. the standard flat-namespace symbol search.
+    private typealias SecTrustedApplicationCreateFromPathFn = @convention(c)
+        (UnsafePointer<CChar>?, UnsafeMutablePointer<SecTrustedApplication?>?) -> OSStatus
+    private typealias SecAccessCreateFn = @convention(c)
+        (CFString, CFArray?, UnsafeMutablePointer<SecAccess?>?) -> OSStatus
+
+    static func secTrustedApplicationCreateFromRunningPath(
+        _ out: UnsafeMutablePointer<SecTrustedApplication?>
+    ) -> OSStatus {
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "SecTrustedApplicationCreateFromPath")
+        else { return errSecUnimplemented }
+        return unsafeBitCast(sym, to: SecTrustedApplicationCreateFromPathFn.self)(nil, out)
+    }
+
+    static func secAccessCreate(
+        _ descriptor: CFString, _ trustedList: CFArray?, _ out: UnsafeMutablePointer<SecAccess?>
+    ) -> OSStatus {
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "SecAccessCreate")
+        else { return errSecUnimplemented }
+        return unsafeBitCast(sym, to: SecAccessCreateFn.self)(descriptor, trustedList, out)
     }
     #endif
 }

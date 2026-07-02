@@ -65,7 +65,7 @@ struct KeychainStoreTests {
     /// FAILS the test (never skips) if the object can't be built.
     private func makeSentinelAccess() throws -> SecAccess {
         var access: SecAccess?
-        let status = SecAccessCreate("Test" as CFString, [] as CFArray, &access)
+        let status = KeychainStore.secAccessCreate("Test" as CFString, [] as CFArray, &access)
         #expect(status == errSecSuccess)
         return try #require(access)
     }
