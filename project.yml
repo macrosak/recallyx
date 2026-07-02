@@ -55,5 +55,13 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         GENERATE_INFOPLIST_FILE: NO
         # Menu-bar / agent app: no Dock icon (mirrors LSUIElement in Info.plist).
-        # No app-sandbox / iCloud entitlements yet — those arrive with the iOS
-        # target and CloudKit work in a later phase.
+        #
+        # CloudKit iCloud sync (opt-in, off by default): the committed
+        # entitlements file adds the CloudKit + iCloud-container capability. Its
+        # container id is derived from the PUBLIC bundle id and carries NO team
+        # identifier, so it's safe to commit. Automatic signing (team from the
+        # gitignored Local.xcconfig) provisions the capability at build time.
+        # The ad-hoc scripts/bundle.sh release path never applies these, so its
+        # CloudKit path stays inert — only the team-signed build reaches iCloud.
+        # No app-sandbox: it would break the AX/hotkey/paste paths.
+        CODE_SIGN_ENTITLEMENTS: Sources/Recallyx/Resources/Recallyx.entitlements
