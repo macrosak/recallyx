@@ -29,3 +29,36 @@ jobs:
         # (raw pipe output dies unflushed with the process). Exit status is
         # propagated.
         run: script -q /dev/null swift test
+
+  ios-build:
+    name: iOS compile gate
+    runs-on: macos-26
+    # A headless, unsigned iOS-simulator compile of the RecallyxiOS target — it
+    # proves RecallyxCore + the app target still build for iOS. CI can't sign or
+    # reach CloudKit; real sync verification stays local on device. TestFlight
+    # upload is manual off the owner's machine (no App Store Connect secrets).
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        # A blank Local.xcconfig builds unsigned (no team id); it's gitignored, so
+        # CI supplies an empty one to satisfy the configFiles reference.
+        run: |
+          cp Local.xcconfig.example Local.xcconfig
+          xcodegen generate
+
+      - name: Build RecallyxiOS (simulator, signing off)
+        run: |
+          xcodebuild -project Recallyx.xcodeproj -scheme RecallyxiOS \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build

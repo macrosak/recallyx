@@ -51,7 +51,13 @@ public final class HistoryStore: ObservableObject {
     ///   - cloudSyncEnabled: opt-in CloudKit mirroring (off by default). Read
     ///     once here at construction — toggling the setting takes effect on the
     ///     next launch, when the store is rebuilt.
-    public init(baseURL: URL? = nil, cap: Int = 1000, inMemory: Bool = false, cloudSyncEnabled: Bool = false) {
+    ///   - reconcileImages: when true (default, mac) launch prunes `images/` files
+    ///     with no matching entity. iOS passes **false**: in sync phase 1 image
+    ///     payloads don't sync, so a synced image clip has an entity but no local
+    ///     PNG — reconciliation must not run there (an iOS-local image write path
+    ///     could otherwise treat every not-yet-synced file as an orphan). Off also
+    ///     means image entities lacking a local file are always kept.
+    public init(baseURL: URL? = nil, cap: Int = 1000, inMemory: Bool = false, cloudSyncEnabled: Bool = false, reconcileImages: Bool = true) {
         self.cap = cap
         let base = baseURL ?? Self.defaultBaseURL()
         self.baseURL = base
@@ -75,8 +81,9 @@ public final class HistoryStore: ObservableObject {
 
         // Skip reconciliation when we reseeded from a corrupt/failed store or a
         // corrupt legacy import: with `items` empty, reconcileOrphans() would
-        // delete every PNG.
-        if !skipReconcile { reconcileOrphans() }
+        // delete every PNG. iOS (reconcileImages: false) skips it always — its
+        // image entities intentionally lack local files until image sync ships.
+        if reconcileImages && !skipReconcile { reconcileOrphans() }
 
         // `cap`'s didSet doesn't fire during init, so enforce here in case it was
         // lowered between launches. Persists synchronously (no onChange — listeners

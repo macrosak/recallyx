@@ -7,6 +7,10 @@ public enum ActionError: LocalizedError {
     /// A `custom:<id>:<model>` step referenced a provider that's no longer in the
     /// settings list (removed/disabled), so the facade can't resolve its endpoint.
     case customEndpointUnavailable
+    /// A `.script` step was reached on a platform without a shell (iOS): `Process`
+    /// doesn't exist there, so `ScriptRunner` compiles to nothing and the default
+    /// `runScript` closure throws this instead of running a subprocess.
+    case scriptUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +18,7 @@ public enum ActionError: LocalizedError {
         case .scriptFirstOnImage: return "The first step must be AI to run on an image"
         case .missingApiKey(let provider): return "Set your \(provider.displayName) API key in Settings"
         case .customEndpointUnavailable: return "That custom provider is no longer configured — add it in Settings"
+        case .scriptUnavailable: return "Script steps aren't supported on this platform"
         }
     }
 }
@@ -39,7 +44,15 @@ public final class ActionRunner {
         runScript: ((String, String) async throws -> String)? = nil,
         runAI: ((String, String?, String, Data?) async throws -> String)? = nil
     ) {
+        // `ScriptRunner` (Process-based) is macOS-only; on other platforms the
+        // default script runner throws rather than reaching a missing symbol. An
+        // explicitly-injected runner (tests, a future portable runner) is honored
+        // everywhere. iOS never wires a script step, so this is compile-only there.
+        #if os(macOS)
         self.runScript = runScript ?? { try await ScriptRunner.run(script: $0, input: $1) }
+        #else
+        self.runScript = runScript ?? { _, _ in throw ActionError.scriptUnavailable }
+        #endif
         let aiClient = AIClient(ollamaBaseURL: ollamaBaseURL, customEndpoint: customEndpoint)
         self.runAI = runAI ?? { prompt, model, input, imageData in
             // Route by model id: `ollama:*` → local Ollama, `claude*` →
