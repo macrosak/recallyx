@@ -13,7 +13,10 @@
 
 	  Only the team-signed Xcode build (which applies these entitlements + a
 	  provisioning profile) actually reaches iCloud. The ad-hoc scripts/bundle.sh
-	  release build ignores them, so its CloudKit path stays inert.
+	  release build carries NO entitlement, so PersistenceController's
+	  processHasCloudKitEntitlement gate keeps CloudKit mirroring off there —
+	  loading a mirrored store unentitled hard-crashes, so this is a crash guard,
+	  not just an inert no-op.
 	-->
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
