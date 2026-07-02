@@ -48,7 +48,10 @@ public final class HistoryStore: ObservableObject {
     ///   - inMemory: when true, the Core Data store is created in memory
     ///     (`/dev/null`) so tests stay hermetic. The base dir is still used for
     ///     image files and the JSON-migration source.
-    public init(baseURL: URL? = nil, cap: Int = 1000, inMemory: Bool = false) {
+    ///   - cloudSyncEnabled: opt-in CloudKit mirroring (off by default). Read
+    ///     once here at construction — toggling the setting takes effect on the
+    ///     next launch, when the store is rebuilt.
+    public init(baseURL: URL? = nil, cap: Int = 1000, inMemory: Bool = false, cloudSyncEnabled: Bool = false) {
         self.cap = cap
         let base = baseURL ?? Self.defaultBaseURL()
         self.baseURL = base
@@ -57,7 +60,7 @@ public final class HistoryStore: ObservableObject {
         self.storeURL = base.appendingPathComponent("Recallyx.sqlite")
 
         try? fm.createDirectory(at: imagesURL, withIntermediateDirectories: true)
-        self.persistence = PersistenceController(storeURL: storeURL, inMemory: inMemory)
+        self.persistence = PersistenceController(storeURL: storeURL, inMemory: inMemory, cloudSyncEnabled: cloudSyncEnabled)
 
         var skipReconcile = loadFromStore()
 

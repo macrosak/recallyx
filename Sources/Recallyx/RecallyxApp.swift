@@ -50,7 +50,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var store = HistoryStore(
         baseURL: ProcessInfo.processInfo.environment["RECALLYX_DATA_DIR"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) },
-        cap: settingsStore.settings.retentionCap
+        cap: settingsStore.settings.retentionCap,
+        // Opt-in CloudKit mirroring, read once at launch. Toggling the setting
+        // rebuilds the store only on the next launch (see the Settings caption).
+        cloudSyncEnabled: settingsStore.settings.iCloudSyncEnabled
     )
     // Opt-in, off-by-default, local-only usage journal. Honors RECALLYX_DATA_DIR
     // (like the history store) so debug runs write to the scratch dir.

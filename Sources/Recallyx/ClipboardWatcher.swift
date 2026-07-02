@@ -13,7 +13,7 @@ final class ClipboardWatcher {
     /// later commit; defaults off).
     private let captureSensitive: () -> Bool
 
-    private let pasteboard = NSPasteboard.general
+    private let pasteboard: NSPasteboard
     private var timer: Timer?
     private var lastChangeCount: Int
     /// `changeCount`s produced by our own pasteboard writes (paste/copy of an
@@ -25,9 +25,12 @@ final class ClipboardWatcher {
     /// results are *not* marked, so they re-enter history as fresh top items.
     private var selfWriteChangeCounts: Set<Int> = []
 
-    init(store: HistoryStore, captureSensitive: @escaping () -> Bool) {
+    /// `pasteboard` is injectable so hermetic tests can drive a private named
+    /// pasteboard instead of the shared general one; production uses `.general`.
+    init(store: HistoryStore, captureSensitive: @escaping () -> Bool, pasteboard: NSPasteboard = .general) {
         self.store = store
         self.captureSensitive = captureSensitive
+        self.pasteboard = pasteboard
         self.lastChangeCount = pasteboard.changeCount
     }
 
@@ -55,7 +58,9 @@ final class ClipboardWatcher {
 
     // MARK: - Polling
 
-    private func tick() {
+    /// One poll of the pasteboard. Internal (not private) so `@testable` tests
+    /// can drive it deterministically without waiting on the timer.
+    func tick() {
         let current = pasteboard.changeCount
         guard current != lastChangeCount else { return }
         lastChangeCount = current

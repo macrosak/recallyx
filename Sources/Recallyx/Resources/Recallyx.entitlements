@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  CloudKit sync entitlements for the opt-in iCloud history sync.
+
+	  These are safe to commit: the container identifier is derived from the
+	  PUBLIC bundle id and carries NO team identifier. The team id comes from the
+	  gitignored Local.xcconfig at build time; never write a literal team id here.
+	  Any keychain-access-group would use $(AppIdentifierPrefix) (expands at build
+	  time), never a literal prefix.
+
+	  Only the team-signed Xcode build (which applies these entitlements + a
+	  provisioning profile) actually reaches iCloud. The ad-hoc scripts/bundle.sh
+	  release build ignores them, so its CloudKit path stays inert.
+	-->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.io.github.macrosak.recallyx</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.io.github.macrosak.recallyx</string>
+	</array>
+</dict>
+</plist>

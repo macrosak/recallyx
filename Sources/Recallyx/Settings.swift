@@ -14,6 +14,11 @@ struct AppSettings: Codable, Equatable {
     var retentionCap: Int
     var captureSensitive: Bool
     var launchAtLogin: Bool
+    /// Opt-in, off-by-default iCloud sync of the clipboard history (text +
+    /// metadata only; image payloads stay local in this phase). Gates whether
+    /// `PersistenceController` turns on CloudKit mirroring. Read at launch — the
+    /// store is built once, so toggling it takes effect after an app relaunch.
+    var iCloudSyncEnabled: Bool
     /// Opt-in, off-by-default local usage journal (see `UsageJournal`). Never
     /// transmits anything; records non-sensitive events to a file on this Mac.
     var usageJournalEnabled: Bool
@@ -50,6 +55,7 @@ struct AppSettings: Codable, Equatable {
     /// decode-time signal, not stored state.
     private enum CodingKeys: String, CodingKey {
         case retentionCap, captureSensitive, launchAtLogin, usageJournalEnabled
+        case iCloudSyncEnabled
         case fileLogEnabled, defaultModel, actions, ollamaBaseURL, providers
         case searchHistoryShortcut, transformSelectionShortcut
     }
@@ -61,6 +67,7 @@ struct AppSettings: Codable, Equatable {
         lhs.retentionCap == rhs.retentionCap
             && lhs.captureSensitive == rhs.captureSensitive
             && lhs.launchAtLogin == rhs.launchAtLogin
+            && lhs.iCloudSyncEnabled == rhs.iCloudSyncEnabled
             && lhs.usageJournalEnabled == rhs.usageJournalEnabled
             && lhs.fileLogEnabled == rhs.fileLogEnabled
             && lhs.defaultModel == rhs.defaultModel
@@ -75,6 +82,7 @@ struct AppSettings: Codable, Equatable {
         retentionCap: Int = 1000,
         captureSensitive: Bool = false,
         launchAtLogin: Bool = false,
+        iCloudSyncEnabled: Bool = false,
         usageJournalEnabled: Bool = false,
         fileLogEnabled: Bool = true,
         defaultModel: String = ModelCatalog.default,
@@ -87,6 +95,7 @@ struct AppSettings: Codable, Equatable {
         self.retentionCap = retentionCap
         self.captureSensitive = captureSensitive
         self.launchAtLogin = launchAtLogin
+        self.iCloudSyncEnabled = iCloudSyncEnabled
         self.usageJournalEnabled = usageJournalEnabled
         self.fileLogEnabled = fileLogEnabled
         self.defaultModel = defaultModel
@@ -113,6 +122,9 @@ struct AppSettings: Codable, Equatable {
         retentionCap = (try? c.decodeIfPresent(Int.self, forKey: .retentionCap)) ?? 1000
         captureSensitive = (try? c.decodeIfPresent(Bool.self, forKey: .captureSensitive)) ?? false
         launchAtLogin = (try? c.decodeIfPresent(Bool.self, forKey: .launchAtLogin)) ?? false
+        // Off by default — absent (older blobs) or malformed → disabled, so no
+        // existing install starts syncing to iCloud without an explicit opt-in.
+        iCloudSyncEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled)) ?? false
         usageJournalEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .usageJournalEnabled)) ?? false
         // Default ON: absent (older blobs) or malformed → enabled, so existing
         // installs start persisting logs without any user action.

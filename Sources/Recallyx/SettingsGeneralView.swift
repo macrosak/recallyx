@@ -130,6 +130,17 @@ struct SettingsGeneralView: View {
                     .toggleStyle(.switch).labelsHidden().tint(theme.accent)
                 }
                 SettingsRow(
+                    label: "Sync via iCloud (text)",
+                    desc: "Syncs your clipboard text and history across your Macs via your private iCloud. Images stay local for now. Takes effect after you quit and reopen Recallyx.",
+                    theme: theme
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { settingsStore.settings.iCloudSyncEnabled },
+                        set: { settingsStore.settings.iCloudSyncEnabled = $0 }
+                    ))
+                    .toggleStyle(.switch).labelsHidden().tint(theme.accent)
+                }
+                SettingsRow(
                     label: "Usage journal (local only)",
                     desc: "Records anonymous usage events to this Mac to help improve Recallyx. Never includes clipboard contents and is never sent anywhere.",
                     theme: theme
