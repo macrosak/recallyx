@@ -107,7 +107,7 @@ Requirements: **macOS 13 (Ventura) or newer** · **Apple Silicon (arm64)**.
 Grab the latest DMG from the [**Releases** page](https://github.com/macrosak/recallyx/releases/latest),
 open it, and drag **Recallyx.app** onto **Applications**.
 
-Builds are currently **ad-hoc signed** (not yet notarized), so Gatekeeper blocks the first
+The DMG builds are **ad-hoc signed** (not yet notarized), so Gatekeeper blocks the first
 launch with *"Apple could not verify Recallyx is free of malware."* Clear the quarantine
 flag once, then open the app normally:
 
@@ -118,9 +118,65 @@ xattr -dr com.apple.quarantine /Applications/Recallyx.app
 (On macOS 15 Sequoia and later, the old right-click → Open override no longer appears for
 un-notarized apps, so the `xattr` command is the reliable way in.)
 
-## Building from source
+> **Heads up on iCloud sync:** the DMG (and the `bundle.sh` build below) is ad-hoc signed,
+> which can't carry the CloudKit entitlement — so **iCloud sync stays inert in these builds**.
+> Everything else works. Syncing your clipboard across Macs needs the team-signed Xcode build
+> ([below](#building-from-source-team-signed-required-for-icloud-sync)).
 
-Needs Apple **Command Line Tools** (`xcode-select --install`) — Xcode itself is not required.
+## Building from source (team-signed, required for iCloud sync)
+
+This is the primary build. iCloud sync (Settings → General → **Sync via iCloud (text)**)
+only runs in a **team-signed** build, because the CloudKit entitlement needs real signing —
+Apple's automatic signing (Xcode) provides it; the ad-hoc scripts can't.
+
+**Prerequisites**
+
+- **Full Xcode** (App Store) — not just the Command Line Tools. Launch it once to accept the
+  license.
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`.
+- An **Apple ID** signed into Xcode → **Settings → Accounts**.
+- For sync specifically: an **Apple Developer Program membership** (a paid team). A free Apple
+  ID can build and run the app, but automatic signing **fails on the iCloud capability**, so
+  the CloudKit entitlement — and therefore sync — needs a paid team. Without one, use the
+  ad-hoc path below and skip sync.
+
+**Setup (one-time)**
+
+```bash
+cp Local.xcconfig.example Local.xcconfig   # then set DEVELOPMENT_TEAM to your Apple Developer team id
+xcodegen generate                          # writes Recallyx.xcodeproj (gitignored)
+open Recallyx.xcodeproj                     # once — let Xcode register the CloudKit capability
+```
+
+`Local.xcconfig` and the generated `Recallyx.xcodeproj` are **gitignored** — never commit
+your team id. Opening the project once lets Xcode's automatic signing provision the iCloud
+capability; the CLI does the same with `-allowProvisioningUpdates` (used by the script below),
+so the one-time open is optional if you prefer to stay on the command line.
+
+**Build + install (day to day)**
+
+```bash
+./scripts/install-dev.sh          # team-signed Release build → ~/Applications, then relaunch
+./scripts/install-dev.sh --build-only   # build only, no install/relaunch
+```
+
+`install-dev.sh` runs `xcodegen generate` then a signed `xcodebuild` (Release,
+`-allowProvisioningUpdates`), and installs the app — you never need to open the Xcode UI
+day to day.
+
+**Turn on sync:** Settings → General → **Sync via iCloud (text)**, then relaunch (the flag is
+read at launch). Do the same on your other Mac, signed into the **same iCloud account** — text
+clips sync both ways. Images stay local to each Mac.
+
+```bash
+./scripts/test.sh   # unit tests
+```
+
+### Alternative: the ad-hoc build (no Xcode, no Apple account)
+
+If you don't need sync, the zero-cost path needs only the **Command Line Tools**
+(`xcode-select --install`) — no Xcode, no Apple account. This is also what CI ships as the
+DMG releases. It's ad-hoc signed, so **iCloud sync stays inert**; everything else works.
 
 ```bash
 # one-time, per machine: a stable code-signing identity
@@ -128,9 +184,6 @@ Needs Apple **Command Line Tools** (`xcode-select --install`) — Xcode itself i
 
 # build + install (install.sh kills any running instance, then relaunches)
 ./scripts/bundle.sh && ./scripts/install.sh
-
-# unit tests
-./scripts/test.sh
 ```
 
 The stable signing identity matters because ad-hoc signing produces a fresh signature on
@@ -138,25 +191,15 @@ every rebuild, which makes macOS drop the Accessibility grant each time; a self-
 `Recallyx Dev` cert keeps the grant across rebuilds
 ([Apple's recommendation](https://developer.apple.com/forums/thread/730043)).
 
-### Optional: an Xcode project
-
-The release path above (`bundle.sh`) needs only the Command Line Tools. If you'd rather
-build/run from Xcode, there's an optional [XcodeGen](https://github.com/yonaskolb/XcodeGen)
-spec (`project.yml`) that generates an Xcode project for the macOS app. The generated
-`Recallyx.xcodeproj` and your local signing settings are gitignored.
+For a quick compile check without any signing, the Xcode project also builds unsigned:
 
 ```bash
-brew install xcodegen
-cp Local.xcconfig.example Local.xcconfig   # then set DEVELOPMENT_TEAM to your own team id
-xcodegen generate                          # writes Recallyx.xcodeproj
-open Recallyx.xcodeproj
-```
-
-A blank team builds unsigned, which is fine for a compile check:
-
-```bash
+cp Local.xcconfig.example Local.xcconfig   # leave DEVELOPMENT_TEAM blank
+xcodegen generate
 xcodebuild -project Recallyx.xcodeproj -scheme Recallyx build CODE_SIGNING_ALLOWED=NO
 ```
+
+### Permissions
 
 The clipboard history (⌘⇧V) works with no special permission. **⌃⇧V** (grab selection +
 paste results) needs Accessibility: on first use the app shows an **Open Settings** alert →

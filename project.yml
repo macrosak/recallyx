@@ -65,3 +65,22 @@ targets:
         # CloudKit path stays inert — only the team-signed build reaches iCloud.
         # No app-sandbox: it would break the AX/hotkey/paste paths.
         CODE_SIGN_ENTITLEMENTS: Sources/Recallyx/Resources/Recallyx.entitlements
+
+# A shared scheme for the app target. Without it Xcode auto-creates schemes from
+# every target, and the name "Recallyx" collides with the RecallyxCore package's
+# own `Recallyx` *executable* target — `xcodebuild -scheme Recallyx` then builds
+# the bare SPM binary instead of the signed .app bundle. This explicit shared
+# scheme wins over the autocreated one, so `-scheme Recallyx` builds the app.
+schemes:
+  Recallyx:
+    build:
+      targets:
+        Recallyx: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
