@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  CloudKit + App Group entitlements for the iOS companion app.
+
+	  Safe to commit: the container / group identifiers derive from the PUBLIC
+	  bundle id and carry NO team identifier. The team id comes from the
+	  gitignored Local.xcconfig at build time; never write a literal team id here.
+	  Any keychain-access-group would use $(AppIdentifierPrefix) (expands at build
+	  time), never a literal prefix.
+
+	  Only a team-signed build (which applies these entitlements + a provisioning
+	  profile) actually reaches iCloud / the shared container. Unsigned simulator
+	  compile checks (CODE_SIGNING_ALLOWED=NO) ignore them.
+
+	  The App Group is added from day one even though the MVP is the only consumer:
+	  a future Share Extension runs in a separate process and can only reach the
+	  Core Data store if that store already lives in the shared app-group
+	  container. Adding it later would force an on-device store migration.
+	-->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.io.github.macrosak.recallyx</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.io.github.macrosak.recallyx</string>
+	</array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.io.github.macrosak.recallyx</string>
+	</array>
+</dict>
+</plist>
