@@ -3,7 +3,10 @@ import PackageDescription
 
 let package = Package(
     name: "Recallyx",
-    platforms: [.macOS(.v13)],
+    // iOS 26 (string form: the 5.9 tools enum lacks `.v26`). The mac app +
+    // `swift test` are unaffected (host build stays macOS); iOS only affects the
+    // XcodeGen `RecallyxiOS` target that depends on the RecallyxCore library.
+    platforms: [.macOS(.v13), .iOS("26.0")],
     products: [
         // Vended so the (additive, XcodeGen-generated) Xcode app target can
         // depend on the shared library. swift build/test are unaffected.

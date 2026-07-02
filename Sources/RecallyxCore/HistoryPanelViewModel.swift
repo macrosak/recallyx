@@ -125,15 +125,10 @@ public final class HistoryPanelViewModel: ObservableObject {
 
     /// Display order: pinned clips first, then by recency (newest first). Applied
     /// where items enter the vm; the store keeps pure recency order internally.
+    /// Delegates to the shared `HistoryOrdering` helper so the iOS list VM reuses
+    /// the exact same sort.
     public static func ordered(_ items: [HistoryItem]) -> [HistoryItem] {
-        // Stable: enumerated index breaks ties so equal-recency items keep their
-        // incoming (store recency) order rather than being shuffled by an
-        // unstable sort.
-        items.enumerated().sorted { a, b in
-            if a.element.isPinned != b.element.isPinned { return a.element.isPinned }  // pinned first
-            if a.element.recency != b.element.recency { return a.element.recency > b.element.recency }  // then newest
-            return a.offset < b.offset
-        }.map(\.element)
+        HistoryOrdering.pinnedFirstByRecency(items)
     }
 
     /// Parse a leading kind token off a clip-search query. A query that *starts*

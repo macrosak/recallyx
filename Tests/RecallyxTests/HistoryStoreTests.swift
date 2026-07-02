@@ -247,6 +247,38 @@ struct HistoryStoreTests {
         #expect(!FileManager.default.fileExists(atPath: orphan.path))
     }
 
+    /// iOS seam: with `reconcileImages: false` the store keeps an image entity
+    /// whose local PNG is absent (in sync phase 1 image payloads don't sync, so a
+    /// synced image clip has an entity but no file). Reconciliation must stay off
+    /// there so a not-yet-synced image row is never treated as an orphan.
+    @Test func reconcileImagesOff_keepsImageEntityWithAbsentFile() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recallyx-tests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // Seed an image clip, persist, then remove its PNG to mimic an iOS device
+        // that received the metadata via CloudKit but not the payload.
+        do {
+            let store = HistoryStore(baseURL: base)
+            let id = store.add(imageClip([1, 2, 3, 4]))
+            store.flush()
+            let item = try #require(store.items.first { $0.id == id })
+            let url = try #require(store.imageURL(for: item))
+            try FileManager.default.removeItem(at: url)
+            #expect(!FileManager.default.fileExists(atPath: url.path))
+        }
+
+        // Reload with reconciliation off: the image entity survives.
+        let ios = HistoryStore(baseURL: base, reconcileImages: false)
+        #expect(ios.items.count == 1)
+        let survivor = try #require(ios.items.first)
+        #expect(survivor.kind == .image)
+        #expect(survivor.imageFilename != nil)
+        // Its local file is (still) absent — the store kept the entity anyway.
+        let url = try #require(ios.imageURL(for: survivor))
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
     /// Corrupt-tolerance now lives on the JSON → Core Data migration path: a bad
     /// legacy `history.json` on first launch is backed up to `.corrupt-*`, the
     /// store stays empty (no crash), and on-disk image payloads survive

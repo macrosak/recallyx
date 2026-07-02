@@ -21,6 +21,12 @@ public enum ScriptError: LocalizedError {
     }
 }
 
+// `Foundation.Process` does not exist on iOS, so the whole runner body is gated
+// to macOS. `ScriptError` stays outside the guard so the error type is visible
+// on every platform (ActionError/tests reference it). iOS never wires a script
+// step — ActionRunner's default `runScript` throws `.scriptUnavailable` there.
+#if os(macOS)
+
 /// Runs a user-supplied shell snippet as a text filter: text in on stdin,
 /// replacement out on stdout. Copied from AI Replace.
 ///
@@ -135,3 +141,5 @@ public struct ScriptRunner {
         return String(s[s.startIndex..<end])
     }
 }
+
+#endif  // os(macOS)
