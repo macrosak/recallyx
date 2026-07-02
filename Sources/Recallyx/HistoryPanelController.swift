@@ -99,6 +99,10 @@ final class HistoryPanelController {
         )
         self.viewModel = viewModel
 
+        // Reposition the search field caret after a token suggestion is accepted
+        // (↵/⇥/row-click all route through the VM's accept). See moveSearchCaret.
+        viewModel.onTokenAccepted = { [weak self] caret in self?.moveSearchCaret(to: caret) }
+
         let root = HistoryPanelView(
             viewModel: viewModel,
             imageURL: { [weak self] in self?.imageURLResolver($0) },
@@ -222,6 +226,24 @@ final class HistoryPanelController {
         flagsMonitor = nil
     }
 
+    /// Place the search field editor's caret at `location` after a token
+    /// suggestion is accepted programmatically. SwiftUI select-all-highlights a
+    /// focused `TextField` when its bound value is replaced, and ⇥ would run the
+    /// AppKit key-view loop and drop focus; this drops the insertion point just
+    /// past the accepted token + space and leaves the field first responder so
+    /// typing keeps filtering. Async because the SwiftUI text update (and thus
+    /// the field editor's new string) lands on the next runloop turn.
+    private func moveSearchCaret(to location: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let panel = self?.panel else { return }
+            let editor = (panel.firstResponder as? NSTextView)
+                ?? (panel.fieldEditor(false, for: nil) as? NSTextView)
+            guard let editor else { return }
+            let length = (editor.string as NSString).length
+            editor.setSelectedRange(NSRange(location: min(location, length), length: 0))
+        }
+    }
+
     /// Intercept navigation keys; everything else flows to the focused control
     /// (search field, or the ad-hoc AI text editor). Branches on mode so arrows
     /// reach the text editor for cursor movement in custom/edit modes.
@@ -247,6 +269,20 @@ final class HistoryPanelController {
                let digit = Self.digitKeyCodes[event.keyCode] {
                 vm.runSavedAction(at: digit - 1)
                 return nil
+            }
+            // Search-token completion popover (list mode only — `tokenPopoverVisible`
+            // is false in actions). ↑↓ move the highlight, ⇥/↵ accept, esc hides —
+            // none reach the clip list / paste / actions while it's up. Typed
+            // characters fall through to the search field (default → break).
+            if vm.tokenPopoverVisible {
+                switch event.keyCode {
+                case 0x7E: vm.moveTokenSuggestionUp();   return nil  // ↑
+                case 0x7D: vm.moveTokenSuggestionDown(); return nil  // ↓
+                case 0x24, 0x4C: vm.acceptTokenSuggestion(); return nil  // ↵
+                case 0x30: vm.acceptTokenSuggestion(); return nil        // ⇥
+                case 0x35: vm.dismissTokenSuggestion(); return nil       // esc
+                default: break
+                }
             }
             switch event.keyCode {
             case 0x7E: vm.moveUp(); return nil
