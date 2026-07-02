@@ -13,6 +13,12 @@ struct SettingsGeneralView: View {
     var clearFileLog: () -> Void = {}
     let theme: SettingsTheme
 
+    /// True only when this build carries the iCloud entitlement (the team-signed
+    /// Xcode build). The ad-hoc/DMG build lacks it, so its sync toggle is disabled
+    /// with an explanatory caption — enabling it there would attach CloudKit
+    /// mirroring and crash at launch, so the gate keeps it honestly off.
+    private let syncEntitled = PersistenceController.processHasCloudKitEntitlement
+
     @State private var capText: String = ""
     @State private var launchError: String?
     @State private var searchShortcutError: String?
@@ -131,7 +137,9 @@ struct SettingsGeneralView: View {
                 }
                 SettingsRow(
                     label: "Sync via iCloud (text)",
-                    desc: "Syncs your clipboard text and history across your Macs via your private iCloud. Images stay local for now. Takes effect after you quit and reopen Recallyx.",
+                    desc: syncEntitled
+                        ? "Syncs your clipboard text and history across your Macs via your private iCloud. Images stay local for now. Takes effect after you quit and reopen Recallyx."
+                        : "iCloud sync needs the team-signed build — this build has no iCloud entitlement. Build from source with the signed Xcode path (see the README's Building-from-source section); the ad-hoc/DMG build can't sync.",
                     theme: theme
                 ) {
                     Toggle("", isOn: Binding(
@@ -139,6 +147,7 @@ struct SettingsGeneralView: View {
                         set: { settingsStore.settings.iCloudSyncEnabled = $0 }
                     ))
                     .toggleStyle(.switch).labelsHidden().tint(theme.accent)
+                    .disabled(!syncEntitled)
                 }
                 SettingsRow(
                     label: "Usage journal (local only)",

@@ -119,7 +119,8 @@ xattr -dr com.apple.quarantine /Applications/Recallyx.app
 un-notarized apps, so the `xattr` command is the reliable way in.)
 
 > **Heads up on iCloud sync:** the DMG (and the `bundle.sh` build below) is ad-hoc signed,
-> which can't carry the CloudKit entitlement — so **iCloud sync stays inert in these builds**.
+> which can't carry the CloudKit entitlement — so **iCloud sync is unavailable in these builds**:
+> the Settings toggle is disabled and captioned, and the app never turns mirroring on there.
 > Everything else works. Syncing your clipboard across Macs needs the team-signed Xcode build
 > ([below](#building-from-source-team-signed-required-for-icloud-sync)).
 
@@ -176,7 +177,7 @@ clips sync both ways. Images stay local to each Mac.
 
 If you don't need sync, the zero-cost path needs only the **Command Line Tools**
 (`xcode-select --install`) — no Xcode, no Apple account. This is also what CI ships as the
-DMG releases. It's ad-hoc signed, so **iCloud sync stays inert**; everything else works.
+DMG releases. It's ad-hoc signed, so **iCloud sync is unavailable** (the toggle is disabled); everything else works.
 
 ```bash
 # one-time, per machine: a stable code-signing identity

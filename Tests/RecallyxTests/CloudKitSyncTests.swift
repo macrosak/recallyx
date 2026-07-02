@@ -49,30 +49,64 @@ struct CloudKitSyncTests {
     // MARK: - Mirroring gate
 
     @Test func cloudKitOptions_nilWhenDisabled() {
-        #expect(PersistenceController.cloudKitOptions(enabled: false) == nil)
+        // Disabled → nil regardless of entitlement.
+        #expect(PersistenceController.cloudKitOptions(enabled: false, hasEntitlement: true) == nil)
+        #expect(PersistenceController.cloudKitOptions(enabled: false, hasEntitlement: false) == nil)
     }
 
-    @Test func cloudKitOptions_setWhenEnabled() {
-        let opts = PersistenceController.cloudKitOptions(enabled: true)
+    @Test func cloudKitOptions_setWhenEnabledAndEntitled() {
+        let opts = PersistenceController.cloudKitOptions(enabled: true, hasEntitlement: true)
         #expect(opts != nil)
         #expect(opts?.containerIdentifier == PersistenceController.cloudKitContainerIdentifier)
         // The identifier is derived from the PUBLIC bundle id — carries no team id.
         #expect(PersistenceController.cloudKitContainerIdentifier == "iCloud.io.github.macrosak.recallyx")
     }
 
+    @Test func cloudKitOptions_nilWhenEnabledButNotEntitled() {
+        // The core of the fix: sync ON but NO entitlement (the ad-hoc/DMG build)
+        // must yield nil — attaching options + loading the store there crashes in
+        // NSCloudKitMirroringDelegate. So the toggle stays on-but-inactive.
+        #expect(PersistenceController.cloudKitOptions(enabled: true, hasEntitlement: false) == nil)
+    }
+
     @Test func description_mirroringOffByDefault() {
         // The built store description carries no CloudKit options when off.
-        let desc = PersistenceController.makeStoreDescription(inMemory: true, cloudSyncEnabled: false)
+        let desc = PersistenceController.makeStoreDescription(
+            inMemory: true, cloudSyncEnabled: false, hasEntitlement: true
+        )
         #expect(desc.cloudKitContainerOptions == nil)
     }
 
-    @Test func description_mirroringOnWhenEnabled() {
-        // The flag attaches the CloudKit options to the store description. We
-        // assert the description — NOT a loaded container: loading a mirrored
-        // store in this unentitled test process crashes the CloudKit delegate.
-        let desc = PersistenceController.makeStoreDescription(inMemory: true, cloudSyncEnabled: true)
+    @Test func description_mirroringOnWhenEnabledAndEntitled() {
+        // The flag attaches the CloudKit options to the store description when
+        // the process is entitled. We assert the description — NOT a loaded
+        // container: loading a mirrored store in this unentitled test process
+        // crashes the CloudKit delegate.
+        let desc = PersistenceController.makeStoreDescription(
+            inMemory: true, cloudSyncEnabled: true, hasEntitlement: true
+        )
         #expect(desc.cloudKitContainerOptions != nil)
         #expect(desc.cloudKitContainerOptions?.containerIdentifier == PersistenceController.cloudKitContainerIdentifier)
+    }
+
+    @Test func description_mirroringOffWhenEnabledButNotEntitled() {
+        // Sync ON but the build lacks the entitlement → the description carries
+        // NO CloudKit options, so a live load stays a plain local store (no
+        // crash). This is what makes the toggle safe in the ad-hoc/DMG build.
+        let desc = PersistenceController.makeStoreDescription(
+            inMemory: true, cloudSyncEnabled: true, hasEntitlement: false
+        )
+        #expect(desc.cloudKitContainerOptions == nil)
+    }
+
+    @Test func liveStore_syncOnButNotEntitled_loadsCleanNoMirroring() {
+        // The end-to-end safety guarantee: a live in-memory controller with sync
+        // ON but the entitlement absent loads a plain local store (no CloudKit
+        // delegate), so constructing it here does NOT crash.
+        let controller = PersistenceController(
+            inMemory: true, cloudSyncEnabled: true, hasEntitlement: false
+        )
+        #expect(controller.container.persistentStoreDescriptions.first?.cloudKitContainerOptions == nil)
     }
 
     @Test func liveStore_mirroringOffByDefault_loadsClean() {
