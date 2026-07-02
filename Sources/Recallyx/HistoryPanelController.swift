@@ -99,6 +99,10 @@ final class HistoryPanelController {
         )
         self.viewModel = viewModel
 
+        // Reposition the search field caret after a token suggestion is accepted
+        // (↵/⇥/row-click all route through the VM's accept). See moveSearchCaret.
+        viewModel.onTokenAccepted = { [weak self] caret in self?.moveSearchCaret(to: caret) }
+
         let root = HistoryPanelView(
             viewModel: viewModel,
             imageURL: { [weak self] in self?.imageURLResolver($0) },
@@ -220,6 +224,24 @@ final class HistoryPanelController {
         globalClickMonitor = nil
         localClickMonitor = nil
         flagsMonitor = nil
+    }
+
+    /// Place the search field editor's caret at `location` after a token
+    /// suggestion is accepted programmatically. SwiftUI select-all-highlights a
+    /// focused `TextField` when its bound value is replaced, and ⇥ would run the
+    /// AppKit key-view loop and drop focus; this drops the insertion point just
+    /// past the accepted token + space and leaves the field first responder so
+    /// typing keeps filtering. Async because the SwiftUI text update (and thus
+    /// the field editor's new string) lands on the next runloop turn.
+    private func moveSearchCaret(to location: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let panel = self?.panel else { return }
+            let editor = (panel.firstResponder as? NSTextView)
+                ?? (panel.fieldEditor(false, for: nil) as? NSTextView)
+            guard let editor else { return }
+            let length = (editor.string as NSString).length
+            editor.setSelectedRange(NSRange(location: min(location, length), length: 0))
+        }
     }
 
     /// Intercept navigation keys; everything else flows to the focused control

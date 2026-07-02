@@ -832,6 +832,26 @@ struct HistoryPanelViewModelTests {
         #expect(vm.query == ":img foo")            // residual after the first space kept
     }
 
+    @Test func tokenPopover_acceptReportsCaretAfterTokenAndSpace() {
+        let vm = makeVM([textItem("x")])
+        var caret: Int?
+        vm.onTokenAccepted = { caret = $0 }
+        vm.query = ":i"
+        vm.acceptTokenSuggestion()
+        #expect(caret == 5)                        // after ":img " (4 + 1 space)
+    }
+
+    @Test func tokenPopover_acceptReportsCaretBeforeResidual() {
+        let vm = makeVM([textItem("x")])
+        var caret: Int?
+        vm.onTokenAccepted = { caret = $0 }
+        vm.query = ":i foo"
+        vm.acceptTokenSuggestion()
+        // Caret sits just before "foo" so residual filter text stays to the right.
+        #expect(caret == 5)
+        #expect(vm.query == ":img foo")
+    }
+
     @Test func tokenPopover_acceptHonorsHighlightIndex() {
         let vm = makeVM([textItem("x")])
         vm.query = ":"

@@ -89,6 +89,13 @@ public final class HistoryPanelViewModel: ObservableObject {
     /// non-sensitive fields — for search the *length*, never the query text.
     private let log: (String, [String: Any]) -> Void
 
+    /// Fired after a search-token suggestion is accepted, carrying the caret
+    /// offset (into the new `query`) the UI should place the insertion point at
+    /// — just past the accepted token and its trailing space. The AppKit layer
+    /// wires this to reposition the search field editor; kept as a plain closure
+    /// so the view model stays AppKit-free (and unit-testable).
+    public var onTokenAccepted: ((Int) -> Void)?
+
     /// In-flight async deep-search task; cancelled on each new keystroke.
     /// Internal (not private) so tests can await it via `searchTask?.value`.
     public var searchTask: Task<Void, Never>?
@@ -570,6 +577,10 @@ public final class HistoryPanelViewModel: ObservableObject {
         // exactly one space between the token and it.
         let residual = query.drop { $0 != " " && $0 != "\t" }.drop { $0 == " " || $0 == "\t" }
         query = token + " " + residual
+        // Caret lands just after "token " — before any residual filter text —
+        // so the user keeps typing to the right instead of over a select-all.
+        // token is ASCII (`:img`/`kind:text`…), so count == UTF-16 length.
+        onTokenAccepted?(token.count + 1)
     }
 
     /// Accept the suggestion at `index` (a row click) — highlight it, then run
