@@ -91,6 +91,18 @@ public final class PersistenceController {
         // WAL is the SQLite default; spelled out so a future read-only MCP
         // reader (separate process) can read alongside the app's writes.
         description.setOption(["journal_mode": "WAL"] as NSDictionary, forKey: NSSQLitePragmasOption)
+        // Persistent history tracking + remote-change notifications. History
+        // tracking is REQUIRED for `.NSPersistentStoreRemoteChange` to fire, which
+        // is how the running app learns that a CloudKit import (or any other
+        // coordinator writing this file) changed the store, so `HistoryStore` can
+        // re-read and merge it into the in-memory `items`. Set on EVERY store
+        // (local and mirrored): enabling history tracking on an existing store is
+        // safe and one-way — it starts recording transactions; it never rewrites
+        // past data — and remote-change notifications on a purely local store with
+        // no sibling writer are simply never posted, so this is inert until sync
+        // (or a second coordinator) is actually in play.
+        description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+        description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         return description
     }
 
