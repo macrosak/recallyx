@@ -36,7 +36,23 @@ public final class HistoryStore: ObservableObject {
     private let storeURL: URL          // Recallyx.sqlite
     private let fm = FileManager.default
     private let persistence: PersistenceController
+    private let cloudSyncEnabled: Bool
     private var saveTask: Task<Void, Never>?
+
+    /// Ids the running app has mutated locally since the last successful save,
+    /// and ids it has locally deleted. `persist` writes ONLY these — it never
+    /// mirrors the whole in-memory array — so a CloudKit import that landed
+    /// behind our back (a remote pin/add/delete on a clip we didn't touch) is
+    /// NOT clobbered by our next local edit. This is the core of the sync-merge
+    /// fix: the store is a shared, concurrently-written file, so a blind
+    /// whole-array upsert re-exports stale fields the running app never saw.
+    private var dirtyIDs: Set<UUID> = []
+    private var deletedIDs: Set<UUID> = []
+
+    /// Debounce + task for merging remote (CloudKit / other-coordinator) changes.
+    private let remoteMergeDelay: TimeInterval
+    private var mergeTask: Task<Void, Never>?
+    private var remoteChangeObserver: NSObjectProtocol?
 
     /// `onChange` fires after every mutation so the app can refresh the
     /// menu-bar count and any open panel.
@@ -57,13 +73,18 @@ public final class HistoryStore: ObservableObject {
     ///     PNG — reconciliation must not run there (an iOS-local image write path
     ///     could otherwise treat every not-yet-synced file as an orphan). Off also
     ///     means image entities lacking a local file are always kept.
-    public init(baseURL: URL? = nil, cap: Int = 1000, inMemory: Bool = false, cloudSyncEnabled: Bool = false, reconcileImages: Bool = true) {
+    ///   - remoteMergeDelay: debounce before merging a batch of remote
+    ///     (CloudKit / other-coordinator) changes. Defaults to ~1s; tests pass a
+    ///     tiny value to keep the notification→merge path fast.
+    public init(baseURL: URL? = nil, cap: Int = 1000, inMemory: Bool = false, cloudSyncEnabled: Bool = false, reconcileImages: Bool = true, remoteMergeDelay: TimeInterval = 1.0) {
         self.cap = cap
         let base = baseURL ?? Self.defaultBaseURL()
         self.baseURL = base
         self.imagesURL = base.appendingPathComponent("images", isDirectory: true)
         self.indexURL = base.appendingPathComponent("history.json")
         self.storeURL = base.appendingPathComponent("Recallyx.sqlite")
+        self.cloudSyncEnabled = cloudSyncEnabled
+        self.remoteMergeDelay = remoteMergeDelay
 
         try? fm.createDirectory(at: imagesURL, withIntermediateDirectories: true)
         self.persistence = PersistenceController(storeURL: storeURL, inMemory: inMemory, cloudSyncEnabled: cloudSyncEnabled)
@@ -83,13 +104,39 @@ public final class HistoryStore: ObservableObject {
         // corrupt legacy import: with `items` empty, reconcileOrphans() would
         // delete every PNG. iOS (reconcileImages: false) skips it always — its
         // image entities intentionally lack local files until image sync ships.
-        if reconcileImages && !skipReconcile { reconcileOrphans() }
+        //
+        // **Skip it too when sync is on.** After sync, an entity imported from
+        // another device references a PNG that never synced (image payloads stay
+        // local this phase), so its local file is absent. Orphan reconciliation
+        // must not treat a synced-in image row as garbage — the entity is kept and
+        // the UI shows a placeholder, mirroring iOS (reconcileImages: false).
+        if reconcileImages && !skipReconcile && !cloudSyncEnabled { reconcileOrphans() }
 
         // `cap`'s didSet doesn't fire during init, so enforce here in case it was
         // lowered between launches. Persists synchronously (no onChange — listeners
         // aren't wired yet).
         enforceCapOnLoad()
+
+        // Learn about CloudKit imports / other-coordinator writes so `items` stays
+        // live instead of frozen at launch.
+        startObservingRemoteChanges()
     }
+
+    deinit {
+        if let remoteChangeObserver {
+            NotificationCenter.default.removeObserver(remoteChangeObserver)
+        }
+    }
+
+    /// Test seam: the persistent store coordinator that remote-change
+    /// notifications are scoped to, and the on-disk SQLite URL. Lets tests write
+    /// through a second container on the same file and post the notification the
+    /// running app would receive from a CloudKit import. `internal` — invisible
+    /// outside the module.
+    var storeCoordinatorForTesting: NSPersistentStoreCoordinator {
+        persistence.container.persistentStoreCoordinator
+    }
+    var storeURLForTesting: URL { storeURL }
 
     public static func defaultBaseURL() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -108,6 +155,7 @@ public final class HistoryStore: ObservableObject {
             existing.lastUsedAt = Date()
             items.insert(existing, at: 0)
             Log.debug("history dedupe-bump hash=\(captured.contentHash.prefix(8)) → top")
+            markDirty(existing.id)
             didMutate()
             return existing.id
         }
@@ -148,6 +196,7 @@ public final class HistoryStore: ObservableObject {
         )
         items.insert(item, at: 0)
         Log.debug("history add kind=\(captured.kind.rawValue) id=\(id.uuidString.prefix(8)) count=\(items.count)")
+        markDirty(id)
         enforceCap()
         didMutate()
         return id
@@ -160,6 +209,7 @@ public final class HistoryStore: ObservableObject {
         var item = items.remove(at: idx)
         item.lastUsedAt = Date()
         items.insert(item, at: 0)
+        markDirty(id)
         didMutate()
     }
 
@@ -169,6 +219,7 @@ public final class HistoryStore: ObservableObject {
     public func setPinned(_ id: UUID, _ pinned: Bool) {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].pinned = pinned
+        markDirty(id)
         didMutate()
     }
 
@@ -176,11 +227,12 @@ public final class HistoryStore: ObservableObject {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let item = items.remove(at: idx)
         deleteImageFile(for: item)
+        markDeleted(id)
         didMutate()
     }
 
     public func clear() {
-        for item in items { deleteImageFile(for: item) }
+        for item in items { deleteImageFile(for: item); markDeleted(item.id) }
         items.removeAll()
         didMutate()
     }
@@ -202,6 +254,10 @@ public final class HistoryStore: ObservableObject {
         let ctx = persistence.viewContext
         let request = ClipEntity.clipFetchRequest()
         request.sortDescriptors = [NSSortDescriptor(key: "recency", ascending: false)]
+        // Overwrite any cached property values with the store's current values, so
+        // a re-read after a remote import reflects the imported changes (e.g. a pin
+        // flag another device flipped) rather than this context's stale snapshot.
+        request.shouldRefreshRefetchedObjects = true
         do {
             let rows = try ctx.fetch(request)
             // Map to value types; trust max(createdAt, lastUsedAt) over the stored
@@ -218,51 +274,154 @@ public final class HistoryStore: ObservableObject {
 
     private func scheduleSave() {
         saveTask?.cancel()
-        let snapshot = items
         saveTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
-            self.persist(snapshot)
+            self.persist()
         }
     }
 
-    /// Flush any pending debounced write synchronously (call at shutdown).
+    /// Flush any pending debounced write synchronously (call at shutdown, and
+    /// before a remote-change merge so in-flight local edits are written first).
     public func flush() {
         saveTask?.cancel()
         saveTask = nil
-        persist(items)
+        persist()
     }
 
-    /// Reconcile the Core Data store to match the in-memory `items`: upsert each
-    /// item by id, delete any rows whose id is no longer present. The in-memory
-    /// array is the source of truth, so this keeps the store a faithful mirror
-    /// without re-implementing the dedupe/cap/order logic in Core Data.
-    private func persist(_ snapshot: [HistoryItem]) {
+    /// Write the pending local mutations to Core Data — and **only** those.
+    ///
+    /// Upserts the entities in `dirtyIDs` (from the current `items`) and deletes
+    /// the entities in `deletedIDs`; it never touches any other row. This is a
+    /// deliberate change from a whole-array mirror: the SQLite store is written
+    /// concurrently by CloudKit imports (and any sibling coordinator), so a blind
+    /// upsert of the entire in-memory array would re-export fields the running app
+    /// never saw — silently reverting a remote pin/add/delete on a clip the user
+    /// didn't touch. Scoping every write to the locally-dirtied ids is what lets
+    /// the debounced remote-merge (`mergeRemoteChanges`) safely coexist with local
+    /// edits.
+    private func persist() {
+        guard !dirtyIDs.isEmpty || !deletedIDs.isEmpty else { return }
+        let dirty = dirtyIDs
+        let deleted = deletedIDs
+        dirtyIDs.removeAll()
+        deletedIDs.removeAll()
+
+        var itemsByID: [UUID: HistoryItem] = [:]
+        for item in items { itemsByID[item.id] = item }
+
         let ctx = persistence.viewContext
+        var failed = false
         ctx.performAndWait {
             do {
+                let touched = dirty.union(deleted)
                 let request = ClipEntity.clipFetchRequest()
+                request.predicate = NSPredicate(format: "id IN %@", touched as NSSet)
                 let existing = try ctx.fetch(request)
                 var byID: [UUID: ClipEntity] = [:]
-                for row in existing {
-                    if let rid = row.id { byID[rid] = row } else { ctx.delete(row) }
-                }
+                for row in existing where row.id != nil { byID[row.id!] = row }
 
-                let liveIDs = Set(snapshot.map { $0.id })
-                // Delete rows no longer in the snapshot.
-                for (rid, row) in byID where !liveIDs.contains(rid) {
-                    ctx.delete(row)
+                // Deletes: only ids we locally removed. A remotely-deleted row
+                // simply isn't in `touched`, so we never resurrect it.
+                for id in deleted {
+                    if let row = byID[id] { ctx.delete(row) }
                 }
-                // Upsert each live item.
-                for item in snapshot {
-                    let entity = byID[item.id] ?? ClipEntity(context: ctx)
+                // Upserts: only ids we locally mutated. An id that's dirty but no
+                // longer in `items` (evicted after the mark) is skipped — its
+                // delete mark, if any, already handled removal.
+                for id in dirty {
+                    guard let item = itemsByID[id] else { continue }
+                    let entity = byID[id] ?? ClipEntity(context: ctx)
                     entity.apply(item)
                 }
 
                 if ctx.hasChanges { try ctx.save() }
             } catch {
                 Log.error("history persist failed: \(error.localizedDescription)")
+                failed = true
             }
+        }
+        // On failure, re-queue the ids so the next flush retries rather than
+        // dropping the edits.
+        if failed {
+            dirtyIDs.formUnion(dirty)
+            deletedIDs.formUnion(deleted)
+        }
+    }
+
+    private func markDirty(_ id: UUID) {
+        dirtyIDs.insert(id)
+        deletedIDs.remove(id)   // a re-add supersedes a pending delete
+    }
+
+    private func markDeleted(_ id: UUID) {
+        deletedIDs.insert(id)
+        dirtyIDs.remove(id)     // a delete supersedes a pending upsert
+    }
+
+    // MARK: - Remote-change merge (CloudKit / other coordinators)
+
+    /// Observe `.NSPersistentStoreRemoteChange` (posted because the store
+    /// description enables history tracking + remote-change notifications). Each
+    /// notification means another coordinator — the CloudKit mirroring delegate,
+    /// or a sibling process — committed a transaction to our SQLite file, so the
+    /// in-memory `items` are stale and must be re-read.
+    private func startObservingRemoteChanges() {
+        let coordinator = persistence.container.persistentStoreCoordinator
+        remoteChangeObserver = NotificationCenter.default.addObserver(
+            forName: .NSPersistentStoreRemoteChange,
+            object: coordinator,
+            queue: nil
+        ) { [weak self] _ in
+            // The notification can arrive on any queue; hop to the main actor.
+            Task { @MainActor in self?.scheduleRemoteMerge() }
+        }
+    }
+
+    /// Debounce a burst of remote-change notifications (a single import can post
+    /// several) into one merge.
+    private func scheduleRemoteMerge() {
+        mergeTask?.cancel()
+        let delay = remoteMergeDelay
+        mergeTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self.mergeRemoteChanges()
+        }
+    }
+
+    /// Flush pending local edits, then re-read the store and rebuild `items`,
+    /// firing `onChange`. `internal` (not `private`) so tests can drive it
+    /// deterministically after writing through a second container.
+    func mergeRemoteChanges() {
+        // Write any in-flight local edits FIRST, so re-reading the store doesn't
+        // lose them — and, thanks to the dirty-set `persist`, without clobbering
+        // the remote changes we're about to merge in.
+        flush()
+
+        let oldIDs = Set(items.map { $0.id })
+        reloadItemsFromStore()
+        let newIDs = Set(items.map { $0.id })
+        let added = newIDs.subtracting(oldIDs).count
+        let removed = oldIDs.subtracting(newIDs).count
+        // Content-free: counts only, never clip text.
+        Log.info("history remote-change merge: +\(added) -\(removed) total=\(items.count)")
+        onChange?()
+    }
+
+    /// Re-fetch entities into `items`. Unlike `loadFromStore`, a transient fetch
+    /// error keeps the current `items` rather than reseeding empty — a hiccup
+    /// mid-session must not wipe the live history.
+    private func reloadItemsFromStore() {
+        let ctx = persistence.viewContext
+        let request = ClipEntity.clipFetchRequest()
+        request.sortDescriptors = [NSSortDescriptor(key: "recency", ascending: false)]
+        request.shouldRefreshRefetchedObjects = true
+        do {
+            let rows = try ctx.fetch(request)
+            items = rows.compactMap { $0.toItem() }.sorted { $0.recency > $1.recency }
+        } catch {
+            Log.error("history reload failed: \(error.localizedDescription) — keeping current items")
         }
     }
 
@@ -294,7 +453,8 @@ public final class HistoryStore: ObservableObject {
         }
 
         items = decoded.sorted { $0.recency > $1.recency }
-        persist(items)
+        for item in items { markDirty(item.id) }
+        persist()
         Log.info("migrated \(items.count) clip(s) from history.json → Core Data")
 
         // Rename the source so the import is one-shot. Don't delete — keep the
@@ -324,6 +484,7 @@ public final class HistoryStore: ObservableObject {
         while items.count > cap && i >= 0 {
             if !items[i].isPinned {
                 deleteImageFile(for: items[i])
+                markDeleted(items[i].id)
                 items.remove(at: i)
             }
             i -= 1
@@ -335,8 +496,8 @@ public final class HistoryStore: ObservableObject {
     /// without firing onChange (listeners aren't wired yet).
     private func enforceCapOnLoad() {
         let before = items.count
-        enforceCap()
-        if items.count != before { persist(items) }
+        enforceCap()   // marks the evicted ids deleted
+        if items.count != before { persist() }
     }
 
     private func deleteImageFile(for item: HistoryItem) {

@@ -1,3 +1,4 @@
+import CoreData
 import Foundation
 import Testing
 @testable import Recallyx
@@ -423,6 +424,190 @@ struct HistoryStoreMigrationTests {
         let store = HistoryStore(baseURL: base)
         #expect(store.items.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("history.json.bak").path))
+    }
+}
+
+/// Live sync merge: a CloudKit import (simulated by a SECOND coordinator writing
+/// the same on-disk SQLite file) must reach the running store's in-memory
+/// `items`, and the store's own write-back must NOT clobber those imported edits.
+/// The "remote" writer is a real second `PersistenceController` on the same file
+/// (not in-memory — remote-change notifications need a real store).
+@MainActor
+@Suite("HistoryStore sync merge")
+struct HistoryStoreSyncMergeTests {
+
+    private func makeBase() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("recallyx-sync-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private func textItem(_ s: String, pinned: Bool = false) -> HistoryItem {
+        let now = Date()
+        return HistoryItem(
+            id: UUID(), kind: .text, text: s, imageFilename: nil, preview: s,
+            byteSize: s.utf8.count, createdAt: now, lastUsedAt: now,
+            contentHash: ContentHash.of(text: s), pinned: pinned
+        )
+    }
+
+    private func textClip(_ s: String) -> CapturedClip {
+        CapturedClip(
+            kind: .text, text: s, imageData: nil, preview: s, byteSize: s.utf8.count,
+            sourceAppBundleID: nil, sourceAppName: nil, sourceAppPath: nil,
+            contentHash: ContentHash.of(text: s), imageDimensions: nil
+        )
+    }
+
+    /// A second coordinator on the same SQLite file — stands in for the CloudKit
+    /// mirroring delegate / a sibling process. Mutates through its own context.
+    private func writeViaRemote(storeURL: URL, _ mutate: (NSManagedObjectContext) -> Void) {
+        let remote = PersistenceController(storeURL: storeURL)
+        let ctx = remote.viewContext
+        ctx.performAndWait {
+            mutate(ctx)
+            try? ctx.save()
+        }
+    }
+
+    private func remoteEntity(_ ctx: NSManagedObjectContext, id: UUID) -> ClipEntity? {
+        let req = ClipEntity.clipFetchRequest()
+        req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        return (try? ctx.fetch(req))?.first
+    }
+
+    @Test func remoteAdd_reachesItemsAfterMerge() {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base)
+        store.add(textClip("local"))
+        store.flush()
+
+        // Remote device adds a brand-new clip behind the running app's back.
+        let remote = textItem("from-phone")
+        writeViaRemote(storeURL: store.storeURLForTesting) { ctx in
+            ClipEntity(context: ctx).apply(remote)
+        }
+
+        // Before the merge the app can't see it; after, it does.
+        #expect(!store.items.contains { $0.id == remote.id })
+        store.mergeRemoteChanges()
+        #expect(store.items.contains { $0.text == "from-phone" })
+        #expect(store.items.contains { $0.text == "local" })
+    }
+
+    /// The clobber regression (design item 3). A remote pin lands while a local
+    /// edit to a DIFFERENT clip is pending. With the old whole-array `persist`,
+    /// flushing the local edit re-exported the still-unpinned clip and reverted
+    /// the remote pin; the dirty-set `persist` writes only the locally-edited id,
+    /// so both survive.
+    @Test func remotePinSurvives_whenLocalEditToOtherClipFlushes() {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base)
+        let x = store.add(textClip("X"))
+        let y = store.add(textClip("Y"))
+        store.flush()
+
+        // Remote pins X.
+        writeViaRemote(storeURL: store.storeURLForTesting) { ctx in
+            guard let e = remoteEntity(ctx, id: x) else { return }
+            e.pinned = true
+        }
+
+        // Local edit to Y (different clip), left pending. The app's in-memory X is
+        // still unpinned — a whole-array flush would clobber the remote pin.
+        store.setPinned(y, true)
+
+        // Merge flushes Y first (only Y), then re-reads.
+        store.mergeRemoteChanges()
+
+        #expect(store.items.first { $0.id == x }?.isPinned == true)  // remote pin kept
+        #expect(store.items.first { $0.id == y }?.isPinned == true)  // local edit kept
+    }
+
+    /// Remote delete stickiness (design item 4). A remote delete + an unrelated
+    /// pending local add: the delete must stick (not resurrect) and the add must
+    /// persist. The whole-array `persist` would have re-inserted the
+    /// still-in-memory X.
+    @Test func remoteDeleteSticks_whenLocalAddPending() {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base)
+        let x = store.add(textClip("X"))
+        _ = store.add(textClip("Y"))
+        store.flush()
+
+        // Remote deletes X.
+        writeViaRemote(storeURL: store.storeURLForTesting) { ctx in
+            if let e = remoteEntity(ctx, id: x) { ctx.delete(e) }
+        }
+
+        // Unrelated local add, still pending (X remains in the app's memory).
+        store.add(textClip("Z"))
+
+        store.mergeRemoteChanges()
+
+        #expect(!store.items.contains { $0.id == x })         // delete stuck
+        #expect(store.items.contains { $0.text == "Y" })      // untouched survives
+        #expect(store.items.contains { $0.text == "Z" })      // local add persisted
+    }
+
+    /// The wired path: a real `.NSPersistentStoreRemoteChange` notification (what a
+    /// CloudKit import posts) drives the debounced merge end to end.
+    @Test func remoteChangeNotification_triggersDebouncedMerge() async {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base, remoteMergeDelay: 0.05)
+        store.add(textClip("local"))
+        store.flush()
+
+        let remote = textItem("via-notification")
+        writeViaRemote(storeURL: store.storeURLForTesting) { ctx in
+            ClipEntity(context: ctx).apply(remote)
+        }
+
+        // Post the notification the running app would receive from the import.
+        NotificationCenter.default.post(
+            name: .NSPersistentStoreRemoteChange,
+            object: store.storeCoordinatorForTesting
+        )
+
+        // Await the debounced merge (poll up to a few seconds).
+        var appeared = false
+        let deadline = Date().addingTimeInterval(4)
+        while Date() < deadline {
+            if store.items.contains(where: { $0.text == "via-notification" }) {
+                appeared = true
+                break
+            }
+            try? await Task.sleep(nanoseconds: 30_000_000)
+        }
+        #expect(appeared)
+    }
+
+    /// Design item 5: with sync ON, launch orphan-reconciliation is skipped so a
+    /// synced-in image entity (whose PNG never synced) is never treated as garbage
+    /// — mirroring the iOS `reconcileImages: false` behavior. A stray unreferenced
+    /// PNG is therefore NOT deleted (the sync-off path DOES delete it, covered by
+    /// `reconcileOrphans_deletesUnreferencedImageFiles`).
+    @Test func syncEnabled_skipsOrphanReconciliation() throws {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+        try FileManager.default.createDirectory(
+            at: base.appendingPathComponent("images", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        let stray = base.appendingPathComponent("images/stray.png")
+        try Data([0, 1, 2]).write(to: stray)
+
+        // cloudSyncEnabled: true → reconcile skipped (unentitled test process keeps
+        // the store plain-local, so no CloudKit crash).
+        _ = HistoryStore(baseURL: base, cloudSyncEnabled: true)
+        #expect(FileManager.default.fileExists(atPath: stray.path))
     }
 }
 
