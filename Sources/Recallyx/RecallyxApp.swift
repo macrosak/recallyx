@@ -67,6 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var historyPanel: HistoryPanelController?
     private var settingsWindow: SettingsWindowController?
     private var debugHooks: DebugHooks?
+    /// `iCloudSyncEnabled` as read at launch to build `store` above (the store
+    /// is built once, so toggling the setting only takes effect after a
+    /// relaunch). Settings compares the live value against this to decide
+    /// whether to show the "Relaunch now" button.
+    private var iCloudSyncLaunchValue = false
     private let notifier = Notifier()
     private let accessibility = AccessibilityClient()
     private lazy var actionRunner = ActionRunner(
@@ -99,6 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.info("actions loaded (\(loadedActions.count)): [\(loadedActions.map(\.name).joined(separator: ", "))]")
 
         notifier.requestAuthorizationIfNeeded()
+        // Capture the launch-time sync setting before `store` (lazy) is first
+        // touched below — this is the value it was actually built with.
+        iCloudSyncLaunchValue = settingsStore.settings.iCloudSyncEnabled
         state.historyCount = store.items.count
         store.onChange = { [weak self] in
             guard let self else { return }
@@ -136,7 +144,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             revealUsageJournal: { [weak self] in self?.revealUsageJournal() },
             clearUsageJournal: { [weak self] in self?.journal.clear() },
             revealFileLog: { [weak self] in self?.revealFileLog() },
-            clearFileLog: { Task { await FileLog.shared.clear() } }
+            clearFileLog: { Task { await FileLog.shared.clear() } },
+            iCloudSyncLaunchValue: iCloudSyncLaunchValue,
+            relaunch: { [weak self] in self?.relaunch() }
         )
         self.settingsWindow = settingsWindow
 
@@ -630,8 +640,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Both stores debounce their writes (~250ms); flush so a quit right after
     /// a copy or settings change doesn't lose the last mutation.
     func applicationWillTerminate(_ notification: Notification) {
+        flushPendingState()
+    }
+
+    private func flushPendingState() {
         store.flush()
         settingsStore.flush()
+    }
+
+    /// The Settings "Relaunch now" button — some settings (like `iCloudSyncEnabled`)
+    /// are only read once at launch to build the stores, so flipping them needs a
+    /// relaunch to take effect. Flushes pending state (same as quitting normally),
+    /// then respawns the app bundle and terminates this process.
+    ///
+    /// In the debug/`swift run` case there's no `.app` bundle to respawn — just
+    /// terminate, matching a manual quit-and-relaunch-from-source workflow.
+    func relaunch() {
+        flushPendingState()
+        let bundleURL = Bundle.main.bundleURL
+        guard bundleURL.pathExtension == "app" else {
+            Log.info("relaunch: no .app bundle (debug run) — terminating without respawn")
+            NSApp.terminate(nil)
+            return
+        }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-n", bundleURL.path]
+        do {
+            try task.run()
+        } catch {
+            Log.error("relaunch: failed to spawn a new instance: \(error.localizedDescription)")
+        }
+        NSApp.terminate(nil)
     }
 
     /// The system can silently disable us (user removed us from Login Items);

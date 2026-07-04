@@ -26,6 +26,8 @@ struct SettingsView: View {
     let clearUsageJournal: () -> Void
     let revealFileLog: () -> Void
     let clearFileLog: () -> Void
+    let iCloudSyncLaunchValue: Bool
+    let relaunch: () -> Void
     @State private var tab: SettingsTab
 
     private let tabs: [SettingsTab] = [.general, .providers, .actions]
@@ -41,6 +43,8 @@ struct SettingsView: View {
         clearUsageJournal: @escaping () -> Void = {},
         revealFileLog: @escaping () -> Void = {},
         clearFileLog: @escaping () -> Void = {},
+        iCloudSyncLaunchValue: Bool = false,
+        relaunch: @escaping () -> Void = {},
         initialTab: SettingsTab = .general
     ) {
         self.settingsStore = settingsStore
@@ -50,6 +54,8 @@ struct SettingsView: View {
         self.clearUsageJournal = clearUsageJournal
         self.revealFileLog = revealFileLog
         self.clearFileLog = clearFileLog
+        self.iCloudSyncLaunchValue = iCloudSyncLaunchValue
+        self.relaunch = relaunch
         self._tab = State(initialValue: initialTab)
     }
 
@@ -59,7 +65,7 @@ struct SettingsView: View {
             switch tab {
             case .general:
                 ScrollView {
-                    SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, revealUsageJournal: revealUsageJournal, clearUsageJournal: clearUsageJournal, revealFileLog: revealFileLog, clearFileLog: clearFileLog, theme: theme)
+                    SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, revealUsageJournal: revealUsageJournal, clearUsageJournal: clearUsageJournal, revealFileLog: revealFileLog, clearFileLog: clearFileLog, iCloudSyncLaunchValue: iCloudSyncLaunchValue, relaunch: relaunch, theme: theme)
                         .padding(.horizontal, 22)
                         .padding(.vertical, 20)
                 }

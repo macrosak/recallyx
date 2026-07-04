@@ -11,6 +11,10 @@ struct SettingsGeneralView: View {
     var clearUsageJournal: () -> Void = {}
     var revealFileLog: () -> Void = {}
     var clearFileLog: () -> Void = {}
+    /// `iCloudSyncEnabled` as it was when the app launched (the store is built
+    /// once from it). Compared against the live setting to show "Relaunch now".
+    var iCloudSyncLaunchValue: Bool = false
+    var relaunch: () -> Void = {}
     let theme: SettingsTheme
 
     /// True only when this build carries the iCloud entitlement (the team-signed
@@ -18,6 +22,13 @@ struct SettingsGeneralView: View {
     /// with an explanatory caption — enabling it there would attach CloudKit
     /// mirroring and crash at launch, so the gate keeps it honestly off.
     private let syncEntitled = PersistenceController.processHasCloudKitEntitlement
+
+    /// Whether the "Relaunch now" button should show next to the sync toggle:
+    /// only once the live setting has drifted from the value the app launched
+    /// with (toggling it back off hides the button again).
+    static func relaunchButtonVisible(current: Bool, launchValue: Bool) -> Bool {
+        current != launchValue
+    }
 
     @State private var capText: String = ""
     @State private var launchError: String?
@@ -142,6 +153,15 @@ struct SettingsGeneralView: View {
                         : "iCloud sync needs the team-signed build — this build has no iCloud entitlement. Build from source with the signed Xcode path (see the README's Building-from-source section); the ad-hoc/DMG build can't sync.",
                     theme: theme
                 ) {
+                    // Only in an entitled build, and only once the live value has
+                    // drifted from what the app launched with — toggling it back
+                    // hides the button again.
+                    if syncEntitled && Self.relaunchButtonVisible(
+                        current: settingsStore.settings.iCloudSyncEnabled,
+                        launchValue: iCloudSyncLaunchValue
+                    ) {
+                        SettingsButton(title: "Relaunch now", theme: theme, action: relaunch)
+                    }
                     Toggle("", isOn: Binding(
                         get: { settingsStore.settings.iCloudSyncEnabled },
                         set: { settingsStore.settings.iCloudSyncEnabled = $0 }
