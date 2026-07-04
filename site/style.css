@@ -331,7 +331,7 @@ h1, h2, h3 { letter-spacing: -0.025em; line-height: 1.08; margin: 0; }
 .steps { list-style: none; counter-reset: none; padding: 0; margin: 0; display: grid; gap: 16px; }
 .step {
   display: grid;
-  grid-template-columns: 46px 1fr;
+  grid-template-columns: 46px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
   padding: 26px;
@@ -350,6 +350,7 @@ h1, h2, h3 { letter-spacing: -0.025em; line-height: 1.08; margin: 0; }
   background: rgba(10, 132, 255, 0.1);
   border: 1px solid rgba(10, 132, 255, 0.26);
 }
+.step-body { min-width: 0; }
 .step-body h3 { font-size: 18px; font-weight: 640; margin-bottom: 8px; }
 .step-body p { color: var(--text-dim); font-size: 15px; margin: 0 0 16px; }
 .step-body > p:last-child { margin-bottom: 0; }
@@ -451,7 +452,7 @@ h1, h2, h3 { letter-spacing: -0.025em; line-height: 1.08; margin: 0; }
   .nav-links { gap: 14px; }
   .nav-links a:not(.btn) { display: none; }
   .cta-row .btn { flex: 1 1 auto; justify-content: center; }
-  .step { grid-template-columns: 1fr; gap: 14px; }
+  .step { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .footer-inner { flex-direction: column; align-items: flex-start; }
 }
 
