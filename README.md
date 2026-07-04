@@ -171,6 +171,12 @@ day to day.
 read at launch). Do the same on your other Mac, signed into the **same iCloud account** — text
 clips sync both ways. Images stay local to each Mac.
 
+All builds — the Development-signed Mac app and the TestFlight/App Store iOS app — use the
+CloudKit **Production** environment (set via the `com.apple.developer.icloud-container-environment`
+entitlement), so your dev Mac build syncs with the iPhone companion. Before the first Production
+sync you must deploy the container schema to Production once: **CloudKit Console → the container →
+Deploy Schema Changes to Production**.
+
 ```bash
 ./scripts/test.sh   # unit tests
 ```
