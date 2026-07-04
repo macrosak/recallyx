@@ -15,6 +15,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let clearUsageJournal: () -> Void
     private let revealFileLog: () -> Void
     private let clearFileLog: () -> Void
+    private let iCloudSyncLaunchValue: Bool
+    private let relaunch: () -> Void
     private var window: NSWindow?
 
     init(
@@ -24,7 +26,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         revealUsageJournal: @escaping () -> Void = {},
         clearUsageJournal: @escaping () -> Void = {},
         revealFileLog: @escaping () -> Void = {},
-        clearFileLog: @escaping () -> Void = {}
+        clearFileLog: @escaping () -> Void = {},
+        iCloudSyncLaunchValue: Bool = false,
+        relaunch: @escaping () -> Void = {}
     ) {
         self.settingsStore = settingsStore
         self.clearHistory = clearHistory
@@ -33,6 +37,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         self.clearUsageJournal = clearUsageJournal
         self.revealFileLog = revealFileLog
         self.clearFileLog = clearFileLog
+        self.iCloudSyncLaunchValue = iCloudSyncLaunchValue
+        self.relaunch = relaunch
         super.init()
     }
 
@@ -58,6 +64,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             clearUsageJournal: clearUsageJournal,
             revealFileLog: revealFileLog,
             clearFileLog: clearFileLog,
+            iCloudSyncLaunchValue: iCloudSyncLaunchValue,
+            relaunch: relaunch,
             initialTab: tab
         )
         let hosting = NSHostingController(rootView: view)
