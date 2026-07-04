@@ -245,6 +245,30 @@ public final class HistoryPanelViewModel: ObservableObject {
         onBuiltin(.paste, filtered[index])
     }
 
+    /// ⌘⌫ / forward-delete (Fn+⌫) in list mode: delete the highlighted clip in
+    /// place, without opening the action menu. Reuses the same delete path as
+    /// the action menu's Delete entry (`onBuiltin(.delete, item)` + removing
+    /// the id from `allItems`) and keeps the panel open. Unlike that menu path
+    /// (which returns to the top of the list — see `returnToList`), selection
+    /// here lands on the same row index, clamped to the new count, so the next
+    /// clip slides into view. No-op outside list mode or on an empty list.
+    public func deleteSelected() {
+        guard mode == .list, let item = selectedItem else { return }
+        let index = selectedIndex
+        onBuiltin(.delete, item)
+        allItems.removeAll { $0.id == item.id }
+        rebuildFiltered()
+        selectedIndex = Self.clampedIndex(index, count: filtered.count)
+    }
+
+    /// Clamp `index` into the valid range for a list of `count` items — `0`
+    /// when the list is empty. Pure; backs `deleteSelected`'s "land on the same
+    /// row, or the new last row" behavior.
+    static func clampedIndex(_ index: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        return min(max(index, 0), count - 1)
+    }
+
     /// Record a `paste` usage event (no-op when the journal is off). Logs only
     /// the paste method and the clip *kind* — never the clip contents.
     private func logPaste(_ item: HistoryItem, via: String) {

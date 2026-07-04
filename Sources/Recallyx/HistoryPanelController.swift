@@ -270,6 +270,17 @@ final class HistoryPanelController {
                 vm.runSavedAction(at: digit - 1)
                 return nil
             }
+            // ⌘⌫ (command-delete) or forward-delete (Fn+⌫) deletes the
+            // selected clip in place — list mode only. Plain ⌫ (kVK_Delete
+            // without ⌘) is left alone so it keeps editing the search field.
+            if vm.mode == .list {
+                let isForwardDelete = event.keyCode == 0x75
+                let isCommandDelete = event.keyCode == 0x33 && event.modifierFlags.contains(.command)
+                if isForwardDelete || isCommandDelete {
+                    vm.deleteSelected()
+                    return nil
+                }
+            }
             // Search-token completion popover (list mode only — `tokenPopoverVisible`
             // is false in actions). ↑↓ move the highlight, ⇥/↵ accept, esc hides —
             // none reach the clip list / paste / actions while it's up. Typed
