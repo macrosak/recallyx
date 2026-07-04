@@ -10,6 +10,8 @@
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-0a84ff">
     <img alt="Release" src="https://img.shields.io/github/v/release/macrosak/recallyx">
   </p>
+
+  <p><a href="https://macrosak.github.io/recallyx/"><b>Website</b></a> &middot; <a href="https://github.com/macrosak/recallyx/releases/latest"><b>Download</b></a></p>
 </div>
 
 ## What it is
