@@ -353,7 +353,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     notifier.notify(body: "Action produced no output.")
                     return
                 }
-                await Paster.pasteText(result, into: app)
+                Paster.setClipboardText(result)
+                guard ensurePasteTrusted() else { return }
+                await Paster.activateAndPaste(sourceApp: app)
                 state.flash(.success)
             } catch let ActionError.missingApiKey(provider) {
                 journal.log("action_error", ["name": action.name, "category": "missingApiKey"])
@@ -486,6 +488,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Gate a synthesized-⌘V paste on Accessibility permission. Returns true when
+    /// the app is trusted (caller proceeds to synth the paste). When untrusted it
+    /// prompts once per session (the modal, via `ensureTrustedOrPrompt`) AND posts a
+    /// notification every time so repeated attempts still surface, then returns
+    /// false. Callers MUST have already written the clip to the clipboard so a
+    /// manual ⌘V is the working fallback.
+    @discardableResult
+    private func ensurePasteTrusted() -> Bool {
+        if accessibility.ensureTrustedOrPrompt() { return true }
+        state.flash(.error("grant Accessibility"))
+        notifier.notify(
+            body: "Copied to the clipboard. Grant Accessibility in Settings to auto-paste, then press ⌘V.",
+            action: .openAccessibilitySettings
+        )
+        return false
+    }
+
     /// Paste a chosen history clip back into the source app, then bump it to the
     /// top. The pasteboard write is marked as self-written (by changeCount,
     /// after the write) so the watcher bumps rather than re-captures.
@@ -504,6 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Paster.setClipboardImage(data: data)
             }
             watcher?.markSelfWrite()
+            guard ensurePasteTrusted() else { return }
             await Paster.activateAndPaste(sourceApp: app)
             state.flash(.success)
         }
@@ -530,6 +550,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.info("typeLines invoked chars=\(text.count) sourceApp=\(app?.bundleIdentifier ?? "nil")")
         store.bump(item.id)
         journal.log("paste", ["via": "lines", "clipKind": item.kind.rawValue])
+        guard accessibility.isTrusted() else {
+            // Line-by-line paste can't degrade mid-stream (typeText restores the
+            // clipboard), so leave the whole clip on the pasteboard for a manual ⌘V.
+            Paster.setClipboardText(text)
+            watcher?.markSelfWrite()
+            _ = ensurePasteTrusted()   // prompt + notify (isTrusted already false)
+            return
+        }
         Task { @MainActor in
             await Paster.typeText(
                 text,

@@ -153,7 +153,7 @@ final class AccessibilityClient {
         let alert = NSAlert()
         alert.messageText = "Recallyx needs Accessibility permission"
         alert.informativeText = """
-        To grab the current selection (⌃⇧V) and paste results back into other apps, Recallyx needs Accessibility access. Enable it in System Settings → Privacy & Security → Accessibility.
+        To paste clips back into other apps (⌘⇧V) and to grab the current selection (⌃⇧V), Recallyx needs Accessibility access. Enable it in System Settings → Privacy & Security → Accessibility.
 
         After granting access, quit and relaunch the app (permissions are read only at process start).
         """
