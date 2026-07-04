@@ -93,6 +93,80 @@ struct HistoryPanelViewModelTests {
         #expect(vm.filtered.map(\.text) == ["b"])
     }
 
+    // MARK: - deleteSelected (⌘⌫ / forward-delete in list mode)
+
+    @Test func deleteSelected_listMode_removesClipAndLandsOnSameIndex() {
+        var deleted: HistoryItem?
+        let vm = makeVM([textItem("a", age: 0), textItem("b", age: 1), textItem("c", age: 2)]) { action, item in
+            if action == .delete { deleted = item }
+        }
+        // List order: a, b, c. Cursor on "b" (index 1).
+        vm.moveDown()
+        #expect(vm.selectedItem?.text == "b")
+        vm.deleteSelected()
+        #expect(deleted?.text == "b")
+        #expect(vm.mode == .list)                 // panel stays open
+        #expect(vm.filtered.map(\.text) == ["a", "c"])
+        // "c" slides up into row 1 — the same index "b" occupied.
+        #expect(vm.selectedIndex == 1)
+        #expect(vm.selectedItem?.text == "c")
+    }
+
+    @Test func deleteSelected_lastRow_clampsToNewLastIndex() {
+        var deleted: HistoryItem?
+        let vm = makeVM([textItem("a", age: 0), textItem("b", age: 1)]) { action, item in
+            if action == .delete { deleted = item }
+        }
+        vm.moveDown()                              // cursor on "b" (index 1, last row)
+        vm.deleteSelected()
+        #expect(deleted?.text == "b")
+        #expect(vm.filtered.map(\.text) == ["a"])
+        #expect(vm.selectedIndex == 0)              // clamped into the new (shorter) range
+        #expect(vm.selectedItem?.text == "a")
+    }
+
+    @Test func deleteSelected_onlyItem_leavesEmptyListNoCrash() {
+        var deleted: HistoryItem?
+        let vm = makeVM([textItem("solo")]) { action, item in
+            if action == .delete { deleted = item }
+        }
+        vm.deleteSelected()
+        #expect(deleted?.text == "solo")
+        #expect(vm.filtered.isEmpty)
+        #expect(vm.selectedIndex == 0)
+        #expect(vm.selectedItem == nil)
+    }
+
+    @Test func deleteSelected_nonListMode_isNoOp() {
+        var deleted: HistoryItem?
+        let vm = makeVM([textItem("a"), textItem("b")]) { action, item in
+            if action == .delete { deleted = item }
+        }
+        vm.tab()                                   // → actions mode
+        #expect(vm.mode == .actions)
+        vm.deleteSelected()
+        #expect(deleted == nil)
+        #expect(vm.mode == .actions)
+        #expect(vm.allItems.count == 2)
+    }
+
+    @Test func deleteSelected_emptyList_isNoOp() {
+        var deleted: HistoryItem?
+        let vm = makeVM([]) { action, item in
+            if action == .delete { deleted = item }
+        }
+        vm.deleteSelected()
+        #expect(deleted == nil)
+        #expect(vm.selectedIndex == 0)
+    }
+
+    @Test func clampedIndex_examples() {
+        #expect(HistoryPanelViewModel.clampedIndex(1, count: 3) == 1)
+        #expect(HistoryPanelViewModel.clampedIndex(2, count: 2) == 1)   // clamp to the new last row
+        #expect(HistoryPanelViewModel.clampedIndex(0, count: 0) == 0)   // empty → 0
+        #expect(HistoryPanelViewModel.clampedIndex(-1, count: 3) == 0)  // never negative
+    }
+
     @Test func buildCustomPrompt_respectsTextToken() {
         #expect(HistoryPanelViewModel.buildCustomPrompt("Translate {{TEXT}} to FR") == "Translate {{TEXT}} to FR")
         #expect(HistoryPanelViewModel.buildCustomPrompt("Summarize") == "Summarize\n\nText: {{TEXT}}")
