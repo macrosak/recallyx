@@ -177,6 +177,11 @@ entitlement), so your dev Mac build syncs with the iPhone companion. Before the 
 sync you must deploy the container schema to Production once: **CloudKit Console → the container →
 Deploy Schema Changes to Production**.
 
+**How sync interacts with retention:** history deletions sync too — an explicit delete, Clear
+history, and retention-cap eviction all propagate to every synced device. That means the
+smallest retention cap among your synced Macs governs the whole fleet: lowering it on one Mac
+prunes older clips everywhere. Pinned clips are never evicted, on any device.
+
 ```bash
 ./scripts/test.sh   # unit tests
 ```

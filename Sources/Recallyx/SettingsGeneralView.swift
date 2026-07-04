@@ -125,7 +125,9 @@ struct SettingsGeneralView: View {
             SettingsCard(theme: theme) {
                 SettingsRow(
                     label: "Keep most recent",
-                    desc: "Oldest clips are evicted beyond this cap.",
+                    desc: settingsStore.settings.iCloudSyncEnabled
+                        ? "Oldest clips are evicted beyond this cap. With iCloud sync on, eviction deletes across every synced device — the lowest cap in your fleet wins, and pinned clips are exempt."
+                        : "Oldest clips are evicted beyond this cap.",
                     theme: theme
                 ) {
                     SettingsField(text: $capText, mono: false, width: 64, theme: theme, onEditingEnded: commitCap)
