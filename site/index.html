@@ -17,7 +17,7 @@
   <meta name="twitter:description" content="A native macOS clipboard manager with script + AI actions on every clip. Free, open source, private.">
   <meta name="twitter:image" content="https://recallyx.app/assets/recallyx-social.png">
 
-  <meta name="theme-color" content="#0a0c14">
+  <meta name="theme-color" content="#0a0b0e">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%3E%3Crect%20x='7.5'%20y='3.5'%20width='13'%20height='13'%20rx='3.2'%20stroke='%230A84FF'%20stroke-opacity='0.5'%20stroke-width='1.7'/%3E%3Crect%20x='3.5'%20y='7.5'%20width='13'%20height='13'%20rx='3.2'%20fill='%230A84FF'%20fill-opacity='0.18'%20stroke='%230A84FF'%20stroke-width='1.7'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -35,6 +35,7 @@
         <span class="brand-name">Recallyx</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
+        <a href="#pipeline">Pipelines</a>
         <a href="#features">Features</a>
         <a href="#install">Install</a>
         <a href="https://github.com/macrosak/recallyx" rel="noopener">Source</a>
@@ -48,12 +49,12 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div class="hero-copy">
-          <p class="eyebrow"><span class="dot"></span> Free &amp; open source · macOS 13+</p>
-          <h1>Your clipboard,<br><span class="accent">programmable.</span></h1>
+          <p class="kicker"><span class="marker"></span>MIT · macOS 13+ · Apple&nbsp;silicon</p>
+          <h1>Your&nbsp;clipboard,<br><span class="accent">programmable<span class="caret" aria-hidden="true"></span></span></h1>
           <p class="lede">
             Recallyx keeps everything you copy — searchable, private, on your Mac —
-            and lets you run <strong>script&nbsp;+&nbsp;AI pipelines</strong> on any clip.
-            Native, and free.
+            then runs <strong>bash&nbsp;+&nbsp;AI pipelines</strong> on any clip and
+            pastes the result where you were. Native. Free. Open source.
           </p>
           <div class="cta-row">
             <a class="btn btn-primary" href="https://github.com/macrosak/recallyx/releases/latest" rel="noopener">
@@ -61,130 +62,199 @@
             </a>
             <a class="btn btn-ghost" href="https://github.com/macrosak/recallyx" rel="noopener">
               <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-              View on GitHub
+              View source
             </a>
           </div>
-          <p class="cta-note">Latest release<strong id="latest-version"></strong> · Apple silicon · MIT license</p>
+          <dl class="hero-keys">
+            <div>
+              <dt><kbd>⌘</kbd><kbd>⇧</kbd><kbd>V</kbd></dt>
+              <dd>Open the history panel, anywhere.</dd>
+            </div>
+            <div>
+              <dt><kbd>⌃</kbd><kbd>⇧</kbd><kbd>V</kbd></dt>
+              <dd>Grab the selection, transform in place.</dd>
+            </div>
+          </dl>
+          <p class="cta-note">Latest release<strong id="latest-version"></strong> · zero dependencies · no account</p>
         </div>
 
         <div class="hero-art">
-          <figure class="shot shot-hero">
+          <figure class="frame">
+            <div class="frame-bar"><span class="frame-tag">⌘⇧V</span> history panel</div>
             <img src="assets/recallyx-history-dark.png" width="1712" height="1338"
                  alt="The Recallyx history panel: a search field, a list of recent clips with app icons and timestamps, and a detail pane showing selected Swift code copied from IntelliJ IDEA.">
           </figure>
-          <div class="hero-kbd" aria-hidden="true">
-            <kbd>⌘</kbd><kbd>⇧</kbd><kbd>V</kbd>
-            <span>opens the panel, anywhere</span>
-          </div>
         </div>
       </div>
     </section>
 
-    <!-- ===================== DEMO ===================== -->
-    <section class="demo" aria-labelledby="demo-h">
+    <!-- ===================== PIPELINE ===================== -->
+    <section class="pipeline" id="pipeline" aria-labelledby="pipeline-h">
       <div class="wrap">
-        <div class="section-head">
-          <h2 id="demo-h">Copy. Transform. Paste.</h2>
-          <p class="section-sub">
-            Hit <kbd class="inl">⌘</kbd><kbd class="inl">⇧</kbd><kbd class="inl">V</kbd>,
-            press <kbd class="inl">⇥</kbd> on any clip, and pick an action. The result pastes
-            straight into the app you were in.
+        <div class="sect-head">
+          <p class="kicker"><span class="idx">01</span>the actions layer</p>
+          <h2 id="pipeline-h">Copy&nbsp;<span class="arr">→</span>&nbsp;transform&nbsp;<span class="arr">→</span>&nbsp;paste.</h2>
+          <p class="sect-sub">
+            Every clip has an action menu. An action is a pipeline of <strong>script</strong>
+            (<code>bash</code>) and <strong>AI</strong> steps that reshape the text and paste it
+            back — right into the app you were in.
           </p>
         </div>
-        <!-- GIF SLOT: replace this <img> with a looping demo GIF (copy JSON → ⌘⇧V →
-             "Pretty-print JSON" → pasted clean, ~10-15s, <3 MB) once re-recorded via
-             scripts/screenshots.sh in an attended session. Keep equivalent alt text. -->
-        <figure class="shot shot-demo">
-          <img src="assets/recallyx-history-dark.png" width="1712" height="1338"
-               alt="Recallyx panel showing a searchable clipboard history with a code clip selected and its full contents in the detail pane.">
-          <figcaption>Search past clips, then run an action on the one you need.</figcaption>
+
+        <figure class="flow">
+          <figcaption class="flow-bar">action <span class="sep">/</span> <span class="flow-name">JSON&nbsp;→&nbsp;summary</span></figcaption>
+          <div class="flow-chain">
+            <div class="node">
+              <span class="node-k">clip</span>
+              <span class="node-b"><kbd>⌘</kbd><kbd>C</kbd> copy</span>
+            </div>
+            <span class="pipe" aria-hidden="true">▸</span>
+            <div class="node">
+              <span class="node-k"><span class="tag tag-script">script</span></span>
+              <span class="node-b mono">python3 -m json.tool</span>
+            </div>
+            <span class="pipe" aria-hidden="true">▸</span>
+            <div class="node">
+              <span class="node-k"><span class="tag tag-ai">ai</span></span>
+              <span class="node-b">summarize to 3 bullets</span>
+            </div>
+            <span class="pipe" aria-hidden="true">▸</span>
+            <div class="node node-out">
+              <span class="node-k">result</span>
+              <span class="node-b"><kbd>⌘</kbd><kbd>V</kbd> paste</span>
+            </div>
+          </div>
+          <div class="flow-io">
+            <div class="io">
+              <span class="io-label">in — clipboard</span>
+              <pre class="mono"><code>{"event":"deploy","status":"ok","dur_ms":812,"svc":"api"}</code></pre>
+            </div>
+            <div class="io">
+              <span class="io-label">out — pasted</span>
+              <pre class="mono"><code>• Deploy of "api" succeeded
+• Finished in 812&nbsp;ms
+• No errors reported</code></pre>
+            </div>
+          </div>
         </figure>
+
+        <p class="flow-note">
+          Ships with a developer pack — JWT decode, Base64, URL encode/decode, pretty-print &amp;
+          minify JSON, slugify — all offline, no key. Or write your own <code>bash</code> step.
+        </p>
       </div>
     </section>
 
-    <!-- ===================== FEATURE TILES ===================== -->
+    <!-- ===================== FEATURES (spec rows) ===================== -->
     <section class="features" id="features" aria-labelledby="features-h">
-      <div class="wrap">
-        <h2 id="features-h" class="sr-head">What makes it different</h2>
-        <div class="tiles">
-
-          <article class="tile">
-            <div class="tile-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m8 8-4 4 4 4"/><path d="m16 8 4 4-4 4"/></svg>
-            </div>
-            <h3>Programmable</h3>
-            <p>
-              Chain bash and AI steps into a pipeline on any clip. A built-in dev pack
-              handles JWT decode, base64, and JSON — or write your own script step.
-            </p>
-            <ul class="chips">
-              <li>OpenAI</li><li>Claude</li><li>Gemini</li>
-              <li>Ollama</li><li>Apple on-device</li><li>Custom endpoint</li>
-            </ul>
-          </article>
-
-          <article class="tile">
-            <div class="tile-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
-            </div>
-            <h3>Everywhere</h3>
-            <p>
-              History syncs across your Macs through <strong>your own iCloud</strong> —
-              no account of ours, no server, no subscription. An iPhone app is in testing.
-            </p>
-            <ul class="chips">
-              <li>Mac &#8596; Mac today</li><li class="chip-soft">iPhone in testing</li>
-            </ul>
-          </article>
-
-          <article class="tile">
-            <div class="tile-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v5c0 4.5 3.1 8.4 8 10 4.9-1.6 8-5.5 8-10V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
-            </div>
-            <h3>Yours</h3>
-            <p>
-              History lives on disk, on your machine. Password fields are skipped, nothing
-              is sent anywhere you didn't choose, and the whole thing is MIT-licensed.
-            </p>
-            <ul class="chips">
-              <li>No telemetry</li><li>Bring your own key</li><li>Or run fully local</li>
-            </ul>
-          </article>
-
+      <div class="wrap features-grid">
+        <div class="features-head">
+          <p class="kicker"><span class="idx">02</span>what it is</p>
+          <h2 id="features-h">A clipboard that<br>reads like a tool.</h2>
+          <p class="sect-sub">
+            No Electron, no telemetry, no subscription. One 64-bit menu-bar app,
+            two hotkeys, and your own keys.
+          </p>
         </div>
+
+        <ol class="specs">
+          <li class="spec">
+            <span class="spec-n">01</span>
+            <div class="spec-body">
+              <h3>Programmable</h3>
+              <p>
+                Chain <code>bash</code> and AI steps into a pipeline on any clip — reorder them,
+                toggle them, edit one before it runs. Most clipboard managers stop at history and
+                snippets. This one runs transforms.
+              </p>
+              <ul class="tags">
+                <li class="tag tag-script">script</li>
+                <li class="tag tag-ai">ai</li>
+                <li class="tag">reorderable</li>
+                <li class="tag">per-step model</li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="spec">
+            <span class="spec-n">02</span>
+            <div class="spec-body">
+              <h3>Any model, or none</h3>
+              <p>
+                AI steps run on the provider you pick, per step. Cloud uses your own API key;
+                <strong>Ollama and Apple on-device need no key and never leave your Mac</strong> —
+                a fully offline, private setup if you want one.
+              </p>
+              <ul class="tags">
+                <li class="tag">openai</li>
+                <li class="tag">anthropic</li>
+                <li class="tag">gemini</li>
+                <li class="tag">ollama</li>
+                <li class="tag">apple on-device</li>
+                <li class="tag">custom endpoint</li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="spec">
+            <span class="spec-n">03</span>
+            <div class="spec-body">
+              <h3>Yours, on your Mac</h3>
+              <p>
+                History lives on disk, on your machine. Password fields are skipped, nothing leaves
+                without your key, and the whole thing is MIT-licensed. Sync across your Macs through
+                <strong>your own iCloud</strong> — no server of ours. An iPhone companion is in testing.
+              </p>
+              <ul class="tags">
+                <li class="tag">no telemetry</li>
+                <li class="tag">on-disk history</li>
+                <li class="tag">iCloud sync</li>
+                <li class="tag tag-soft">iPhone · testing</li>
+              </ul>
+            </div>
+          </li>
+        </ol>
       </div>
     </section>
 
     <!-- ===================== ACTION MENU SHOWCASE ===================== -->
     <section class="showcase" aria-labelledby="showcase-h">
       <div class="wrap showcase-grid">
-        <div class="showcase-copy">
-          <p class="eyebrow"><span class="dot"></span> The power-user hook</p>
-          <h2 id="showcase-h">Every clip has an action menu.</h2>
-          <p>
-            Press <kbd class="inl">⇥</kbd> to open the actions for the highlighted clip:
-            built-ins like Paste and Copy, your saved script and AI actions, or a one-off
-            <em>Custom…</em> prompt. Press <kbd class="inl">⇥</kbd> again to edit a saved
-            action before it runs — the saved version stays untouched.
-          </p>
-          <p>
-            There's also <kbd class="inl">⌃</kbd><kbd class="inl">⇧</kbd><kbd class="inl">V</kbd>:
-            grab the current selection in any app and transform it in place.
-          </p>
-        </div>
-        <figure class="shot shot-showcase">
+        <figure class="frame frame-showcase">
+          <div class="frame-bar"><span class="frame-tag">⇥</span> action menu</div>
           <img src="assets/recallyx-action-menu-dark.png" width="1712" height="1338"
                alt="The Recallyx action menu: built-in actions Paste, Copy, and Delete, plus saved actions including Fix grammar (AI), Remove extra whitespace (script), Pretty-print JSON (script), and Summarize to 3 bullets (AI). Keyboard hints for select, run, edit, and back run along the bottom.">
         </figure>
+        <div class="showcase-copy">
+          <p class="kicker"><span class="idx">03</span>keyboard-native</p>
+          <h2 id="showcase-h">Everything is a keystroke.</h2>
+          <p>
+            <kbd>⇥</kbd> opens the actions for the highlighted clip — built-ins, your saved
+            script and AI actions, or a one-off <em>Custom…</em> prompt. <kbd>⇥</kbd> again edits a
+            saved action for just this run; the saved version stays untouched.
+          </p>
+          <p>
+            <kbd>⌘</kbd><kbd>1</kbd>–<kbd>9</kbd> quick-pastes or quick-runs the Nth row.
+            <kbd>⌃</kbd><kbd>⇧</kbd><kbd>V</kbd> grabs the current selection in any app — even
+            Chrome — and transforms it in place.
+          </p>
+          <div class="hintbar hintbar-inline" aria-hidden="true">
+            <span class="hint"><kbd>↑</kbd><kbd>↓</kbd> select</span>
+            <span class="hint"><kbd>↵</kbd> run</span>
+            <span class="hint"><kbd>⇥</kbd> edit</span>
+            <span class="hint"><kbd>esc</kbd> back</span>
+          </div>
+        </div>
       </div>
     </section>
 
     <!-- ===================== INSTALL ===================== -->
     <section class="install" id="install" aria-labelledby="install-h">
       <div class="wrap install-inner">
-        <div class="section-head">
-          <h2 id="install-h">Install Recallyx</h2>
-          <p class="section-sub">Apple silicon Mac on macOS 13 or later. No account, no sign-up.</p>
+        <div class="sect-head sect-head-left">
+          <p class="kicker"><span class="idx">04</span>install</p>
+          <h2 id="install-h">Two minutes, no account.</h2>
+          <p class="sect-sub">Apple silicon Mac on macOS 13 or later. Drag, clear, launch.</p>
         </div>
 
         <ol class="steps">
@@ -204,11 +274,12 @@
             <div class="step-body">
               <h3>Clear the quarantine flag</h3>
               <p class="honest">
-                Builds aren't notarized by Apple yet, so Gatekeeper blocks the first
-                launch. This one command tells macOS the app is safe to open.
+                Builds aren't notarized by Apple yet, so Gatekeeper blocks the first launch.
+                This one command tells macOS the app is safe to open.
                 <span class="honest-soft">Notarized builds are coming.</span>
               </p>
               <div class="codebox" data-copy>
+                <span class="codebox-prompt" aria-hidden="true">$</span>
                 <code id="xattr-cmd">xattr -dr com.apple.quarantine /Applications/Recallyx.app</code>
                 <button type="button" class="copy-btn" data-copy-btn aria-label="Copy command to clipboard">Copy</button>
               </div>
@@ -221,7 +292,7 @@
               <h3>Launch it</h3>
               <p>
                 Recallyx lives in your menu bar. Press
-                <kbd class="inl">⌘</kbd><kbd class="inl">⇧</kbd><kbd class="inl">V</kbd>
+                <kbd>⌘</kbd><kbd>⇧</kbd><kbd>V</kbd>
                 to open the history panel and you're set.
               </p>
             </div>
@@ -246,13 +317,14 @@
           <rect x="3.5" y="7.5" width="13" height="13" rx="3.2" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-width="1.7"/>
         </svg>
         <span>Recallyx</span>
+        <span class="footer-tag">built in the open</span>
       </div>
       <nav class="footer-links" aria-label="Footer">
         <a href="https://github.com/macrosak/recallyx" rel="noopener">GitHub</a>
         <a href="https://github.com/macrosak/recallyx/releases" rel="noopener">Releases</a>
         <a href="https://github.com/macrosak/recallyx/blob/main/LICENSE" rel="noopener">MIT License</a>
       </nav>
-      <p class="footer-note">Built in the open. No trackers, no account, no catch.</p>
+      <p class="footer-note">No trackers, no account, no catch.</p>
     </div>
   </footer>
 
