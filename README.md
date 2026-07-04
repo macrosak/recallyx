@@ -173,6 +173,10 @@ clips sync both ways. Images stay local to each Mac.
 ./scripts/test.sh   # unit tests
 ```
 
+There's also an iPhone companion app in testing. `scripts/testflight.sh` archives and
+uploads it to TestFlight (`--archive-only` builds without uploading). It requires the paid
+team plus an Apple ID signed into Xcode → **Settings → Accounts**.
+
 ### Alternative: the ad-hoc build (no Xcode, no Apple account)
 
 If you don't need sync, the zero-cost path needs only the **Command Line Tools**
