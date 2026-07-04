@@ -30,6 +30,13 @@ struct ClipListView: View {
             }
             .navigationTitle("Recallyx")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    // Paste the clipboard into history without triggering iOS's
+                    // clipboard-access alert; the clip syncs to the Mac via CloudKit.
+                    PasteCaptureControl(onPasteText: capture)
+                        .fixedSize()
+                        .accessibilityLabel("Paste from clipboard")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         settingsShown = true
@@ -104,6 +111,17 @@ struct ClipListView: View {
     private func copy(_ item: HistoryItem) {
         guard let text = item.text, !text.isEmpty else { return }
         UIPasteboard.general.string = text
+        copyTrigger += 1
+    }
+
+    /// Add a pasted string to history as a text clip labeled "iPhone". The store
+    /// dedupe-bumps identical content, persists it (dirty-set), and syncs it to
+    /// the Mac via CloudKit; the list is bound to `store.$items` so the new clip
+    /// surfaces at the top automatically. Non-text / empty pastes are dropped by
+    /// the `HistoryItem.text` factory.
+    private func capture(_ text: String) {
+        guard let clip = CapturedClip.forText(text, sourceAppName: "iPhone") else { return }
+        store.add(clip)
         copyTrigger += 1
     }
 }

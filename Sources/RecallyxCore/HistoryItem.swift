@@ -110,6 +110,41 @@ public struct CapturedClip {
     }
 }
 
+extension CapturedClip {
+    /// Build a text `CapturedClip` from a raw string, or `nil` when the text is
+    /// empty / whitespace-only (nothing worth capturing — mirrors the mac
+    /// watcher's `isSkippableText` gate). Centralizes the snippet / byteSize /
+    /// contentHash derivation so any capture entry point (the mac watcher, the
+    /// iOS paste-capture control) agrees on the stored shape. `sourceAppName`
+    /// labels the origin (e.g. "iPhone" for an on-device paste).
+    public static func forText(
+        _ text: String,
+        sourceAppName: String? = nil,
+        sourceAppBundleID: String? = nil,
+        sourceAppPath: String? = nil
+    ) -> CapturedClip? {
+        guard !PrivacyFilter.isSkippableText(text) else { return nil }
+        return CapturedClip(
+            kind: .text,
+            text: text,
+            imageData: nil,
+            preview: snippet(text),
+            byteSize: text.utf8.count,
+            sourceAppBundleID: sourceAppBundleID,
+            sourceAppName: sourceAppName,
+            sourceAppPath: sourceAppPath,
+            contentHash: ContentHash.of(text: text),
+            imageDimensions: nil
+        )
+    }
+
+    /// Trimmed, length-capped list-row preview (the row further clamps lines).
+    static func snippet(_ text: String, max: Int = 280) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count <= max ? trimmed : String(trimmed.prefix(max))
+    }
+}
+
 /// SHA-256 content hashes for dedupe. Identical content → identical hash;
 /// different content → different hash.
 public enum ContentHash {
