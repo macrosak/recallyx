@@ -64,7 +64,7 @@
               View on GitHub
             </a>
           </div>
-          <p class="cta-note">Latest release <strong>0.79</strong> · Apple silicon · MIT license</p>
+          <p class="cta-note">Latest release<strong id="latest-version"></strong> · Apple silicon · MIT license</p>
         </div>
 
         <div class="hero-art">
@@ -288,6 +288,17 @@
         }
       });
     });
+
+    // Fill in the current release version next to "Latest release". Best
+    // effort only: the note reads fine with no number, so any failure
+    // (offline, rate-limited) is swallowed silently and left blank.
+    fetch('https://api.github.com/repos/macrosak/recallyx/releases/latest')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        var el = document.getElementById('latest-version');
+        if (el && data && data.tag_name) el.textContent = ' ' + data.tag_name;
+      })
+      .catch(function () {});
   </script>
 </body>
 </html>
