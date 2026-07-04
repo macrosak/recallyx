@@ -1,8 +1,10 @@
-import SwiftUI
 import RecallyxCore
+import SwiftUI
 
-/// iOS companion app — a placeholder shell for now (an empty list bound to a
-/// synced `HistoryStore`). The list/search/detail/copy UI arrives in a follow-up.
+/// iOS companion app: view/search/copy the clipboard history synced from the
+/// Mac via CloudKit. One `HistoryStore` on the shared app-group container is
+/// built at launch and injected as an `@StateObject`; the root `ClipListView`
+/// owns the search/detail/copy UI.
 ///
 /// Unlike the mac app there is no `AppDelegate` launch-wiring subtlety (that's a
 /// MenuBarExtra lesson): a plain `App` + `WindowGroup` owning one `@StateObject`
@@ -13,16 +15,18 @@ struct RecallyxApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ClipListView(store: store)
                 .environmentObject(store)
         }
     }
 
     /// Build the history store on the shared **app-group container** so a future
     /// Share Extension (separate process) can reach the same Core Data store.
-    /// CloudKit sync is on by default on iOS — the synced clips are the app's
-    /// entire value. Image reconciliation is off: image payloads don't sync yet,
-    /// so a synced image clip has an entity but no local PNG and must be kept.
+    /// CloudKit sync defaults **on** (the synced clips are the app's entire
+    /// value); the Settings toggle (`iCloudSyncEnabled`) is read here at launch,
+    /// so a change takes effect on relaunch — same contract as the mac. Image
+    /// reconciliation is off: image payloads don't sync yet, so a synced image
+    /// clip has an entity but no local PNG and must be kept.
     ///
     /// If the app-group container can't be resolved (an unsigned simulator build
     /// with no provisioning returns nil) fall back to Application Support — passing
@@ -35,9 +39,11 @@ struct RecallyxApp: App {
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
             .appendingPathComponent("Recallyx", isDirectory: true)
 
+        let syncEnabled = UserDefaults.standard.object(forKey: "iCloudSyncEnabled") as? Bool ?? true
+
         return HistoryStore(
             baseURL: base,   // nil → HistoryStore falls back to Application Support
-            cloudSyncEnabled: true,
+            cloudSyncEnabled: syncEnabled,
             reconcileImages: false
         )
     }
