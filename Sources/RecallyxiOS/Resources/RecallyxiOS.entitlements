@@ -24,6 +24,16 @@
 	<array>
 		<string>iCloud.io.github.macrosak.recallyx</string>
 	</array>
+	<!--
+	  Force the CloudKit PRODUCTION environment. TestFlight/App Store builds
+	  always use Production and ignore this key; a Development-signed device
+	  build would otherwise default to Development and never sync with the Mac
+	  app. Setting it here keeps every build on one environment. Prerequisite:
+	  the container schema must be deployed to Production in the CloudKit
+	  Console before the first Production sync.
+	-->
+	<key>com.apple.developer.icloud-container-environment</key>
+	<string>Production</string>
 	<key>com.apple.developer.icloud-services</key>
 	<array>
 		<string>CloudKit</string>
