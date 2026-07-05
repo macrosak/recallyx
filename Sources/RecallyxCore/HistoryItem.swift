@@ -38,6 +38,17 @@ public struct HistoryItem: Codable, Identifiable, Equatable, Sendable {
     /// clips. Syncs via CloudKit as entity metadata even though image PNGs don't,
     /// so a screenshot synced from another device is still searchable here.
     public var ocrText: String?
+    /// Name of the device that captured this clip (e.g. "Michal's MacBook Pro",
+    /// "Michal's iPhone"), used to show a small origin badge when a clip is
+    /// viewed on a *different* device than the one that captured it (see
+    /// `ClipOrigin.originBadge`). Optional for backward-compatible decode
+    /// (missing in pre-badge blobs → nil → no badge, same as a clip whose
+    /// origin was never recorded).
+    public var sourceDeviceName: String?
+    /// The kind of device that captured this clip: `"mac"` or `"iphone"`. A
+    /// plain string (not an enum) so a future device kind needs no schema
+    /// migration. Optional; nil for pre-badge clips or an untagged capture path.
+    public var sourceDeviceType: String?
 
     public init(
         id: UUID,
@@ -54,7 +65,9 @@ public struct HistoryItem: Codable, Identifiable, Equatable, Sendable {
         contentHash: String,
         imageDimensions: String? = nil,
         pinned: Bool? = nil,
-        ocrText: String? = nil
+        ocrText: String? = nil,
+        sourceDeviceName: String? = nil,
+        sourceDeviceType: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -71,6 +84,8 @@ public struct HistoryItem: Codable, Identifiable, Equatable, Sendable {
         self.imageDimensions = imageDimensions
         self.pinned = pinned
         self.ocrText = ocrText
+        self.sourceDeviceName = sourceDeviceName
+        self.sourceDeviceType = sourceDeviceType
     }
 
     public var isPinned: Bool { pinned ?? false }
@@ -104,6 +119,13 @@ public struct CapturedClip {
     public var sourceAppPath: String?
     public var contentHash: String
     public var imageDimensions: String?
+    /// Name/kind of the device doing the capturing, mirroring
+    /// `HistoryItem.sourceDeviceName`/`sourceDeviceType`. Every capture entry
+    /// point (the mac watcher, ⌃⇧V transform-selection, detail-pane
+    /// copy-selection, the iOS paste-capture control) fills these in so the
+    /// stored item can show an origin badge on other devices.
+    public var sourceDeviceName: String?
+    public var sourceDeviceType: String?
 
     public init(
         kind: ClipKind,
@@ -115,7 +137,9 @@ public struct CapturedClip {
         sourceAppName: String? = nil,
         sourceAppPath: String? = nil,
         contentHash: String,
-        imageDimensions: String? = nil
+        imageDimensions: String? = nil,
+        sourceDeviceName: String? = nil,
+        sourceDeviceType: String? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -127,6 +151,8 @@ public struct CapturedClip {
         self.sourceAppPath = sourceAppPath
         self.contentHash = contentHash
         self.imageDimensions = imageDimensions
+        self.sourceDeviceName = sourceDeviceName
+        self.sourceDeviceType = sourceDeviceType
     }
 }
 
@@ -136,12 +162,15 @@ extension CapturedClip {
     /// watcher's `isSkippableText` gate). Centralizes the snippet / byteSize /
     /// contentHash derivation so any capture entry point (the mac watcher, the
     /// iOS paste-capture control) agrees on the stored shape. `sourceAppName`
-    /// labels the origin (e.g. "iPhone" for an on-device paste).
+    /// labels the origin (e.g. "iPhone" for an on-device paste). `sourceDeviceName`/
+    /// `sourceDeviceType` tag the capturing device (see `CapturedClip`'s doc).
     public static func forText(
         _ text: String,
         sourceAppName: String? = nil,
         sourceAppBundleID: String? = nil,
-        sourceAppPath: String? = nil
+        sourceAppPath: String? = nil,
+        sourceDeviceName: String? = nil,
+        sourceDeviceType: String? = nil
     ) -> CapturedClip? {
         guard !PrivacyFilter.isSkippableText(text) else { return nil }
         return CapturedClip(
@@ -154,7 +183,9 @@ extension CapturedClip {
             sourceAppName: sourceAppName,
             sourceAppPath: sourceAppPath,
             contentHash: ContentHash.of(text: text),
-            imageDimensions: nil
+            imageDimensions: nil,
+            sourceDeviceName: sourceDeviceName,
+            sourceDeviceType: sourceDeviceType
         )
     }
 

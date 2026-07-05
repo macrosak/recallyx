@@ -289,7 +289,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sourceAppBundleID: app?.bundleIdentifier,
                 sourceAppName: app?.localizedName,
                 sourceAppPath: app?.bundleURL?.path,
-                contentHash: ContentHash.of(text: captured.text), imageDimensions: nil
+                contentHash: ContentHash.of(text: captured.text), imageDimensions: nil,
+                sourceDeviceName: DeviceOrigin.name, sourceDeviceType: DeviceOrigin.type
             )
             let id = store.add(clip)
             Log.info("transform captured selection len=\(captured.text.count) — opening actions")
@@ -334,7 +335,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sourceAppBundleID: src.sourceAppBundleID,
             sourceAppName: src.sourceAppName,
             sourceAppPath: src.sourceAppPath,
-            contentHash: ContentHash.of(text: text), imageDimensions: nil
+            contentHash: ContentHash.of(text: text), imageDimensions: nil,
+            sourceDeviceName: DeviceOrigin.name, sourceDeviceType: DeviceOrigin.type
         )
         let id = store.add(clip)
         journal.log("copy_selection", ["length": text.count])

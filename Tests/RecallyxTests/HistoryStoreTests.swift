@@ -175,6 +175,28 @@ struct HistoryStoreTests {
         #expect(reloaded.items.first(where: { $0.id == id })?.isPinned == true)
     }
 
+    @Test func add_persistsSourceDeviceFields() {
+        let (store, base) = makeStore()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let clip = CapturedClip(
+            kind: .text, text: "from another device", imageData: nil,
+            preview: "from another device", byteSize: 20,
+            sourceAppBundleID: nil, sourceAppName: nil, sourceAppPath: nil,
+            contentHash: ContentHash.of(text: "from another device"), imageDimensions: nil,
+            sourceDeviceName: "Michal's MacBook Pro", sourceDeviceType: "mac"
+        )
+        let id = store.add(clip)
+        #expect(store.items.first?.sourceDeviceName == "Michal's MacBook Pro")
+        #expect(store.items.first?.sourceDeviceType == "mac")
+        store.flush()
+
+        let reloaded = HistoryStore(baseURL: base)
+        let item = reloaded.items.first { $0.id == id }
+        #expect(item?.sourceDeviceName == "Michal's MacBook Pro")
+        #expect(item?.sourceDeviceType == "mac")
+    }
+
     @Test func eviction_exemptsPinnedAndDropsOldestUnpinned() {
         let (store, base) = makeStore(cap: 2)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -229,6 +251,26 @@ struct HistoryStoreTests {
         let reloaded = HistoryStore(baseURL: base)
         #expect(reloaded.items.count == 1)   // decoded cleanly (no reseed)
         #expect(reloaded.items.first?.isPinned == false)
+    }
+
+    @Test func decode_missingSourceDeviceKeys_defaultsToNil() throws {
+        let (_, base) = makeStore()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // A pre-badge blob: a valid HistoryItem JSON with no "sourceDeviceName"/
+        // "sourceDeviceType" keys.
+        let json = """
+        [{"id":"\(UUID().uuidString)","kind":"text","text":"legacy","preview":"legacy",\
+        "byteSize":6,"createdAt":\(Date().timeIntervalSinceReferenceDate),\
+        "lastUsedAt":\(Date().timeIntervalSinceReferenceDate),"contentHash":"abc"}]
+        """
+        let indexURL = base.appendingPathComponent("history.json")
+        try Data(json.utf8).write(to: indexURL)
+
+        let reloaded = HistoryStore(baseURL: base)
+        #expect(reloaded.items.count == 1)   // decoded cleanly (no reseed)
+        #expect(reloaded.items.first?.sourceDeviceName == nil)
+        #expect(reloaded.items.first?.sourceDeviceType == nil)
     }
 
     @Test func reconcileOrphans_deletesUnreferencedImageFiles() throws {

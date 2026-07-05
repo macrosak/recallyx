@@ -120,7 +120,8 @@ final class ClipboardWatcher {
                 sourceAppBundleID: app?.bundleIdentifier,
                 sourceAppName: app?.localizedName,
                 sourceAppPath: app?.bundleURL?.path,
-                contentHash: hash, imageDimensions: dims
+                contentHash: hash, imageDimensions: dims,
+                sourceDeviceName: DeviceOrigin.name, sourceDeviceType: DeviceOrigin.type
             )
         }
 
@@ -131,7 +132,8 @@ final class ClipboardWatcher {
                 sourceAppBundleID: app?.bundleIdentifier,
                 sourceAppName: app?.localizedName,
                 sourceAppPath: app?.bundleURL?.path,
-                contentHash: ContentHash.of(text: text), imageDimensions: nil
+                contentHash: ContentHash.of(text: text), imageDimensions: nil,
+                sourceDeviceName: DeviceOrigin.name, sourceDeviceType: DeviceOrigin.type
             )
         }
 

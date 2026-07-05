@@ -134,7 +134,12 @@ struct ClipListView: View {
     /// surfaces at the top automatically. Non-text / empty pastes are dropped by
     /// the `HistoryItem.text` factory.
     private func capture(_ text: String) {
-        guard let clip = CapturedClip.forText(text, sourceAppName: "iPhone") else { return }
+        guard let clip = CapturedClip.forText(
+            text,
+            sourceAppName: "iPhone",
+            sourceDeviceName: UIDevice.current.name,
+            sourceDeviceType: "iphone"
+        ) else { return }
         store.add(clip)
         copyTrigger += 1
     }
@@ -144,6 +149,14 @@ struct ClipListView: View {
 /// secondary line with source-app name + relative time.
 private struct ClipRow: View {
     let item: HistoryItem
+
+    /// Non-nil when this clip was captured on a different device than this
+    /// iPhone (see `ClipOrigin.originBadge`) — a clip synced in from the Mac,
+    /// or from a different iPhone. Nil for a clip captured here, or one with
+    /// no recorded origin (pre-feature clips).
+    private var originBadge: OriginBadgeKind? {
+        ClipOrigin.originBadge(for: item, currentDeviceName: UIDevice.current.name)
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -162,6 +175,11 @@ private struct ClipRow: View {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
                             .foregroundStyle(.orange)
+                    }
+                    if let originBadge {
+                        Image(systemName: originBadge.systemImageName)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                     Text(ClipListDisplay.rowSubtitle(for: item))
                         .font(.caption)

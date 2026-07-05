@@ -192,7 +192,9 @@ public final class HistoryStore: ObservableObject {
             createdAt: now,
             lastUsedAt: now,
             contentHash: captured.contentHash,
-            imageDimensions: captured.imageDimensions
+            imageDimensions: captured.imageDimensions,
+            sourceDeviceName: captured.sourceDeviceName,
+            sourceDeviceType: captured.sourceDeviceType
         )
         items.insert(item, at: 0)
         Log.debug("history add kind=\(captured.kind.rawValue) id=\(id.uuidString.prefix(8)) count=\(items.count)")
