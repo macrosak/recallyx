@@ -10,6 +10,10 @@ struct StatusItemView: View {
     // the menu — this view is built in the App body, which doesn't observe
     // the delegate.
     @ObservedObject var settingsStore: SettingsStore
+    // The shared sync observer — a compact "Last sync ↑/↓" line renders when
+    // mirroring is running. Observed so it refreshes as events land.
+    @ObservedObject var syncMonitor: SyncActivityMonitor
+    var syncActive: Bool = false
     var onSearchHistory: () -> Void = {}
     var onTransformSelection: () -> Void = {}
     var onOpenSettings: () -> Void = {}
@@ -18,6 +22,14 @@ struct StatusItemView: View {
     var body: some View {
         Text(state.status.menuLabel)
         Text("\(state.historyCount) clips in history")
+
+        if syncActive, let line = SyncStatusLine.text(
+            lastExport: syncMonitor.lastExportSuccess,
+            lastImport: syncMonitor.lastImportSuccess,
+            lastError: syncMonitor.lastError
+        ) {
+            Text(line)
+        }
 
         if !state.lastError.isEmpty {
             Divider()

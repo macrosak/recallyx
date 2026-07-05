@@ -11,6 +11,8 @@ struct RecallyxApp: App {
             StatusItemView(
                 state: delegate.state,
                 settingsStore: delegate.settingsStore,
+                syncMonitor: delegate.syncMonitor,
+                syncActive: delegate.isCloudSyncActive,
                 onSearchHistory: { delegate.searchHistory() },
                 onTransformSelection: { delegate.transformSelection() },
                 onOpenSettings: { delegate.openSettings() },
@@ -62,6 +64,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fileURL: ProcessInfo.processInfo.environment["RECALLYX_DATA_DIR"]
             .map { URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent("usage.jsonl") }
     )
+    /// The single CloudKit sync observer — drives the Settings + menu-bar "Last
+    /// sync" status line. Observed by `StatusItemView` (built in the App body).
+    let syncMonitor = SyncActivityMonitor()
+    /// Whether CloudKit mirroring is actually running (sync on + entitled + built
+    /// with it) — gates the menu-bar / Settings "Last sync" line.
+    var isCloudSyncActive: Bool { store.isCloudSyncActive }
     private var watcher: ClipboardWatcher?
     /// Apple Vision OCR for image clips (capture-time + a one-time launch
     /// backfill), making screenshots searchable by their text.
@@ -166,7 +174,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             revealFileLog: { [weak self] in self?.revealFileLog() },
             clearFileLog: { Task { await FileLog.shared.clear() } },
             iCloudSyncLaunchValue: iCloudSyncLaunchValue,
-            relaunch: { [weak self] in self?.relaunch() }
+            relaunch: { [weak self] in self?.relaunch() },
+            syncMonitor: syncMonitor,
+            syncActive: store.isCloudSyncActive,
+            // Explicit "Sync now" kick — no throttle (minInterval 0), unlike the
+            // 45s-throttled ⌘⇧V panel-open kick.
+            syncNow: { [weak self] in self?.store.refreshFromCloud(minInterval: 0) }
         )
         self.settingsWindow = settingsWindow
 

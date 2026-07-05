@@ -23,7 +23,11 @@ final class SyncStatusMonitor: ObservableObject {
     /// eventually shows "No clips" instead of a perpetual spinner.
     var hasSyncedOnce: Bool { activity.hasSyncedOnce }
 
-    init(activity: SyncActivityMonitor = SyncActivityMonitor()) {
+    init(activity: SyncActivityMonitor? = nil) {
+        // Construct the core inside the (main-actor) init body rather than as a
+        // default argument — a default arg is evaluated off the actor, which the
+        // core's `@MainActor init` can't be called from synchronously.
+        let activity = activity ?? SyncActivityMonitor()
         self.activity = activity
         // Republish the core's changes so SwiftUI views observing this wrapper
         // re-render when a sync event lands.

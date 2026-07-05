@@ -15,6 +15,14 @@ struct SettingsGeneralView: View {
     /// once from it). Compared against the live setting to show "Relaunch now".
     var iCloudSyncLaunchValue: Bool = false
     var relaunch: () -> Void = {}
+    /// The shared sync observer — drives the "Last sync" status line. Nil in
+    /// contexts that don't wire it (the row simply hides).
+    var syncMonitor: SyncActivityMonitor?
+    /// Whether CloudKit mirroring is actually running on this store (sync on +
+    /// entitled + built with it). Gates the whole status row on/off.
+    var syncActive: Bool = false
+    /// Explicit "Sync now" kick — `store.refreshFromCloud(minInterval: 0)`.
+    var syncNow: () -> Void = {}
     let theme: SettingsTheme
 
     /// True only when this build carries the iCloud entitlement (the team-signed
@@ -191,6 +199,9 @@ struct SettingsGeneralView: View {
                     .toggleStyle(.switch).labelsHidden().tint(theme.accent)
                     .disabled(!syncEntitled)
                 }
+                if syncActive, let syncMonitor {
+                    SyncStatusRow(monitor: syncMonitor, syncNow: syncNow, theme: theme)
+                }
                 SettingsRow(
                     label: "Usage journal (local only)",
                     desc: "Records anonymous usage events to this Mac to help improve Recallyx. Never includes clipboard contents and is never sent anywhere.",
@@ -283,6 +294,29 @@ struct SettingsGeneralView: View {
             launchError = nil
         } catch {
             launchError = error.localizedDescription
+        }
+    }
+}
+
+/// The "Last sync" status line + a "Sync now" button, shown under the iCloud
+/// toggle only when mirroring is actually running. Observes the shared monitor
+/// so the line refreshes as export/import events land.
+private struct SyncStatusRow: View {
+    @ObservedObject var monitor: SyncActivityMonitor
+    let syncNow: () -> Void
+    let theme: SettingsTheme
+
+    var body: some View {
+        SettingsRow(
+            label: "Sync status",
+            desc: SyncStatusLine.text(
+                lastExport: monitor.lastExportSuccess,
+                lastImport: monitor.lastImportSuccess,
+                lastError: monitor.lastError
+            ) ?? "Waiting for the first sync…",
+            theme: theme
+        ) {
+            SettingsButton(title: "Sync now", theme: theme, action: syncNow)
         }
     }
 }
