@@ -223,6 +223,36 @@ public final class HistoryStore: ObservableObject {
         didMutate()
     }
 
+    /// Record the Apple Vision OCR transcript for an image clip (see
+    /// `HistoryItem.ocrText`). `text` is trimmed; an empty/whitespace result is
+    /// stored as the `""` sentinel ("OCRed, no text") so the backfill never
+    /// revisits it. Content-free logging (length only). No-op if the id is gone
+    /// or the value is unchanged — so a re-OCR (a dedupe-bump, or racing
+    /// capture/backfill tasks) doesn't churn the dirty set or re-export via sync.
+    public func setOCRText(id: UUID, text: String) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard items[idx].ocrText != normalized else { return }
+        items[idx].ocrText = normalized
+        markDirty(id)
+        Log.debug("ocr set id=\(id.uuidString.prefix(8)) len=\(normalized.count)")
+        didMutate()
+    }
+
+    /// The backfill work list: image clips that have **never** been OCRed
+    /// (`ocrText == nil`) and whose PNG still exists locally, newest first. The
+    /// `""` sentinel and any non-nil transcript are excluded, so a re-launch just
+    /// continues with the remaining nils — each `setOCRText` shrinks the list.
+    /// Content-free (ids + file URLs only).
+    public func ocrBackfillCandidates() -> [(id: UUID, imageURL: URL)] {
+        items.compactMap { item in
+            guard item.kind == .image, item.ocrText == nil,
+                  let url = imageURL(for: item),
+                  fm.fileExists(atPath: url.path) else { return nil }
+            return (id: item.id, imageURL: url)
+        }
+    }
+
     public func delete(_ id: UUID) {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let item = items.remove(at: idx)

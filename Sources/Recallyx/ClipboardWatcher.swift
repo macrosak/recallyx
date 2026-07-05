@@ -12,6 +12,10 @@ final class ClipboardWatcher {
     /// Reads the live "Capture sensitive data" setting (wired to Settings in a
     /// later commit; defaults off).
     private let captureSensitive: () -> Bool
+    /// Fired after a freshly-captured image clip is stored, with its id + PNG
+    /// bytes, so the app can kick Apple Vision OCR (making screenshots
+    /// searchable). Nil disables OCR; the dedupe/self-write guards already ran.
+    private let onImageCaptured: ((UUID, Data) -> Void)?
 
     private let pasteboard: NSPasteboard
     private var timer: Timer?
@@ -27,11 +31,17 @@ final class ClipboardWatcher {
 
     /// `pasteboard` is injectable so hermetic tests can drive a private named
     /// pasteboard instead of the shared general one; production uses `.general`.
-    init(store: HistoryStore, captureSensitive: @escaping () -> Bool, pasteboard: NSPasteboard = .general) {
+    init(
+        store: HistoryStore,
+        captureSensitive: @escaping () -> Bool,
+        pasteboard: NSPasteboard = .general,
+        onImageCaptured: ((UUID, Data) -> Void)? = nil
+    ) {
         self.store = store
         self.captureSensitive = captureSensitive
         self.pasteboard = pasteboard
         self.lastChangeCount = pasteboard.changeCount
+        self.onImageCaptured = onImageCaptured
     }
 
     func start() {
@@ -86,7 +96,15 @@ final class ClipboardWatcher {
         }
 
         Log.info("clipboard captured kind=\(captured.kind.rawValue) bytes=\(captured.byteSize) app=\(captured.sourceAppName ?? "?")")
-        store.add(captured)
+        let id = store.add(captured)
+        // Kick OCR for image clips so screenshots become searchable by their
+        // text. A dedupe-bump returns an existing id; `setOCRText` is a no-op
+        // when the transcript is unchanged, so re-OCRing a re-copied image is
+        // harmless. Skipped if the PNG write failed (id isn't in the store →
+        // `setOCRText` no-ops).
+        if captured.kind == .image, let png = captured.imageData {
+            onImageCaptured?(id, png)
+        }
     }
 
     /// Image takes priority — a screenshot or copied image carries pixel data and

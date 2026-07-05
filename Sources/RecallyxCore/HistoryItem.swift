@@ -29,6 +29,15 @@ public struct HistoryItem: Codable, Identifiable, Equatable, Sendable {
     /// User-pinned: sticks to the top of the list and is exempt from cap eviction.
     /// Optional for backward-compatible decode (missing in pre-pin blobs → nil → not pinned).
     public var pinned: Bool?
+    /// Apple Vision OCR transcript for image clips, making screenshots findable
+    /// by the text they contain. **Three-state sentinel:** `nil` = never OCRed
+    /// (a fresh clip, or an OCR attempt that couldn't run — the backfill will
+    /// pick it up); `""` = OCRed but no text was found (so the backfill skips
+    /// it, never looping); a non-empty string = the recognized text. Optional for
+    /// backward-compatible decode (missing in pre-OCR blobs → nil). Nil for text
+    /// clips. Syncs via CloudKit as entity metadata even though image PNGs don't,
+    /// so a screenshot synced from another device is still searchable here.
+    public var ocrText: String?
 
     public init(
         id: UUID,
@@ -44,7 +53,8 @@ public struct HistoryItem: Codable, Identifiable, Equatable, Sendable {
         lastUsedAt: Date,
         contentHash: String,
         imageDimensions: String? = nil,
-        pinned: Bool? = nil
+        pinned: Bool? = nil,
+        ocrText: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -60,9 +70,19 @@ public struct HistoryItem: Codable, Identifiable, Equatable, Sendable {
         self.contentHash = contentHash
         self.imageDimensions = imageDimensions
         self.pinned = pinned
+        self.ocrText = ocrText
     }
 
     public var isPinned: Bool { pinned ?? false }
+
+    /// Text used for fuzzy / substring search: the inline text for text clips,
+    /// or the OCR transcript for image clips. The "" OCR sentinel (OCRed but no
+    /// text found) and nil both map to nil — nothing to match against.
+    public var searchableText: String? {
+        if let text, !text.isEmpty { return text }
+        if let ocrText, !ocrText.isEmpty { return ocrText }
+        return nil
+    }
 
     /// Recency key used for ordering — a bump updates `lastUsedAt`, a fresh
     /// capture sets both, so the larger of the two always reflects "most recent".
