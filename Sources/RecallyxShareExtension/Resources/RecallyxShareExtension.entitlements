@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  App Group ONLY for the Recallyx share extension.
+
+	  Deliberately NO CloudKit / iCloud entitlement: the extension writes to the
+	  shared app-group Core Data store as a plain LOCAL store. Loading a
+	  CloudKit-mirrored store from a secondary/short-lived process is the
+	  documented crash/conflict zone (the mirroring delegate expects to own the
+	  store). The main app owns the mirror and exports the extension's write via
+	  persistent history — so the clip still syncs to the fleet without the
+	  extension ever touching CloudKit. See ShareClipWriter for the full reasoning.
+
+	  Safe to commit: the group identifier derives from the PUBLIC bundle id and
+	  carries NO team identifier. The team id comes from the gitignored
+	  Local.xcconfig at build time; never write a literal team id here.
+	-->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.io.github.macrosak.recallyx</string>
+	</array>
+</dict>
+</plist>
