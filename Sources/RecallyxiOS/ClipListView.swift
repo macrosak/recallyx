@@ -30,11 +30,20 @@ struct ClipListView: View {
             }
             .navigationTitle("Recallyx")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    // Paste the clipboard into history without triggering iOS's
-                    // clipboard-access alert; the clip syncs to the Mac via CloudKit.
+                ToolbarItem(placement: .bottomBar) {
+                    // The app's only capture affordance: a prominent, labelled
+                    // capsule ("Paste") centered in the bottom bar. Tapping it
+                    // pastes the clipboard into history **without** iOS's
+                    // clipboard-access alert (that's why it's a `UIPasteControl`,
+                    // not a plain Button). It dims — but stays visible — when the
+                    // pasteboard has no text. The explicit frame is load-bearing:
+                    // without it the wrapped `UIView` reports no intrinsic size and
+                    // the button collapses to nothing (the original bug).
+                    // NOTE: `UIPasteControl` content is redacted from Simulator
+                    // screen captures for security, so it looks blank in
+                    // screenshots but renders fully on device.
                     PasteCaptureControl(onPasteText: capture)
-                        .fixedSize()
+                        .frame(width: 230, height: 44)
                         .accessibilityLabel("Paste from clipboard")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
