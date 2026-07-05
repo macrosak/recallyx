@@ -347,6 +347,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let combo = (settingsStore.settings.actionShortcuts[token] ?? .transformSelectionDefault).glyphs.joined()
             guard let (id, app) = await captureSelectionForTransform(emptyCombo: combo) else { return }
             guard let item = store.items.first(where: { $0.id == id }) else { return }
+            // An action that declares `{{INPUT:Label}}` needs a value the hotkey
+            // can't supply — open the panel on that action's input prompt (v1
+            // choice) instead of running silently with the raw token.
+            if !ActionInputs.placeholders(in: action).isEmpty {
+                Log.info("action hotkey '\(action.name)' needs input — opening panel prompt")
+                historyPanel?.showInputPrompt(for: action, focusing: id)
+                return
+            }
             Log.info("action hotkey '\(action.name)' captured selection — running")
             runAction(action, item: item, into: app)
         }

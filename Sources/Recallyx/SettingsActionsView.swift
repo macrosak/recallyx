@@ -422,6 +422,8 @@ struct StepCard: View {
             } else {
                 StepBodyEditor(text: $step.script, theme: theme, placeholder: "bash — stdin → stdout")
             }
+            Text("Use {{INPUT:Label}} to ask for a value when the action runs.")
+                .font(.system(size: 11.5)).foregroundStyle(theme.textFaint)
         }
         .padding(10)
     }

@@ -693,6 +693,113 @@ struct HistoryPanelViewModelTests {
         #expect(vm.actionItem?.id == pinned.id)        // falls back to filtered[0]
     }
 
+    // MARK: - Run-time input prompts ({{INPUT:Label}})
+
+    private func inputAction(_ prompt: String, name: String = "Translate") -> Action {
+        Action(name: name, icon: "globe", steps: [Step(type: .ai, prompt: prompt)])
+    }
+
+    @Test func runSavedAction_withoutPlaceholder_runsImmediately() {
+        let action = inputAction("Summarize {{TEXT}}")
+        var ran: Action?
+        let vm = HistoryPanelViewModel(
+            items: [textItem("hi")], actions: [action],
+            onBuiltin: { _, _ in }, onRunAction: { a, _ in ran = a }, onDismiss: {})
+        vm.tab()
+        vm.actionIndex = vm.menuItems.firstIndex { if case .saved = $0 { return true }; return false }!
+        vm.confirm()
+        #expect(ran?.name == "Translate")
+        #expect(vm.mode == .actions)
+    }
+
+    @Test func runSavedAction_withPlaceholder_entersInputPrompt() {
+        let action = inputAction("Translate to {{INPUT:Target language}}: {{TEXT}}")
+        var ran: Action?
+        let vm = HistoryPanelViewModel(
+            items: [textItem("hi")], actions: [action],
+            onBuiltin: { _, _ in }, onRunAction: { a, _ in ran = a }, onDismiss: {})
+        vm.tab()
+        vm.actionIndex = vm.menuItems.firstIndex { if case .saved = $0 { return true }; return false }!
+        vm.confirm()
+        #expect(vm.mode == .inputPrompt)
+        #expect(vm.currentInputLabel == "Target language")
+        #expect(ran == nil)   // not run yet — awaiting the value
+    }
+
+    @Test func inputPrompt_confirm_substitutesAndRuns() {
+        let action = inputAction("Translate to {{INPUT:Target language}}:\n\n{{TEXT}}")
+        var ran: Action?
+        let vm = HistoryPanelViewModel(
+            items: [textItem("hi")], actions: [action],
+            onBuiltin: { _, _ in }, onRunAction: { a, _ in ran = a }, onDismiss: {})
+        vm.tab()
+        vm.actionIndex = vm.menuItems.firstIndex { if case .saved = $0 { return true }; return false }!
+        vm.confirm()                        // → inputPrompt
+        vm.inputText = "German"
+        vm.confirm()                        // last placeholder → run
+        #expect(ran?.steps.first?.prompt == "Translate to German:\n\n{{TEXT}}")
+    }
+
+    @Test func inputPrompt_blankValue_isNoOp() {
+        let action = inputAction("Translate to {{INPUT:Target}}: {{TEXT}}")
+        var ran: Action?
+        let vm = HistoryPanelViewModel(
+            items: [textItem("hi")], actions: [action],
+            onBuiltin: { _, _ in }, onRunAction: { a, _ in ran = a }, onDismiss: {})
+        vm.tab()
+        vm.actionIndex = vm.menuItems.firstIndex { if case .saved = $0 { return true }; return false }!
+        vm.confirm()
+        vm.inputText = "   "
+        vm.confirm()                        // blank → no advance, no run
+        #expect(vm.mode == .inputPrompt)
+        #expect(ran == nil)
+    }
+
+    @Test func inputPrompt_multiplePlaceholders_advanceThenRun() {
+        let action = inputAction("From {{INPUT:Source}} to {{INPUT:Target}}: {{TEXT}}")
+        var ran: Action?
+        let vm = HistoryPanelViewModel(
+            items: [textItem("hi")], actions: [action],
+            onBuiltin: { _, _ in }, onRunAction: { a, _ in ran = a }, onDismiss: {})
+        vm.tab()
+        vm.actionIndex = vm.menuItems.firstIndex { if case .saved = $0 { return true }; return false }!
+        vm.confirm()
+        #expect(vm.currentInputLabel == "Source")
+        vm.inputText = "English"
+        vm.confirm()                        // advance to second
+        #expect(vm.mode == .inputPrompt)
+        #expect(vm.currentInputLabel == "Target")
+        #expect(ran == nil)
+        vm.inputText = "German"
+        vm.confirm()                        // run
+        #expect(ran?.steps.first?.prompt == "From English to German: {{TEXT}}")
+    }
+
+    @Test func inputPrompt_cancel_returnsToActions() {
+        let action = inputAction("Translate to {{INPUT:Target}}: {{TEXT}}")
+        let vm = HistoryPanelViewModel(
+            items: [textItem("hi")], actions: [action],
+            onBuiltin: { _, _ in }, onRunAction: { _, _ in }, onDismiss: {})
+        vm.tab()
+        vm.actionIndex = vm.menuItems.firstIndex { if case .saved = $0 { return true }; return false }!
+        vm.confirm()
+        #expect(vm.mode == .inputPrompt)
+        vm.cancel()
+        #expect(vm.mode == .actions)
+    }
+
+    @Test func openInputPrompt_hotkeyPath_targetsClipAndPrompts() {
+        let action = inputAction("Translate to {{INPUT:Target}}: {{TEXT}}")
+        let target = textItem("target")
+        let vm = HistoryPanelViewModel(
+            items: [target, textItem("other")], actions: [action],
+            onBuiltin: { _, _ in }, onRunAction: { _, _ in }, onDismiss: {})
+        vm.openInputPrompt(for: action, focusId: target.id)
+        #expect(vm.mode == .inputPrompt)
+        #expect(vm.actionItem?.id == target.id)
+        #expect(vm.currentInputLabel == "Target")
+    }
+
     // MARK: - insertCopiedClip (detail-pane ⌘C → new stack clip, keep original selected)
 
     @Test func insertCopiedClip_insertsAtTop_keepsOriginalSelectedByID() {

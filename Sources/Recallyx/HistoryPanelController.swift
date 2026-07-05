@@ -80,7 +80,16 @@ final class HistoryPanelController {
         show(openActionsOnTop: true, focusId: id)
     }
 
-    func show(openActionsOnTop: Bool = false, focusId: UUID? = nil) {
+    /// Global-hotkey entry point for an action that declares `{{INPUT:Label}}`
+    /// placeholders: open the panel already prompting for the first input on the
+    /// captured clip, instead of running silently (v1 choice — see the app's
+    /// `handleActionHotkey`).
+    func showInputPrompt(for action: Action, focusing id: UUID? = nil) {
+        if isVisible { dismiss() }
+        show(focusId: id, inputPromptAction: action)
+    }
+
+    func show(openActionsOnTop: Bool = false, focusId: UUID? = nil, inputPromptAction: Action? = nil) {
         guard !isVisible else { return }
         // Kick a best-effort CloudKit pull so this (or, more reliably, the next)
         // open shows fresh remote clips. Fire-and-forget + async so it never
@@ -142,8 +151,12 @@ final class HistoryPanelController {
 
         // ⌃⇧V: jump straight to the captured clip's action menu (by id, so
         // pinned-first ordering doesn't hijack the selection).
-        if openActionsOnTop { viewModel.openActionsOnTop(focusId: focusId) }
-        log("panel_open", ["mode": openActionsOnTop ? "transform" : "history"])
+        if let inputPromptAction {
+            viewModel.openInputPrompt(for: inputPromptAction, focusId: focusId)
+        } else if openActionsOnTop {
+            viewModel.openActionsOnTop(focusId: focusId)
+        }
+        log("panel_open", ["mode": inputPromptAction != nil ? "actionInput" : (openActionsOnTop ? "transform" : "history")])
         Log.info("history panel shown items=\(viewModel.filtered.count) actionsOnTop=\(openActionsOnTop)")
     }
 
@@ -317,8 +330,8 @@ final class HistoryPanelController {
             default: return event
             }
 
-        case .custom:
-            // ↵ runs the one-off prompt; esc backs out; arrows/typing → editor.
+        case .custom, .inputPrompt:
+            // ↵ runs / advances; esc backs out; ⇥ is swallowed; typing → field.
             if isReturn { vm.confirm(); return nil }
             if isEsc { vm.cancel(); return nil }
             if isTab { return nil }
@@ -351,6 +364,7 @@ extension HistoryPanelController {
         switch vm.mode {
         case .custom: vm.customText = text
         case .edit: vm.editBody = text
+        case .inputPrompt: vm.inputText = text
         case .list, .actions: vm.query = text
         }
     }

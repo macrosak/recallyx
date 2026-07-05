@@ -75,7 +75,7 @@ struct HistoryPanelView: View {
     private func syncFocus(_ mode: HistoryPanelViewModel.Mode) {
         switch mode {
         case .list, .actions: focus = .search
-        case .custom, .edit: focus = .editor
+        case .custom, .edit, .inputPrompt: focus = .editor
         }
     }
 
@@ -108,6 +108,12 @@ struct HistoryPanelView: View {
                 HintItem(keys: ["⌘", "↵"], label: "run"),
                 HintItem(keys: ["esc"], label: "cancel"),
             ]
+        case .inputPrompt:
+            let last = viewModel.inputIndex + 1 >= viewModel.inputPlaceholders.count
+            return [
+                HintItem(keys: ["↵"], label: last ? "run" : "next"),
+                HintItem(keys: ["esc"], label: "back"),
+            ]
         }
     }
 
@@ -118,7 +124,7 @@ struct HistoryPanelView: View {
         switch viewModel.mode {
         case .list: list
         // The clip you're acting on becomes the context column.
-        case .actions, .custom, .edit: detail(viewModel.actionItem)
+        case .actions, .custom, .edit, .inputPrompt: detail(viewModel.actionItem)
         }
     }
 
@@ -152,6 +158,20 @@ struct HistoryPanelView: View {
         case .edit:
             if let action = viewModel.editAction {
                 EditStepsColumn(action: action, stepIndex: viewModel.editStepIndex, body_: $viewModel.editBody, theme: theme, focus: $focus)
+            } else {
+                Color.clear
+            }
+        case .inputPrompt:
+            if let item = viewModel.actionItem {
+                InputPromptColumn(
+                    item: item,
+                    label: viewModel.currentInputLabel,
+                    index: viewModel.inputIndex,
+                    total: viewModel.inputPlaceholders.count,
+                    text: $viewModel.inputText,
+                    theme: theme,
+                    focus: $focus
+                )
             } else {
                 Color.clear
             }
