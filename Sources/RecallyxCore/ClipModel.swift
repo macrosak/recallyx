@@ -41,6 +41,11 @@ public enum ClipModel {
         properties.append(attribute("contentHash", .stringAttributeType, optional: true))
         properties.append(attribute("imageDimensions", .stringAttributeType, optional: true))
         properties.append(attribute("pinned", .booleanAttributeType, optional: true, defaultValue: false))
+        // Apple Vision OCR transcript for image clips (nil = never OCRed,
+        // "" = OCRed-empty sentinel, non-empty = recognized text). Optional so
+        // pre-OCR rows decode fine and it stays CloudKit-compatible; syncs as
+        // metadata even though the PNG payload doesn't.
+        properties.append(attribute("ocrText", .stringAttributeType, optional: true))
         // Denormalized recency = max(createdAt, lastUsedAt), maintained on
         // add/bump so a fetch can sort cheaply by a single descriptor.
         properties.append(attribute("recency", .dateAttributeType, optional: true))
@@ -89,6 +94,7 @@ public final class ClipEntity: NSManagedObject {
     @NSManaged public var recency: Date?
     @NSManaged public var imageWidth: Int64
     @NSManaged public var imageHeight: Int64
+    @NSManaged public var ocrText: String?
 }
 
 extension ClipEntity {
@@ -112,6 +118,7 @@ extension ClipEntity {
         contentHash = item.contentHash
         imageDimensions = item.imageDimensions
         pinned = item.isPinned
+        ocrText = item.ocrText
         recency = item.recency
         let (w, h) = ClipEntity.parseDimensions(item.imageDimensions)
         imageWidth = Int64(w ?? 0)
@@ -138,7 +145,8 @@ extension ClipEntity {
             lastUsedAt: lastUsedAt,
             contentHash: contentHash,
             imageDimensions: imageDimensions,
-            pinned: pinned
+            pinned: pinned,
+            ocrText: ocrText
         )
     }
 

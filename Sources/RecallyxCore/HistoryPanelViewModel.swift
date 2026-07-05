@@ -670,9 +670,11 @@ public final class HistoryPanelViewModel: ObservableObject {
         // and would block the main thread for the entire scan.
         let syncIDs = Set(syncResult.map(\.id))
         let deepCandidates = candidates.filter { item in
+            // Full-text scan the long tail the sync prefix pass couldn't reach —
+            // for text clips their inline text, for image clips the OCR transcript.
             guard !syncIDs.contains(item.id),
-                  let text = item.text,
-                  text.utf8.count > FuzzyMatcher.searchPrefixLimit else { return false }
+                  let body = item.searchableText,
+                  body.utf8.count > FuzzyMatcher.searchPrefixLimit else { return false }
             return true
         }
         guard !deepCandidates.isEmpty else { return }
@@ -684,8 +686,8 @@ public final class HistoryPanelViewModel: ObservableObject {
                 if Task.isCancelled { return }
                 // range(of:options:) avoids allocating a lowercased copy of the
                 // full multi-MB string; substring-only (not subsequence) for precision.
-                if let text = item.text,
-                   text.range(of: q, options: .caseInsensitive) != nil {
+                if let body = item.searchableText,
+                   body.range(of: q, options: .caseInsensitive) != nil {
                     deepMatchIDs.insert(item.id)
                 }
             }

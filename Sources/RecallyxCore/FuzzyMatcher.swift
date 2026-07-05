@@ -44,9 +44,11 @@ public enum FuzzyMatcher {
 
     private static func bestScore(for item: HistoryItem, query: String) -> Int? {
         var best: Int?
-        // preview and sourceAppName are already short; text is bounded to prefix.
+        // preview and sourceAppName are already short; the searchable body (inline
+        // text for text clips, the OCR transcript for image clips) is bounded to
+        // prefix. Text clips are unaffected — `searchableText` returns their text.
         var candidates: [String] = [item.preview]
-        if let text = item.text { candidates.append(String(boundedPrefix(text))) }
+        if let body = item.searchableText { candidates.append(String(boundedPrefix(body))) }
         if let name = item.sourceAppName { candidates.append(name) }
         for field in candidates {
             if let s = score(field, query: query) {

@@ -63,6 +63,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .map { URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent("usage.jsonl") }
     )
     private var watcher: ClipboardWatcher?
+    /// Apple Vision OCR for image clips (capture-time + a one-time launch
+    /// backfill), making screenshots searchable by their text.
+    private lazy var ocrService = OCRService(store: store)
     private var hotkey: HotkeyManager?
     private var historyPanel: HistoryPanelController?
     private var settingsWindow: SettingsWindowController?
@@ -124,12 +127,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // The watcher reads the "Capture sensitive data" flag live from settings.
+        // On each fresh image capture it hands the id + PNG to OCR so screenshots
+        // become searchable by their text.
         let watcher = ClipboardWatcher(
             store: store,
-            captureSensitive: { [settingsStore] in settingsStore.settings.captureSensitive }
+            captureSensitive: { [settingsStore] in settingsStore.settings.captureSensitive },
+            onImageCaptured: { [weak self] id, png in self?.ocrService.recognizeOnCapture(id: id, png: png) }
         )
         watcher.start()
         self.watcher = watcher
+
+        // One-time, throttled OCR backfill of image clips captured before this
+        // feature (or from earlier launches that hadn't finished). Runs serially
+        // in the background so it doesn't spike CPU at login; each result saves,
+        // so a relaunch just continues with whatever's left.
+        ocrService.startBackfill()
 
         let settingsWindow = SettingsWindowController(
             settingsStore: settingsStore,
