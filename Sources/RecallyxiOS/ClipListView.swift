@@ -87,6 +87,20 @@ struct ClipListView: View {
             }
         }
         .listStyle(.plain)
+        .refreshable { await refresh() }
+    }
+
+    /// Pull-to-refresh: kick a fresh CloudKit pull and hold the spinner until the
+    /// import completes (or times out), then surface the downloaded rows. Instant
+    /// no-op when sync is off / unentitled — the store's kick and the wait both
+    /// short-circuit — so the gesture never hangs. NSPersistentCloudKitContainer
+    /// has no fetch-now API, so this triggers an import via a store reload and
+    /// waits for it; if nothing is pending on the server the wait times out.
+    private func refresh() async {
+        guard store.isCloudSyncActive else { return }
+        store.refreshFromCloud()
+        await sync.awaitNextImport()
+        store.refreshItemsFromStore()
     }
 
     @ViewBuilder

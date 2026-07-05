@@ -176,7 +176,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onCopySelection: { [weak self] copied, sourceClip in
                 self?.handleCopiedSelection(copied, fromClip: sourceClip)
             },
-            log: { [weak self] event, fields in self?.journal.log(event, fields) }
+            log: { [weak self] event, fields in self?.journal.log(event, fields) },
+            // Throttled CloudKit pull on panel open — no-op unless sync is on,
+            // entitled, and it's been a while (≥ 45s) since the last kick, so the
+            // frequent ⌘⇧V opens never thrash the store.
+            onRefreshSync: { [weak self] in self?.store.refreshFromCloud(minInterval: 45) }
         )
         self.historyPanel = historyPanel
 

@@ -111,6 +111,55 @@ public final class PersistenceController {
     /// `viewContext` runs on the main queue; the store reads through it.
     public var viewContext: NSManagedObjectContext { container.viewContext }
 
+    /// Whether CloudKit mirroring is actually active on this container — i.e. the
+    /// store description carries `cloudKitContainerOptions` (sync opt-in AND the
+    /// process entitled). Callers no-op their refresh UI when this is false.
+    var isMirroringActive: Bool {
+        container.persistentStoreDescriptions.contains { $0.cloudKitContainerOptions != nil }
+    }
+
+    /// Force `NSPersistentCloudKitContainer` to re-run its setup + import cycle by
+    /// removing and re-adding the persistent store. NSPCC has **no public
+    /// "fetch changes now" API**; reloading the store is the documented public-API
+    /// way to trigger a fresh import from the CloudKit server.
+    ///
+    /// **Safety:** resets `viewContext` first so no managed object is "in use"
+    /// during the swap (loading a store while its objects are live is the
+    /// documented crash), then removes and re-adds the **same** store file.
+    /// Re-adding the same file preserves the mirroring metadata stored inside it,
+    /// so CloudKit **resumes** and fetches only new changes — it does NOT
+    /// re-download everything (a full reset only happens if the store file is
+    /// deleted). Runs on the caller's thread; callers invoke it on the main queue
+    /// (the `viewContext`'s queue) and flush pending writes first. The
+    /// `.NSPersistentStoreRemoteChange` observer is registered on the
+    /// coordinator, which SURVIVES the swap, so it stays wired without re-adding.
+    /// Returns false if the remove/reload failed.
+    @discardableResult
+    func reloadStore() -> Bool {
+        let coordinator = container.persistentStoreCoordinator
+        // Drop live objects so nothing is "in use" during the store swap.
+        container.viewContext.reset()
+        do {
+            for store in coordinator.persistentStores {
+                try coordinator.remove(store)
+            }
+        } catch {
+            Log.error("store reload: remove failed: \(error.localizedDescription)")
+            return false
+        }
+        var loadError: Error?
+        container.loadPersistentStores { _, error in loadError = error }
+        if let loadError {
+            Log.error("store reload: reload failed: \(loadError.localizedDescription)")
+            return false
+        }
+        container.viewContext.automaticallyMergesChangesFromParent = true
+        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        // Content-free: no clip text, just the fact that a reload happened.
+        Log.info("store reloaded to trigger a CloudKit import")
+        return true
+    }
+
     /// - Parameters:
     ///   - storeURL: SQLite location. Pass the on-disk
     ///     `…/Recallyx/Recallyx.sqlite`; omit for the default of an in-memory
