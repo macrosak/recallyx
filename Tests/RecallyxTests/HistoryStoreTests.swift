@@ -1,3 +1,4 @@
+import AppKit
 import CoreData
 import Foundation
 import Testing
@@ -500,6 +501,23 @@ struct HistoryStoreSyncMergeTests {
         )
     }
 
+    private func tinyPNG() -> Data {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 2,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0
+        )!
+        return rep.representation(using: .png, properties: [:])!
+    }
+
+    private func imageClip(_ png: Data) -> CapturedClip {
+        CapturedClip(
+            kind: .image, text: nil, imageData: png, preview: "Image · 2 × 2",
+            byteSize: png.count, sourceAppBundleID: nil, sourceAppName: nil,
+            sourceAppPath: nil, contentHash: ContentHash.of(bytes: png), imageDimensions: "2 × 2"
+        )
+    }
+
     /// A second coordinator on the same SQLite file — stands in for the CloudKit
     /// mirroring delegate / a sibling process. Mutates through its own context.
     private func writeViaRemote(storeURL: URL, _ mutate: (NSManagedObjectContext) -> Void) {
@@ -595,6 +613,65 @@ struct HistoryStoreSyncMergeTests {
         #expect(!store.items.contains { $0.id == x })         // delete stuck
         #expect(store.items.contains { $0.text == "Y" })      // untouched survives
         #expect(store.items.contains { $0.text == "Z" })      // local add persisted
+    }
+
+    /// The resurrection bug (F1). A clip is deleted on another device (the remote
+    /// delete lands in the shared SQLite file) while a LOCAL mutation of that same
+    /// clip is pending — a pin, a bump, or the OCR backfill's `setOCRText`. The old
+    /// `byID[id] ?? ClipEntity(context:)` upsert recreated the deleted row with a
+    /// fresh CKRecord, resurrecting the clip fleet-wide. With the insert-vs-update
+    /// distinction, `persist` recreates a row ONLY for a genuine local insert, so a
+    /// pure mutation whose row is gone is dropped — the delete stands.
+    @Test func remotelyDeletedRow_notResurrectedByLocalMutation() {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base)
+        let pinID = store.add(textClip("pin-me"))
+        let bumpID = store.add(textClip("bump-me"))
+        let ocrID = store.add(imageClip(tinyPNG()))   // setOCRText only applies to images
+        store.flush()
+
+        // All three deleted on another device (the CloudKit import removes the
+        // rows from our SQLite file behind the running app's back).
+        writeViaRemote(storeURL: store.storeURLForTesting) { ctx in
+            for id in [pinID, bumpID, ocrID] {
+                if let e = remoteEntity(ctx, id: id) { ctx.delete(e) }
+            }
+        }
+
+        // Local touches on each, BEFORE the debounced merge catches up — the exact
+        // pin / bump / OCR-backfill paths from F1. None may recreate the row.
+        store.setPinned(pinID, true)
+        store.bump(bumpID)
+        store.setOCRText(id: ocrID, text: "some transcript")
+        store.flush()
+
+        // Read the store back through a fresh coordinator: no row reappeared.
+        var resurrected: [UUID] = []
+        writeViaRemote(storeURL: store.storeURLForTesting) { ctx in
+            for id in [pinID, bumpID, ocrID] where remoteEntity(ctx, id: id) != nil {
+                resurrected.append(id)
+            }
+        }
+        #expect(resurrected.isEmpty)
+    }
+
+    /// The companion guarantee: the insert-vs-update fix must NOT break a genuine
+    /// local add whose row doesn't exist yet — a fresh capture still persists.
+    @Test func localAdd_stillCreatesRow() {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base)
+        let id = store.add(textClip("brand-new"))
+        store.flush()
+
+        var found = false
+        writeViaRemote(storeURL: store.storeURLForTesting) { ctx in
+            found = remoteEntity(ctx, id: id) != nil
+        }
+        #expect(found)
     }
 
     /// The wired path: a real `.NSPersistentStoreRemoteChange` notification (what a
@@ -706,7 +783,7 @@ struct HistoryStoreSyncMergeTests {
         let store = HistoryStore(baseURL: base)   // cloudSyncEnabled: false
         #expect(store.isCloudSyncActive == false)
         #expect(store.refreshFromCloud() == false)
-        #expect(store.refreshFromCloud(minInterval: 45) == false)
+        #expect(store.refreshFromCloud(minInterval: 300) == false)   // panel-open throttle
     }
 
     /// Pure throttle helper: allow the first refresh, then gate until `minInterval`

@@ -37,7 +37,9 @@ final class SyncStatusMonitor: ObservableObject {
     }
 
     /// Await the next completed CloudKit `.import` event (or a bounded timeout).
-    func awaitNextImport(timeout: Duration = .seconds(8)) async {
-        await activity.awaitNextImport(timeout: timeout)
+    /// `onParked` fires the instant the waiter is registered — the pull-to-refresh
+    /// caller kicks the import there so no completion signal is missed.
+    func awaitNextImport(timeout: Duration = .seconds(8), onParked: (() -> Void)? = nil) async {
+        await activity.awaitNextImport(timeout: timeout, onParked: onParked)
     }
 }

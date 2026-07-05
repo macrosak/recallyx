@@ -137,9 +137,11 @@ public final class SyncActivityMonitor: ObservableObject {
 
     /// Await the next completed CloudKit `.import` event, or return after
     /// `timeout` if none arrives. Drives pull-to-refresh; safe when sync is off
-    /// (it simply times out). `timeout` is injectable for tests.
-    public func awaitNextImport(timeout: Duration = .seconds(8)) async {
-        await waiter.wait(timeout: timeout)
+    /// (it simply times out). `timeout` is injectable for tests. `onParked` runs
+    /// the instant the waiter is registered, before suspending — callers kick the
+    /// import from there so a fast completion can't signal into an empty waiter.
+    public func awaitNextImport(timeout: Duration = .seconds(8), onParked: (() -> Void)? = nil) async {
+        await waiter.wait(timeout: timeout, onParked: onParked)
     }
 
     private func handle(_ note: Notification) {

@@ -105,10 +105,17 @@ struct ClipListView: View {
     /// short-circuit — so the gesture never hangs. NSPersistentCloudKitContainer
     /// has no fetch-now API, so this triggers an import via a store reload and
     /// waits for it; if nothing is pending on the server the wait times out.
+    ///
+    /// The kick runs from `onParked` — i.e. *after* the import waiter is parked —
+    /// so an import that completes fast can't signal before we're listening
+    /// (otherwise the spinner would burn the full timeout). The timeout is short
+    /// (4s): when the device is already caught up NSPCC emits no `.import` event,
+    /// so the wait always ends on the timeout — no reason to hang 8s.
     private func refresh() async {
         guard store.isCloudSyncActive else { return }
-        store.refreshFromCloud()
-        await sync.awaitNextImport()
+        await sync.awaitNextImport(timeout: .seconds(4)) {
+            store.refreshFromCloud()
+        }
         store.refreshItemsFromStore()
     }
 
