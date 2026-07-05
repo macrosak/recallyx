@@ -204,7 +204,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // the throttle is deliberately coarse; the remote-change observer
             // already delivers pushed changes live, so a frequent panel-open kick
             // buys little. The explicit "Sync now" button stays unthrottled.
-            onRefreshSync: { [weak self] in self?.store.refreshFromCloud(minInterval: 300) }
+            onRefreshSync: { [weak self] in self?.store.refreshFromCloud(minInterval: 300) },
+            // First-run showcase: seed the sample clip on a true first run and
+            // report whether to show the teaching hint (persisting completion for
+            // an existing install so no debug data dir ever re-seeds).
+            prepareFirstRun: { [weak self] in self?.prepareFirstRunShowcase() ?? false },
+            onFirstRunHintResolved: { [weak self] in self?.completeFirstRunShowcase() }
         )
         self.historyPanel = historyPanel
 
@@ -444,6 +449,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         journal.log("copy_selection", ["length": text.count])
         Log.info("detail-pane copy captured len=\(text.count) — added as new clip")
         return store.items.first { $0.id == id }
+    }
+
+    // MARK: - First-run showcase
+
+    /// Decide + perform the first-run showcase as the history panel opens, and
+    /// return whether to show the teaching hint. Called once per normal panel
+    /// open (before the list is read), synchronously on the main actor.
+    ///
+    /// State machine over the two persisted flags (both default false):
+    ///   • `firstRunShowcaseCompleted` → already resolved, show nothing.
+    ///   • `firstRunHandled` (but not completed) → a new user seeded earlier and
+    ///     hasn't acted yet; keep showing the hint until they do.
+    ///   • neither → first-ever evaluation: mark handled; if the store is empty
+    ///     seed the sample and show the hint, else it's an existing install —
+    ///     mark completed immediately (no seed, no hint).
+    ///
+    /// The `firstRunHandled` guard is what makes a fresh `RECALLYX_DATA_DIR` debug
+    /// run safe: history is isolated but UserDefaults is NOT, so once the real app
+    /// has evaluated once, `handled` (and usually `completed`) is set and no debug
+    /// dir re-seeds — exactly `FirstRunShowcase.shouldSeed`'s two-gate contract.
+    private func prepareFirstRunShowcase() -> Bool {
+        var settings = settingsStore.settings
+        if settings.firstRunShowcaseCompleted { return false }
+        if settings.firstRunHandled {
+            return FirstRunShowcase.shouldShowHint(completed: settings.firstRunShowcaseCompleted)
+        }
+
+        settings.firstRunHandled = true
+        let seed = FirstRunShowcase.shouldSeed(storeIsEmpty: store.items.isEmpty, handled: false)
+        if seed {
+            seedFirstRunSample()
+        } else {
+            // Existing install — resolve the showcase now so it never appears
+            // (and so a later empty debug data dir can't re-trigger the hint).
+            settings.firstRunShowcaseCompleted = true
+        }
+        settingsStore.settings = settings
+        settingsStore.flush()
+        Log.info("first-run showcase evaluated: seeded=\(seed)")
+        return seed
+    }
+
+    /// Seed one sample clip (a compact one-line JSON) on a true first run, so the
+    /// user's first ⌘⇧V has something to run "Pretty-print JSON" on. A real,
+    /// deletable/pasteable clip labeled as coming from Recallyx (its own icon).
+    private func seedFirstRunSample() {
+        let json = FirstRunShowcase.sampleJSON
+        let clip = CapturedClip(
+            kind: .text, text: json, imageData: nil,
+            preview: json, byteSize: json.utf8.count,
+            sourceAppBundleID: Bundle.main.bundleIdentifier,
+            sourceAppName: FirstRunShowcase.sampleSourceAppName,
+            sourceAppPath: Bundle.main.bundlePath,
+            contentHash: ContentHash.of(text: json), imageDimensions: nil,
+            sourceDeviceName: DeviceOrigin.name, sourceDeviceType: DeviceOrigin.type
+        )
+        store.add(clip)
+        Log.info("first-run showcase: seeded sample clip")
+    }
+
+    /// Persist that the first-run hint was resolved (⇥ into actions, or the
+    /// banner's ✕). Idempotent — safe to call more than once.
+    private func completeFirstRunShowcase() {
+        guard !settingsStore.settings.firstRunShowcaseCompleted else { return }
+        settingsStore.settings.firstRunShowcaseCompleted = true
+        settingsStore.flush()
+        Log.info("first-run showcase completed")
     }
 
     /// Run a saved (or transient) action over a clip's text and paste the result

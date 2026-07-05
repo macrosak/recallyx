@@ -41,6 +41,19 @@ public final class HistoryPanelViewModel: ObservableObject {
     /// the menu opens so it stays fixed even if `selectedIndex` shifts.
     @Published public private(set) var actionItem: HistoryItem?
 
+    /// First-run showcase hint: when true, the panel shows a one-line, dismissible
+    /// banner (list mode only) teaching the ⇥ actions flow on the seeded sample
+    /// clip. Cleared — and `onFirstRunHintResolved` fired so the app persists the
+    /// completion — the first time the user opens an action menu (`tab`) or taps
+    /// the banner's dismiss (`dismissFirstRunHint`). Only ever true on a true
+    /// first run (the controller passes it in from the persisted settings flag).
+    @Published public private(set) var showFirstRunHint: Bool
+
+    /// Fired once when the first-run hint is resolved (user opened an action menu
+    /// or dismissed the banner). The app wires this to persist
+    /// `firstRunShowcaseCompleted = true` so the hint never reappears.
+    public var onFirstRunHintResolved: (() -> Void)?
+
     /// True while the user holds ⌘ over the open panel. Reveals the ⌘1–9
     /// quick-key badges on eligible rows (replacing their trailing timestamp /
     /// accessory). Set/cleared by the controller's `.flagsChanged` monitor and
@@ -137,6 +150,7 @@ public final class HistoryPanelViewModel: ObservableObject {
     public init(
         items: [HistoryItem],
         actions: [Action] = [],
+        showFirstRunHint: Bool = false,
         onBuiltin: @escaping (BuiltinAction, HistoryItem) -> Void,
         onRunAction: @escaping (Action, HistoryItem) -> Void = { _, _ in },
         onDismiss: @escaping () -> Void,
@@ -146,10 +160,25 @@ public final class HistoryPanelViewModel: ObservableObject {
         self.allItems = ordered
         self.filtered = ordered
         self.actions = actions
+        self.showFirstRunHint = showFirstRunHint
         self.onBuiltin = onBuiltin
         self.onRunAction = onRunAction
         self.onDismiss = onDismiss
         self.log = log
+    }
+
+    /// Resolve the first-run hint: hide the banner and fire the completion
+    /// callback (once). Called when the user opens an action menu (`tab`) or taps
+    /// the banner's ✕. Idempotent — a no-op once the hint is already hidden.
+    private func resolveFirstRunHint() {
+        guard showFirstRunHint else { return }
+        showFirstRunHint = false
+        onFirstRunHintResolved?()
+    }
+
+    /// The banner's ✕ dismiss — resolves the hint without opening an action menu.
+    public func dismissFirstRunHint() {
+        resolveFirstRunHint()
     }
 
     /// Display order: pinned clips first, then by recency (newest first). Applied
@@ -422,6 +451,9 @@ public final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list:
             guard let item = selectedItem else { return }
+            // Opening the action menu is the showcase's teaching goal — resolve
+            // the first-run hint so it never shows again.
+            resolveFirstRunHint()
             actionItem = item
             menuItems = buildMenu(for: item)
             // Hand the search field to the action list: stash the clip query

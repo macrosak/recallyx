@@ -32,6 +32,12 @@ struct HistoryPanelView: View {
                     .frame(height: 470)
             } else {
                 searchBar
+                // First-run showcase: a one-line teaching hint pointing at ⇥, list
+                // mode only. Dismisses on ⇥-into-actions or its own ✕ (both resolve
+                // the persisted completion flag), then never shows again.
+                if viewModel.mode == .list && viewModel.showFirstRunHint {
+                    FirstRunHintBanner(theme: theme, onDismiss: { viewModel.dismissFirstRunHint() })
+                }
                 if viewModel.isEmpty {
                     EmptyHistoryView(theme: theme)
                         .frame(height: 470)
@@ -581,6 +587,51 @@ struct EmptyHistoryView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// First-run teaching banner shown just below the search bar (list mode only)
+/// on a true first launch: one line + a ⇥ keycap pointing at the actions flow,
+/// with a ✕ to dismiss. Uses the shared `Keycap` and `RXTheme` tokens so it
+/// reads as part of the panel's visual language, not a bolt-on.
+struct FirstRunHintBanner: View {
+    let theme: RXTheme
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(theme.accent)
+            HStack(spacing: 6) {
+                Text("Press")
+                Keycap(label: "⇥", theme: theme)
+                Text("to run actions on a clip — try")
+                Text(FirstRunShowcase.sampleActionName)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(theme.text)
+                Text("on this sample.")
+            }
+            .font(.system(size: 12.5))
+            .foregroundStyle(theme.textDim)
+            Spacer(minLength: 8)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(theme.textFaint)
+                    .frame(width: 22, height: 22)
+                    // Plain icon buttons only hit-test opaque glyph pixels — a
+                    // Rectangle content shape makes the whole frame clickable.
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .background(theme.accent.opacity(0.08))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.hairline).frame(height: 0.5)
+        }
     }
 }
 

@@ -44,6 +44,15 @@ final class HistoryPanelController {
     /// show fresh remote clips. No-op when sync is off / unentitled / throttled
     /// (all handled inside the store's `refreshFromCloud`).
     private let onRefreshSync: () -> Void
+    /// First-run showcase: run the seed decision (seeding the sample clip into
+    /// the store as a side effect on a true first run) and return whether to show
+    /// the teaching hint. Called once at the top of a normal `show()` (BEFORE the
+    /// list is read, so a just-seeded sample is included). No-op / false for the
+    /// ⌃⇧V action-on-top path. See `AppDelegate.prepareFirstRunShowcase`.
+    private let prepareFirstRun: () -> Bool
+    /// Persist that the first-run hint has been resolved (user opened an action
+    /// menu or dismissed the banner). Wired to the view model's callback.
+    private let onFirstRunHintResolved: () -> Void
 
     init(
         itemsProvider: @escaping () -> [HistoryItem],
@@ -54,7 +63,9 @@ final class HistoryPanelController {
         onRunAction: @escaping (Action, HistoryItem, NSRunningApplication?) -> Void = { _, _, _ in },
         onCopySelection: @escaping (String, HistoryItem) -> HistoryItem? = { _, _ in nil },
         log: @escaping (String, [String: Any]) -> Void = { _, _ in },
-        onRefreshSync: @escaping () -> Void = {}
+        onRefreshSync: @escaping () -> Void = {},
+        prepareFirstRun: @escaping () -> Bool = { false },
+        onFirstRunHintResolved: @escaping () -> Void = {}
     ) {
         self.itemsProvider = itemsProvider
         self.actionsProvider = actionsProvider
@@ -65,6 +76,8 @@ final class HistoryPanelController {
         self.onCopySelection = onCopySelection
         self.log = log
         self.onRefreshSync = onRefreshSync
+        self.prepareFirstRun = prepareFirstRun
+        self.onFirstRunHintResolved = onFirstRunHintResolved
     }
 
     var isVisible: Bool { panel?.isVisible == true }
@@ -110,9 +123,17 @@ final class HistoryPanelController {
         // Capture the app to paste back into BEFORE we activate ourselves.
         sourceApp = NSWorkspace.shared.frontmostApplication
 
+        // First-run showcase: on a true first history open (NOT the ⌃⇧V
+        // action-on-top path, nor a global-hotkey input-prompt open — both jump
+        // straight into an action flow on an already-captured clip) seed the
+        // sample clip if applicable and learn whether to show the teaching hint.
+        // Runs before itemsProvider() so a just-seeded sample is in the list.
+        let showFirstRunHint = (openActionsOnTop || inputPromptAction != nil) ? false : prepareFirstRun()
+
         let viewModel = HistoryPanelViewModel(
             items: itemsProvider(),
             actions: actionsProvider(),
+            showFirstRunHint: showFirstRunHint,
             onBuiltin: { [weak self] action, item in
                 guard let self else { return }
                 let app = self.sourceApp
@@ -133,6 +154,9 @@ final class HistoryPanelController {
         // Reposition the search field caret after a token suggestion is accepted
         // (↵/⇥/row-click all route through the VM's accept). See moveSearchCaret.
         viewModel.onTokenAccepted = { [weak self] caret in self?.moveSearchCaret(to: caret) }
+
+        // Persist first-run hint completion (⇥ into actions, or banner ✕).
+        viewModel.onFirstRunHintResolved = { [weak self] in self?.onFirstRunHintResolved() }
 
         let root = HistoryPanelView(
             viewModel: viewModel,
