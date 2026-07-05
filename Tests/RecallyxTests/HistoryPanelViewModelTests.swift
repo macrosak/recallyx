@@ -1178,6 +1178,59 @@ struct HistoryPanelViewModelTests {
         #expect(vm.tokenSuggestions.isEmpty)
         #expect(!vm.tokenPopoverVisible)
     }
+
+    // MARK: - First-run showcase hint
+
+    @Test func firstRunHint_defaultsOff() {
+        let vm = makeVM([textItem("hi")])
+        #expect(vm.showFirstRunHint == false)
+    }
+
+    @Test func firstRunHint_shownWhenSeeded() {
+        let vm = HistoryPanelViewModel(items: [textItem("hi")], showFirstRunHint: true,
+            onBuiltin: { _, _ in }, onDismiss: {})
+        #expect(vm.showFirstRunHint == true)
+    }
+
+    @Test func firstRunHint_resolvedByOpeningActionMenu() {
+        var resolved = 0
+        let vm = HistoryPanelViewModel(items: [textItem("hi")], showFirstRunHint: true,
+            onBuiltin: { _, _ in }, onDismiss: {})
+        vm.onFirstRunHintResolved = { resolved += 1 }
+        vm.tab()                                   // opens the action menu
+        #expect(vm.showFirstRunHint == false)
+        #expect(resolved == 1)
+    }
+
+    @Test func firstRunHint_resolvedByDismiss() {
+        var resolved = 0
+        let vm = HistoryPanelViewModel(items: [textItem("hi")], showFirstRunHint: true,
+            onBuiltin: { _, _ in }, onDismiss: {})
+        vm.onFirstRunHintResolved = { resolved += 1 }
+        vm.dismissFirstRunHint()
+        #expect(vm.showFirstRunHint == false)
+        #expect(resolved == 1)
+    }
+
+    @Test func firstRunHint_resolveIsIdempotent() {
+        // Dismiss then open the menu — the completion callback fires exactly once.
+        var resolved = 0
+        let vm = HistoryPanelViewModel(items: [textItem("hi")], showFirstRunHint: true,
+            onBuiltin: { _, _ in }, onDismiss: {})
+        vm.onFirstRunHintResolved = { resolved += 1 }
+        vm.dismissFirstRunHint()
+        vm.tab()
+        #expect(resolved == 1)
+    }
+
+    @Test func firstRunHint_dismissDoesNotFireWhenNeverShown() {
+        var resolved = 0
+        let vm = makeVM([textItem("hi")])       // showFirstRunHint == false
+        vm.onFirstRunHintResolved = { resolved += 1 }
+        vm.dismissFirstRunHint()
+        vm.tab()
+        #expect(resolved == 0)
+    }
 }
 
 /// Pure clamp helper for the floating panel's origin: keeps the whole window
