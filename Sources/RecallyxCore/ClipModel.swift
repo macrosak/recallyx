@@ -46,6 +46,11 @@ public enum ClipModel {
         // pre-OCR rows decode fine and it stays CloudKit-compatible; syncs as
         // metadata even though the PNG payload doesn't.
         properties.append(attribute("ocrText", .stringAttributeType, optional: true))
+        // Origin-device badge fields (see HistoryItem.sourceDeviceName/Type):
+        // the capturing device's name + kind ("mac"/"iphone"). Optional so
+        // pre-badge rows decode fine; syncs as metadata like ocrText.
+        properties.append(attribute("sourceDeviceName", .stringAttributeType, optional: true))
+        properties.append(attribute("sourceDeviceType", .stringAttributeType, optional: true))
         // Denormalized recency = max(createdAt, lastUsedAt), maintained on
         // add/bump so a fetch can sort cheaply by a single descriptor.
         properties.append(attribute("recency", .dateAttributeType, optional: true))
@@ -95,6 +100,8 @@ public final class ClipEntity: NSManagedObject {
     @NSManaged public var imageWidth: Int64
     @NSManaged public var imageHeight: Int64
     @NSManaged public var ocrText: String?
+    @NSManaged public var sourceDeviceName: String?
+    @NSManaged public var sourceDeviceType: String?
 }
 
 extension ClipEntity {
@@ -119,6 +126,8 @@ extension ClipEntity {
         imageDimensions = item.imageDimensions
         pinned = item.isPinned
         ocrText = item.ocrText
+        sourceDeviceName = item.sourceDeviceName
+        sourceDeviceType = item.sourceDeviceType
         recency = item.recency
         let (w, h) = ClipEntity.parseDimensions(item.imageDimensions)
         imageWidth = Int64(w ?? 0)
@@ -146,7 +155,9 @@ extension ClipEntity {
             contentHash: contentHash,
             imageDimensions: imageDimensions,
             pinned: pinned,
-            ocrText: ocrText
+            ocrText: ocrText,
+            sourceDeviceName: sourceDeviceName,
+            sourceDeviceType: sourceDeviceType
         )
     }
 

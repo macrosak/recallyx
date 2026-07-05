@@ -250,12 +250,28 @@ struct HistoryRowView: View {
     private var fg: Color { active ? .white : theme.text }
     private var faint: Color { active ? .white.opacity(0.62) : theme.textFaint }
 
+    /// Non-nil when this clip was captured on a different device than this Mac
+    /// (see `ClipOrigin.originBadge`) — a synced-in clip from another Mac or
+    /// an iPhone. Nil (no badge) for a clip captured here, or one with no
+    /// recorded origin (pre-feature clips).
+    private var originBadge: OriginBadgeKind? {
+        ClipOrigin.originBadge(for: item, currentDeviceName: DeviceOrigin.name)
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 11) {
             AppIconView(item: item, size: 20)
             snippet
             if item.isPinned {
                 Image(systemName: "pin.fill")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(faint)
+                    .fixedSize()
+            }
+            // Origin badge sits beside the pin, ahead of the trailing slot, so
+            // it never interferes with the ⌘-held quick-key swap there.
+            if let originBadge {
+                Image(systemName: originBadge.systemImageName)
                     .font(.system(size: 10.5))
                     .foregroundStyle(faint)
                     .fixedSize()
