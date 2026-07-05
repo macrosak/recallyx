@@ -124,6 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.store.cap = settings.retentionCap
             self?.journal.enabled = settings.usageJournalEnabled
             FileLog.shared.enabled = settings.fileLogEnabled
+            // Re-register per-action hotkeys on any settings change (a rebind,
+            // an added/deleted action, or a shortcut cleared). Dropping the prior
+            // set first releases stale combos; the recorder itself already
+            // registered its own edit, so re-applying is idempotent.
+            self?.hotkey?.applyAllActions(settings.actionShortcuts)
         }
 
         // The watcher reads the "Capture sensitive data" flag live from settings.
@@ -149,6 +154,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             shortcutActions: ShortcutActions(
                 apply: { [weak self] action, shortcut in
                     self?.applyShortcut(action, shortcut) ?? .failed(OSStatus(eventNotHandledErr))
+                },
+                applyAction: { [weak self] token, shortcut in
+                    self?.applyActionShortcut(token, shortcut) ?? .failed(OSStatus(eventNotHandledErr))
                 },
                 suspend: { [weak self] in self?.suspendHotkeys() },
                 resume: { [weak self] in self?.resumeHotkeys() }
@@ -189,15 +197,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.openSettings() }
         }
 
-        let hotkey = HotkeyManager { [weak self] action in
-            switch action {
-            case .showHistory: self?.historyPanel?.toggle()
-            case .transformSelection: self?.handleTransformSelection()
+        let hotkey = HotkeyManager(
+            onTrigger: { [weak self] action in
+                switch action {
+                case .showHistory: self?.historyPanel?.toggle()
+                case .transformSelection: self?.handleTransformSelection()
+                }
+            },
+            onActionTrigger: { [weak self] token in
+                self?.handleActionHotkey(token)
             }
-        }
+        )
         self.hotkey = hotkey
         registerAtLaunch(.showHistory, settingsStore.settings.searchHistoryShortcut)
         registerAtLaunch(.transformSelection, settingsStore.settings.transformSelectionShortcut)
+        // Drop any stale binding for an action that no longer exists, then
+        // register every per-action hotkey.
+        pruneOrphanActionShortcuts()
+        hotkey.applyAllActions(settingsStore.settings.actionShortcuts)
 
         if DebugHooks.isEnabled {
             debugHooks = DebugHooks(
@@ -234,6 +251,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return result
     }
 
+    /// Single mutation point for a per-action hotkey change: Carbon first,
+    /// settings only on success (mirrors `applyShortcut`). A cleared/disabled
+    /// binding removes the settings entry so no stale hotkey lingers.
+    func applyActionShortcut(_ token: String, _ shortcut: Shortcut) -> HotkeyManager.ApplyResult {
+        guard let hotkey else { return .failed(OSStatus(eventNotHandledErr)) }
+        let result = hotkey.applyAction(token: token, shortcut)
+        switch result {
+        case .ok:
+            settingsStore.settings.actionShortcuts[token] = shortcut
+        case .disabled:
+            settingsStore.settings.actionShortcuts[token] = nil
+        case .failed:
+            break
+        }
+        return result
+    }
+
+    /// Drop `actionShortcuts` entries whose action no longer exists (e.g. an
+    /// action deleted in a build without this feature, or an out-of-band edit).
+    private func pruneOrphanActionShortcuts() {
+        let valid = Set(settingsStore.settings.actions.map { $0.id.uuidString })
+        let orphans = settingsStore.settings.actionShortcuts.keys.filter { !valid.contains($0) }
+        guard !orphans.isEmpty else { return }
+        for token in orphans { settingsStore.settings.actionShortcuts[token] = nil }
+        Log.info("pruned \(orphans.count) orphan action shortcut(s)")
+    }
+
     /// Recording in Settings needs the raw keyDowns — see HotkeyManager.suspend.
     func suspendHotkeys() {
         hotkey?.suspend()
@@ -242,7 +286,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func resumeHotkeys() {
         hotkey?.resume(
             searchHistory: settingsStore.settings.searchHistoryShortcut,
-            transformSelection: settingsStore.settings.transformSelectionShortcut
+            transformSelection: settingsStore.settings.transformSelectionShortcut,
+            actionShortcuts: settingsStore.settings.actionShortcuts
         )
     }
 
@@ -264,38 +309,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task { @MainActor in
             defer { isTransforming = false }
-            let captured: (text: String, sourceApp: NSRunningApplication?)
-            do {
-                captured = try await captureSelectionWithFallback()
-            } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
-                Log.info("transform: no selection")
-                journal.log("transform_selection", ["captured": false])
-                let combo = settingsStore.settings.transformSelectionShortcut.glyphs.joined()
-                notifier.notify(body: "Select some text first, then press \(combo).")
-                return
-            } catch {
-                Log.error("transform capture failed: \(error.localizedDescription)")
-                journal.log("transform_selection", ["captured": false])
-                notifier.notify(body: error.localizedDescription)
-                return
-            }
-
-            journal.log("transform_selection", ["captured": true])
-            let app = captured.sourceApp
-            let clip = CapturedClip(
-                kind: .text, text: captured.text, imageData: nil,
-                preview: String(captured.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280)),
-                byteSize: captured.text.utf8.count,
-                sourceAppBundleID: app?.bundleIdentifier,
-                sourceAppName: app?.localizedName,
-                sourceAppPath: app?.bundleURL?.path,
-                contentHash: ContentHash.of(text: captured.text), imageDimensions: nil,
-                sourceDeviceName: DeviceOrigin.name, sourceDeviceType: DeviceOrigin.type
-            )
-            let id = store.add(clip)
-            Log.info("transform captured selection len=\(captured.text.count) — opening actions")
+            let combo = settingsStore.settings.transformSelectionShortcut.glyphs.joined()
+            guard let (id, _) = await captureSelectionForTransform(emptyCombo: combo) else { return }
+            Log.info("transform captured selection — opening actions")
             historyPanel?.showOnTopActions(focusing: id)
         }
+    }
+
+    /// A per-action global hotkey fired: find the bound action, grab the current
+    /// selection (exactly the ⌃⇧V capture path), push it to history, and run the
+    /// action on it in place — pasting the result back. No panel appears; that's
+    /// the point (one keystroke instead of ⌃⇧V → menu → pick).
+    private func handleActionHotkey(_ token: String) {
+        guard let action = settingsStore.settings.actions.first(where: { $0.id.uuidString == token }) else {
+            Log.info("action hotkey fired for unknown token — ignoring")
+            return
+        }
+        guard !isTransforming else { return }
+        guard accessibility.ensureTrustedOrPrompt() else { return }
+        isTransforming = true
+
+        Task { @MainActor in
+            defer { isTransforming = false }
+            let combo = (settingsStore.settings.actionShortcuts[token] ?? .transformSelectionDefault).glyphs.joined()
+            guard let (id, app) = await captureSelectionForTransform(emptyCombo: combo) else { return }
+            guard let item = store.items.first(where: { $0.id == id }) else { return }
+            Log.info("action hotkey '\(action.name)' captured selection — running")
+            runAction(action, item: item, into: app)
+        }
+    }
+
+    /// Grab the current selection (AX read, then synth-⌘C fallback), push it to
+    /// the top of history, and return the stored id + source app. Returns nil
+    /// when nothing was selected or capture failed — already journaled + notified
+    /// (the notification names `emptyCombo`). Shared by ⌃⇧V and per-action hotkeys.
+    private func captureSelectionForTransform(emptyCombo: String) async -> (id: UUID, app: NSRunningApplication?)? {
+        let captured: (text: String, sourceApp: NSRunningApplication?)
+        do {
+            captured = try await captureSelectionWithFallback()
+        } catch AccessibilityError.noSelection, AccessibilityError.readFailed, AccessibilityError.noFocusedElement {
+            Log.info("transform: no selection")
+            journal.log("transform_selection", ["captured": false])
+            notifier.notify(body: "Select some text first, then press \(emptyCombo).")
+            return nil
+        } catch {
+            Log.error("transform capture failed: \(error.localizedDescription)")
+            journal.log("transform_selection", ["captured": false])
+            notifier.notify(body: error.localizedDescription)
+            return nil
+        }
+
+        journal.log("transform_selection", ["captured": true])
+        let app = captured.sourceApp
+        let clip = CapturedClip(
+            kind: .text, text: captured.text, imageData: nil,
+            preview: String(captured.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280)),
+            byteSize: captured.text.utf8.count,
+            sourceAppBundleID: app?.bundleIdentifier,
+            sourceAppName: app?.localizedName,
+            sourceAppPath: app?.bundleURL?.path,
+            contentHash: ContentHash.of(text: captured.text), imageDimensions: nil,
+            sourceDeviceName: DeviceOrigin.name, sourceDeviceType: DeviceOrigin.type
+        )
+        let id = store.add(clip)
+        Log.info("transform captured selection len=\(captured.text.count)")
+        return (id, app)
     }
 
     /// AX read first (instant where it works); Chromium/Gmail don't expose
