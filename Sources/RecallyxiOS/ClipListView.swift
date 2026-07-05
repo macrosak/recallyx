@@ -57,7 +57,7 @@ struct ClipListView: View {
             }
             .searchable(text: $vm.query, prompt: "Search clips")
             .sheet(isPresented: $settingsShown) {
-                SettingsView()
+                SettingsView(syncMonitor: sync.activity)
             }
             .sensoryFeedback(.success, trigger: copyTrigger)
         }

@@ -28,6 +28,9 @@ struct SettingsView: View {
     let clearFileLog: () -> Void
     let iCloudSyncLaunchValue: Bool
     let relaunch: () -> Void
+    let syncMonitor: SyncActivityMonitor?
+    let syncActive: Bool
+    let syncNow: () -> Void
     @State private var tab: SettingsTab
 
     private let tabs: [SettingsTab] = [.general, .providers, .actions]
@@ -45,6 +48,9 @@ struct SettingsView: View {
         clearFileLog: @escaping () -> Void = {},
         iCloudSyncLaunchValue: Bool = false,
         relaunch: @escaping () -> Void = {},
+        syncMonitor: SyncActivityMonitor? = nil,
+        syncActive: Bool = false,
+        syncNow: @escaping () -> Void = {},
         initialTab: SettingsTab = .general
     ) {
         self.settingsStore = settingsStore
@@ -56,6 +62,9 @@ struct SettingsView: View {
         self.clearFileLog = clearFileLog
         self.iCloudSyncLaunchValue = iCloudSyncLaunchValue
         self.relaunch = relaunch
+        self.syncMonitor = syncMonitor
+        self.syncActive = syncActive
+        self.syncNow = syncNow
         self._tab = State(initialValue: initialTab)
     }
 
@@ -65,7 +74,7 @@ struct SettingsView: View {
             switch tab {
             case .general:
                 ScrollView {
-                    SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, revealUsageJournal: revealUsageJournal, clearUsageJournal: clearUsageJournal, revealFileLog: revealFileLog, clearFileLog: clearFileLog, iCloudSyncLaunchValue: iCloudSyncLaunchValue, relaunch: relaunch, theme: theme)
+                    SettingsGeneralView(settingsStore: settingsStore, clearHistory: clearHistory, shortcutActions: shortcutActions, revealUsageJournal: revealUsageJournal, clearUsageJournal: clearUsageJournal, revealFileLog: revealFileLog, clearFileLog: clearFileLog, iCloudSyncLaunchValue: iCloudSyncLaunchValue, relaunch: relaunch, syncMonitor: syncMonitor, syncActive: syncActive, syncNow: syncNow, theme: theme)
                         .padding(.horizontal, 22)
                         .padding(.vertical, 20)
                 }
