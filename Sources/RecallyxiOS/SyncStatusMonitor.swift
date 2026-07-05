@@ -1,6 +1,7 @@
 import Combine
 import CoreData
 import Foundation
+import RecallyxCore
 
 /// Lightweight CloudKit sync-status watcher. On first launch the local store is
 /// empty until CloudKit downloads the user's clips, so the empty view needs to
@@ -20,6 +21,11 @@ final class SyncStatusMonitor: ObservableObject {
     @Published private(set) var hasSyncedOnce = false
 
     private var observer: NSObjectProtocol?
+
+    /// Parks pull-to-refresh callers until the next import completes (or a
+    /// timeout). NSPersistentCloudKitContainer can't be told to fetch now, so the
+    /// spinner resolves on the next real `.import` completion this monitor sees.
+    private let waiter = ImportWaiter()
 
     init(notificationCenter: NotificationCenter = .default) {
         observer = notificationCenter.addObserver(
@@ -49,6 +55,18 @@ final class SyncStatusMonitor: ObservableObject {
         } else {
             isImporting = false
             hasSyncedOnce = true
+            // Release any pull-to-refresh spinner waiting on a completed import.
+            waiter.signal()
         }
+    }
+
+    /// Await the next completed CloudKit `.import` event, or return after
+    /// `timeout` if none arrives. Drives pull-to-refresh: the spinner resolves on
+    /// a real import completion or a bounded wait. Safe when sync is off — it
+    /// simply times out (callers typically short-circuit on `isCloudSyncActive`
+    /// before calling this, so the off path is instant). `timeout` is injectable
+    /// for tests.
+    func awaitNextImport(timeout: Duration = .seconds(8)) async {
+        await waiter.wait(timeout: timeout)
     }
 }

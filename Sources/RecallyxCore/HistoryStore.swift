@@ -455,6 +455,69 @@ public final class HistoryStore: ObservableObject {
         }
     }
 
+    // MARK: - Explicit CloudKit refresh (pull-to-refresh / panel-open kick)
+
+    /// Whether CloudKit mirroring is live for this store (the `iCloudSyncEnabled`
+    /// opt-in AND the process entitled). The iOS pull-to-refresh and the mac
+    /// panel-open kick both no-op when this is false, so their UI stays instant
+    /// and side-effect-free with sync off / in an unentitled build.
+    public var isCloudSyncActive: Bool { persistence.isMirroringActive }
+
+    /// Last time `refreshFromCloud` actually reloaded the store — drives the
+    /// mac's `minInterval` throttle.
+    private var lastCloudRefresh: Date?
+
+    /// Pure rate-limit decision for `refreshFromCloud`: allow when nothing has
+    /// refreshed yet, or the last refresh was at least `minInterval` ago.
+    /// Extracted so the throttle is unit-testable without a live/entitled store.
+    public static func shouldRefresh(lastRefresh: Date?, now: Date, minInterval: TimeInterval) -> Bool {
+        guard let lastRefresh else { return true }
+        return now.timeIntervalSince(lastRefresh) >= minInterval
+    }
+
+    /// Best-effort force a CloudKit pull. Flushes pending local writes, then
+    /// reloads the persistent store so `NSPersistentCloudKitContainer` re-runs its
+    /// import (there is no public fetch-now API — see `PersistenceController.reloadStore`).
+    ///
+    /// No-op — returns false — when mirroring is inactive (sync off / unentitled)
+    /// or the last refresh was < `minInterval` ago (the mac throttles the frequent
+    /// ⌘⇧V opens; iOS passes 0 for a deliberate pull). The import itself is async;
+    /// its downloaded rows land in `items` via the remote-change observer's
+    /// debounced merge, or via `refreshItemsFromStore` once a caller has awaited
+    /// the import's completion. Returns true iff a reload actually fired.
+    @discardableResult
+    public func refreshFromCloud(minInterval: TimeInterval = 0, now: Date = Date()) -> Bool {
+        guard persistence.isMirroringActive else { return false }
+        guard Self.shouldRefresh(lastRefresh: lastCloudRefresh, now: now, minInterval: minInterval) else { return false }
+        flush()
+        guard persistence.reloadStore() else { return false }
+        lastCloudRefresh = now
+        // The reload's own import hasn't run yet; re-read the (unchanged) local
+        // rows so `items` is backed by the fresh context. New remote rows arrive
+        // later via the remote-change merge.
+        reloadItemsFromStore()
+        onChange?()
+        return true
+    }
+
+    /// Re-read the store into `items` and fire `onChange`. iOS calls this right
+    /// after a pull-to-refresh's import completes so the freshly-imported rows
+    /// show the moment the spinner ends, rather than waiting out the ~1s debounced
+    /// remote-change merge.
+    public func refreshItemsFromStore() {
+        reloadItemsFromStore()
+        onChange?()
+    }
+
+    /// Test seam: run the store remove/re-add round-trip directly, bypassing the
+    /// mirroring gate (off in the unentitled test process), to verify `items`
+    /// survive a reload. `internal` — invisible outside the module.
+    func reloadStoreForTesting() {
+        flush()
+        _ = persistence.reloadStore()
+        reloadItemsFromStore()
+    }
+
     // MARK: - One-time JSON → Core Data migration
 
     /// On first launch of the Core Data build: if a legacy `history.json` exists,

@@ -40,6 +40,10 @@ final class HistoryPanelController {
     /// Emit a usage-journal event (no-op when the journal is off). Only
     /// non-sensitive fields ever flow through here.
     private let log: (String, [String: Any]) -> Void
+    /// Kick a best-effort CloudKit pull as the panel opens, so the panel tends to
+    /// show fresh remote clips. No-op when sync is off / unentitled / throttled
+    /// (all handled inside the store's `refreshFromCloud`).
+    private let onRefreshSync: () -> Void
 
     init(
         itemsProvider: @escaping () -> [HistoryItem],
@@ -49,7 +53,8 @@ final class HistoryPanelController {
         onBuiltin: @escaping (BuiltinAction, HistoryItem, NSRunningApplication?) -> Bool,
         onRunAction: @escaping (Action, HistoryItem, NSRunningApplication?) -> Void = { _, _, _ in },
         onCopySelection: @escaping (String, HistoryItem) -> HistoryItem? = { _, _ in nil },
-        log: @escaping (String, [String: Any]) -> Void = { _, _ in }
+        log: @escaping (String, [String: Any]) -> Void = { _, _ in },
+        onRefreshSync: @escaping () -> Void = {}
     ) {
         self.itemsProvider = itemsProvider
         self.actionsProvider = actionsProvider
@@ -59,6 +64,7 @@ final class HistoryPanelController {
         self.onRunAction = onRunAction
         self.onCopySelection = onCopySelection
         self.log = log
+        self.onRefreshSync = onRefreshSync
     }
 
     var isVisible: Bool { panel?.isVisible == true }
@@ -76,6 +82,13 @@ final class HistoryPanelController {
 
     func show(openActionsOnTop: Bool = false, focusId: UUID? = nil) {
         guard !isVisible else { return }
+        // Kick a best-effort CloudKit pull so this (or, more reliably, the next)
+        // open shows fresh remote clips. Fire-and-forget + async so it never
+        // blocks the panel appearing; the imported rows land via the store's
+        // debounced remote-change merge. No-op when sync is off / unentitled /
+        // throttled (the store gates it). The panel stays snapshot-per-open — we
+        // deliberately do NOT live-mutate this open panel with the result.
+        Task { @MainActor in self.onRefreshSync() }
         // Capture the app to paste back into BEFORE we activate ourselves.
         sourceApp = NSWorkspace.shared.frontmostApplication
 

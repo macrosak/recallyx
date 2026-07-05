@@ -609,6 +609,77 @@ struct HistoryStoreSyncMergeTests {
         _ = HistoryStore(baseURL: base, cloudSyncEnabled: true)
         #expect(FileManager.default.fileExists(atPath: stray.path))
     }
+
+    // MARK: - Explicit CloudKit refresh (pull-to-refresh / panel-open kick)
+
+    /// The store remove/re-add round-trip (the CloudKit "fetch now" trigger) must
+    /// preserve `items` — reloading the same file re-reads the same rows. Uses the
+    /// test seam so the mirroring gate (off in this unentitled process) doesn't
+    /// short-circuit the reload.
+    @Test func reloadStore_preservesItemsRoundTrip() {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base)
+        store.add(textClip("alpha"))
+        store.add(textClip("beta"))
+        store.flush()
+        #expect(store.items.count == 2)
+
+        store.reloadStoreForTesting()
+
+        // Both rows survive the remove/re-add, newest-first.
+        #expect(store.items.count == 2)
+        #expect(store.items.map { $0.text } == ["beta", "alpha"])
+    }
+
+    /// A remote add made behind the app's back is picked up after a store reload
+    /// round-trip (the reload re-reads the file, which the "remote" writer already
+    /// committed to) — the end-to-end shape of a pull surfacing new rows.
+    @Test func reloadStore_surfacesRemoteRows() {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base)
+        store.add(textClip("local"))
+        store.flush()
+
+        let remote = textItem("from-cloud")
+        writeViaRemote(storeURL: store.storeURLForTesting) { ctx in
+            ClipEntity(context: ctx).apply(remote)
+        }
+
+        store.reloadStoreForTesting()
+        #expect(store.items.contains { $0.text == "from-cloud" })
+        #expect(store.items.contains { $0.text == "local" })
+    }
+
+    /// With mirroring inactive (sync off / unentitled — the test process), the
+    /// public `refreshFromCloud` is an instant no-op: it returns false and never
+    /// reloads. This is the iOS "sync off → instant end" + mac "cheap no-op" path.
+    @Test func refreshFromCloud_noOpWhenSyncOff() {
+        let base = makeBase()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = HistoryStore(baseURL: base)   // cloudSyncEnabled: false
+        #expect(store.isCloudSyncActive == false)
+        #expect(store.refreshFromCloud() == false)
+        #expect(store.refreshFromCloud(minInterval: 45) == false)
+    }
+
+    /// Pure throttle helper: allow the first refresh, then gate until `minInterval`
+    /// has elapsed. Drives the mac's ⌘⇧V rate-limit without a live store.
+    @Test func shouldRefresh_rateLimit() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        // Never refreshed → always allowed.
+        #expect(HistoryStore.shouldRefresh(lastRefresh: nil, now: t0, minInterval: 45))
+        // Too soon after the last refresh → blocked.
+        #expect(!HistoryStore.shouldRefresh(lastRefresh: t0, now: t0.addingTimeInterval(10), minInterval: 45))
+        // Exactly at the interval → allowed.
+        #expect(HistoryStore.shouldRefresh(lastRefresh: t0, now: t0.addingTimeInterval(45), minInterval: 45))
+        // minInterval 0 → always allowed (iOS deliberate pull).
+        #expect(HistoryStore.shouldRefresh(lastRefresh: t0, now: t0.addingTimeInterval(0.1), minInterval: 0))
+    }
 }
 
 @Suite("ContentHash")
