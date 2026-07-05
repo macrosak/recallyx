@@ -32,6 +32,10 @@ struct Shortcut: Codable, Equatable {
         keyLabel: "v",
         enabled: true
     )
+
+    /// A disabled, keyless placeholder — how the UI represents a saved action
+    /// that has no bound global shortcut yet (renders as "Disabled", ✕ hidden).
+    static let unset = Shortcut(keyCode: 0, carbonModifiers: 0, keyLabel: "", enabled: false)
 }
 
 // MARK: - Display / SwiftUI derivations
@@ -171,6 +175,54 @@ extension Shortcut {
            other.keyCode == candidate.keyCode,
            other.carbonModifiers == candidate.carbonModifiers {
             return .conflict(otherAction)
+        }
+        return nil
+    }
+}
+
+// MARK: - Per-action shortcut validation
+
+/// Why a candidate global shortcut for a saved action was rejected. Distinct
+/// from `ShortcutError` because an action can collide with either one of the two
+/// built-in app hotkeys OR another saved action (named), and the messages differ.
+enum ActionShortcutError: Equatable {
+    case noModifier
+    case systemReserved
+    /// Collides with a built-in app hotkey (Search history / Transform selection).
+    case conflictApp(HotkeyAction)
+    /// Collides with another saved action's shortcut — carries that action's name.
+    case conflictAction(String)
+}
+
+extension Shortcut {
+    /// True when two bindings resolve to the same physical combo (ignoring the
+    /// display label). Only meaningful for enabled bindings.
+    static func sameCombo(_ a: Shortcut, _ b: Shortcut) -> Bool {
+        a.keyCode == b.keyCode && a.carbonModifiers == b.carbonModifiers
+    }
+
+    /// Pure validation of a freshly recorded action shortcut against everything
+    /// already bound: the two built-in app hotkeys and every OTHER saved action's
+    /// shortcut. Carbon-layer failures (combo taken by another app) still surface
+    /// separately via `HotkeyManager.applyAction`.
+    static func validateActionShortcut(
+        _ candidate: Shortcut,
+        appShortcuts: [(action: HotkeyAction, shortcut: Shortcut)],
+        otherActionShortcuts: [(name: String, shortcut: Shortcut)]
+    ) -> ActionShortcutError? {
+        if candidate.carbonModifiers & UInt32(cmdKey | controlKey | optionKey) == 0 {
+            return .noModifier
+        }
+        if systemReserved.contains(where: {
+            $0.keyCode == candidate.keyCode && $0.modifiers == candidate.carbonModifiers
+        }) {
+            return .systemReserved
+        }
+        for entry in appShortcuts where entry.shortcut.enabled && sameCombo(entry.shortcut, candidate) {
+            return .conflictApp(entry.action)
+        }
+        for entry in otherActionShortcuts where entry.shortcut.enabled && sameCombo(entry.shortcut, candidate) {
+            return .conflictAction(entry.name)
         }
         return nil
     }

@@ -86,12 +86,22 @@ struct SettingsGeneralView: View {
             SettingsCard(theme: theme) {
                 SettingsRow(label: "Search & paste history", desc: searchShortcutError, theme: theme) {
                     ShortcutRecorder(
-                        action: .showHistory,
                         shortcut: settingsStore.settings.searchHistoryShortcut,
-                        other: settingsStore.settings.transformSelectionShortcut,
-                        otherAction: .transformSelection,
-                        otherName: "Transform selection",
-                        actions: shortcutActions,
+                        suspend: shortcutActions.suspend,
+                        resume: shortcutActions.resume,
+                        validate: { candidate in
+                            Shortcut.validate(
+                                candidate,
+                                against: settingsStore.settings.transformSelectionShortcut,
+                                otherAction: .transformSelection
+                            ).map { ShortcutRecorder.message(for: $0, otherName: "Transform selection") }
+                        },
+                        apply: { shortcutActions.apply(.showHistory, $0) },
+                        disableBinding: {
+                            var off = settingsStore.settings.searchHistoryShortcut
+                            off.enabled = false
+                            _ = shortcutActions.apply(.showHistory, off)
+                        },
                         error: $searchShortcutError,
                         theme: theme
                     )
@@ -103,12 +113,22 @@ struct SettingsGeneralView: View {
                     theme: theme
                 ) {
                     ShortcutRecorder(
-                        action: .transformSelection,
                         shortcut: settingsStore.settings.transformSelectionShortcut,
-                        other: settingsStore.settings.searchHistoryShortcut,
-                        otherAction: .showHistory,
-                        otherName: "Search & paste history",
-                        actions: shortcutActions,
+                        suspend: shortcutActions.suspend,
+                        resume: shortcutActions.resume,
+                        validate: { candidate in
+                            Shortcut.validate(
+                                candidate,
+                                against: settingsStore.settings.searchHistoryShortcut,
+                                otherAction: .showHistory
+                            ).map { ShortcutRecorder.message(for: $0, otherName: "Search & paste history") }
+                        },
+                        apply: { shortcutActions.apply(.transformSelection, $0) },
+                        disableBinding: {
+                            var off = settingsStore.settings.transformSelectionShortcut
+                            off.enabled = false
+                            _ = shortcutActions.apply(.transformSelection, off)
+                        },
                         error: $transformShortcutError,
                         theme: theme
                     )

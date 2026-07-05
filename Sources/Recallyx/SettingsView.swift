@@ -72,7 +72,7 @@ struct SettingsView: View {
             case .providers:
                 SettingsProvidersView(settingsStore: settingsStore, theme: theme)
             case .actions:
-                SettingsActionsView(settingsStore: settingsStore, theme: theme)
+                SettingsActionsView(settingsStore: settingsStore, shortcutActions: shortcutActions, theme: theme)
             }
         }
         .background(theme.body)

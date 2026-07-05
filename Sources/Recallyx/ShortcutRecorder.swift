@@ -3,29 +3,41 @@ import Carbon.HIToolbox
 import SwiftUI
 import RecallyxCore
 
-/// The app delegate's hotkey seam, handed down to the Settings UI. `apply` is
-/// the single mutation point (Carbon-then-settings); `suspend`/`resume`
-/// bracket recording so the live hotkeys can't swallow the keys being
-/// captured.
+/// The app delegate's hotkey seam, handed down to the Settings UI. `apply` /
+/// `applyAction` are the single mutation points (Carbon-then-settings);
+/// `suspend`/`resume` bracket recording so the live hotkeys can't swallow the
+/// keys being captured.
 @MainActor
 struct ShortcutActions {
+    /// Register one of the two built-in app hotkeys.
     let apply: (HotkeyAction, Shortcut) -> HotkeyManager.ApplyResult
+    /// Register a saved action's global hotkey (keyed by `Action.id.uuidString`).
+    let applyAction: (_ token: String, Shortcut) -> HotkeyManager.ApplyResult
     let suspend: () -> Void
     let resume: () -> Void
 }
 
 /// Click-to-record shortcut field for one hotkey. Idle shows the current
 /// binding's keycaps (or "Disabled"); click → "Press keys…" and the next
-/// valid combo is validated, registered, and saved live. ✕ disables. Errors
-/// surface through the `error` binding (the parent row's description slot,
-/// matching the launch-at-login pattern).
+/// valid combo is validated (via the injected `validate` closure), then
+/// registered + saved live (via `apply`). ✕ disables. Errors surface through the
+/// `error` binding (the parent row's description slot, matching the
+/// launch-at-login pattern).
+///
+/// Fully closure-driven so it serves both the two built-in app hotkeys (General
+/// tab) and per-action hotkeys (Actions tab) — the two differ only in how a
+/// candidate is validated, registered, and disabled.
 struct ShortcutRecorder: View {
-    let action: HotkeyAction
     let shortcut: Shortcut
-    let other: Shortcut
-    let otherAction: HotkeyAction
-    let otherName: String
-    let actions: ShortcutActions
+    let suspend: () -> Void
+    let resume: () -> Void
+    /// Pure decision: validate a freshly recorded candidate → an error message
+    /// to show, or nil to proceed to `apply`.
+    let validate: (Shortcut) -> String?
+    /// Register the candidate (Carbon-then-settings).
+    let apply: (Shortcut) -> HotkeyManager.ApplyResult
+    /// Clear/disable this binding (the ✕ button).
+    let disableBinding: () -> Void
     @Binding var error: String?
     let theme: SettingsTheme
 
@@ -83,7 +95,7 @@ struct ShortcutRecorder: View {
 
     private func begin() {
         error = nil
-        actions.suspend()
+        suspend()
         recording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
             // Modifiers held alone: stay recording, let the event through.
@@ -100,7 +112,7 @@ struct ShortcutRecorder: View {
         monitor = nil
         recording = false
         error = message
-        actions.resume()
+        resume()
     }
 
     private func cancel() { end(with: nil) }
@@ -112,11 +124,11 @@ struct ShortcutRecorder: View {
         }
         guard let candidate = Shortcut.from(event: event) else { return } // unusable key — keep recording
 
-        if let validationError = Shortcut.validate(candidate, against: other, otherAction: otherAction) {
-            end(with: message(for: validationError))
+        if let message = validate(candidate) {
+            end(with: message)
             return
         }
-        switch actions.apply(action, candidate) {
+        switch apply(candidate) {
         case .ok, .disabled:
             end(with: nil)
         case .failed(let status):
@@ -129,16 +141,34 @@ struct ShortcutRecorder: View {
     private func disable() {
         if recording { cancel() }
         error = nil
-        var off = shortcut
-        off.enabled = false
-        _ = actions.apply(action, off)
+        disableBinding()
     }
+}
 
-    private func message(for validationError: ShortcutError) -> String {
-        switch validationError {
+// MARK: - Message helpers
+
+extension ShortcutRecorder {
+    /// Compose the message for a built-in app-hotkey validation failure (General
+    /// tab). `otherName` is the human name of the one other app hotkey.
+    static func message(for error: ShortcutError, otherName: String) -> String {
+        switch error {
         case .noModifier: return "Add ⌘, ⌃, or ⌥."
         case .conflict: return "Already used by \(otherName)."
         case .systemReserved: return "That shortcut is reserved by macOS."
+        }
+    }
+
+    /// Compose the message for a per-action-hotkey validation failure (Actions tab).
+    static func message(for error: ActionShortcutError) -> String {
+        switch error {
+        case .noModifier: return "Add ⌘, ⌃, or ⌥."
+        case .systemReserved: return "That shortcut is reserved by macOS."
+        case .conflictApp(let action):
+            switch action {
+            case .showHistory: return "Already used by Search & paste history."
+            case .transformSelection: return "Already used by Transform selection."
+            }
+        case .conflictAction(let name): return "Already used by “\(name)”."
         }
     }
 }

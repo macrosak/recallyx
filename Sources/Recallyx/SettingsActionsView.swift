@@ -6,10 +6,13 @@ import RecallyxCore
 /// `SettingsActions`.
 struct SettingsActionsView: View {
     @ObservedObject var settingsStore: SettingsStore
+    /// Hotkey seam for the per-action global-shortcut recorder.
+    let shortcutActions: ShortcutActions
     let theme: SettingsTheme
 
     @State private var selectedID: UUID?
     @State private var iconPickerOpen = false
+    @State private var shortcutError: String?
 
     private var actions: [Action] { settingsStore.settings.actions }
 
@@ -23,6 +26,9 @@ struct SettingsActionsView: View {
         }
         .frame(minHeight: 460)
         .onAppear { if selectedID == nil { selectedID = actions.first?.id } }
+        // A stale error from the previously-selected action must not linger on
+        // the newly-selected one's recorder row.
+        .onChange(of: selectedID) { _ in shortcutError = nil }
     }
 
     // MARK: - Action list (left)
@@ -93,6 +99,7 @@ struct SettingsActionsView: View {
         if let binding = selectedActionBinding {
             VStack(alignment: .leading, spacing: 14) {
                 header(binding)
+                shortcutSection(binding.wrappedValue)
                 stepsSection(binding)
                 Text("Text flows through enabled steps in order — disabled steps are skipped, a failing step aborts before pasting. Text-only in v1.")
                     .font(.system(size: 11.5))
@@ -131,6 +138,58 @@ struct SettingsActionsView: View {
                 SettingsField(text: action.name, placeholder: "Name", width: nil, theme: theme)
             }
         }
+    }
+
+    // MARK: - Global shortcut
+
+    /// The per-action global-hotkey recorder. Pressing the bound combo anywhere
+    /// grabs the current selection and runs this action on it in place (the
+    /// ⌃⇧V capture path, minus the panel). Binding stored in
+    /// `settings.actionShortcuts`, keyed by the action's id token.
+    private func shortcutSection(_ action: Action) -> some View {
+        let token = action.id.uuidString
+        let current = settingsStore.settings.actionShortcuts[token] ?? .unset
+        return VStack(alignment: .leading, spacing: 6) {
+            SectionLabel(text: "Global shortcut", theme: theme)
+            HStack(spacing: 10) {
+                ShortcutRecorder(
+                    shortcut: current,
+                    suspend: shortcutActions.suspend,
+                    resume: shortcutActions.resume,
+                    validate: { validateActionCandidate($0, token: token) },
+                    apply: { shortcutActions.applyAction(token, $0) },
+                    disableBinding: {
+                        var off = current
+                        off.enabled = false
+                        _ = shortcutActions.applyAction(token, off)
+                    },
+                    error: $shortcutError,
+                    theme: theme
+                )
+                Text(shortcutError ?? "Press anywhere to run this action on the selected text.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(shortcutError == nil ? theme.textFaint : theme.bad)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// Validate a freshly recorded action shortcut against the two built-in app
+    /// hotkeys and every OTHER saved action's binding → an error message or nil.
+    private func validateActionCandidate(_ candidate: Shortcut, token: String) -> String? {
+        let app: [(action: HotkeyAction, shortcut: Shortcut)] = [
+            (.showHistory, settingsStore.settings.searchHistoryShortcut),
+            (.transformSelection, settingsStore.settings.transformSelectionShortcut),
+        ]
+        let others: [(name: String, shortcut: Shortcut)] = settingsStore.settings.actions
+            .filter { $0.id.uuidString != token }
+            .compactMap { a in
+                guard let s = settingsStore.settings.actionShortcuts[a.id.uuidString] else { return nil }
+                return (a.name, s)
+            }
+        return Shortcut.validateActionShortcut(candidate, appShortcuts: app, otherActionShortcuts: others)
+            .map { ShortcutRecorder.message(for: $0) }
     }
 
     private func stepsSection(_ action: Binding<Action>) -> some View {
@@ -193,6 +252,9 @@ struct SettingsActionsView: View {
         let matchedName = settingsStore.settings.actions[removedIndex].name
         Log.info("delete requested: selectedID=\(id) matchedName=\(matchedName) countBefore=\(countBefore)")
         settingsStore.settings.actions.remove(at: removedIndex)
+        // Drop any global-hotkey binding for the deleted action so it doesn't
+        // linger (and keep registering a hotkey with no action to run).
+        settingsStore.settings.actionShortcuts[id.uuidString] = nil
         Log.info("delete done: countAfter=\(settingsStore.settings.actions.count)")
         // Keep selection on the neighbor: the action now at the deleted index
         // (the next one down), or the previous one if we removed the last row;

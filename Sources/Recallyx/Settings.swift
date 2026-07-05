@@ -42,6 +42,13 @@ struct AppSettings: Codable, Equatable {
     var searchHistoryShortcut: Shortcut
     /// ⌃⇧V by default — grabs the selection and opens its actions.
     var transformSelectionShortcut: Shortcut
+    /// Per-action global hotkeys, keyed by `Action.id.uuidString` (stable across
+    /// renames + list reorders). Pressing one grabs the current selection and runs
+    /// that action on it in place — one keystroke instead of ⌃⇧V + picking from the
+    /// menu. Stored OUTSIDE the `Action` model because `Shortcut` is Carbon/AppKit
+    /// (app target) and `Action` lives in the AppKit-free, iOS-buildable
+    /// RecallyxCore. Actions without a binding simply have no entry.
+    var actionShortcuts: [String: Shortcut]
 
     /// Transient (never encoded, never compared): set by `init(from:)` when the
     /// `providers` key was ABSENT from the decoded blob and the list was therefore
@@ -57,7 +64,7 @@ struct AppSettings: Codable, Equatable {
         case retentionCap, captureSensitive, launchAtLogin, usageJournalEnabled
         case iCloudSyncEnabled
         case fileLogEnabled, defaultModel, actions, ollamaBaseURL, providers
-        case searchHistoryShortcut, transformSelectionShortcut
+        case searchHistoryShortcut, transformSelectionShortcut, actionShortcuts
     }
 
     /// Custom equality that ignores the transient `providersWereSeededOnDecode`
@@ -76,6 +83,7 @@ struct AppSettings: Codable, Equatable {
             && lhs.providers == rhs.providers
             && lhs.searchHistoryShortcut == rhs.searchHistoryShortcut
             && lhs.transformSelectionShortcut == rhs.transformSelectionShortcut
+            && lhs.actionShortcuts == rhs.actionShortcuts
     }
 
     init(
@@ -90,7 +98,8 @@ struct AppSettings: Codable, Equatable {
         ollamaBaseURL: String = AppSettings.defaultOllamaBaseURL,
         providers: [ProviderConfig]? = nil,
         searchHistoryShortcut: Shortcut = .searchHistoryDefault,
-        transformSelectionShortcut: Shortcut = .transformSelectionDefault
+        transformSelectionShortcut: Shortcut = .transformSelectionDefault,
+        actionShortcuts: [String: Shortcut] = [:]
     ) {
         self.retentionCap = retentionCap
         self.captureSensitive = captureSensitive
@@ -107,6 +116,7 @@ struct AppSettings: Codable, Equatable {
         self.providers = providers ?? ProviderConfig.seedFromCurrentReality(ollamaBaseURL: ollamaBaseURL)
         self.searchHistoryShortcut = searchHistoryShortcut
         self.transformSelectionShortcut = transformSelectionShortcut
+        self.actionShortcuts = actionShortcuts
     }
 
     init(from decoder: Decoder) throws {
@@ -154,6 +164,8 @@ struct AppSettings: Codable, Equatable {
         }
         searchHistoryShortcut = (try? c.decodeIfPresent(Shortcut.self, forKey: .searchHistoryShortcut)) ?? .searchHistoryDefault
         transformSelectionShortcut = (try? c.decodeIfPresent(Shortcut.self, forKey: .transformSelectionShortcut)) ?? .transformSelectionDefault
+        // Absent (older blobs) or malformed → no per-action hotkeys.
+        actionShortcuts = (try? c.decodeIfPresent([String: Shortcut].self, forKey: .actionShortcuts)) ?? [:]
     }
 }
 
