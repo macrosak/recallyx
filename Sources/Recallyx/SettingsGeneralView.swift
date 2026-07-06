@@ -23,6 +23,9 @@ struct SettingsGeneralView: View {
     var syncActive: Bool = false
     /// Explicit "Sync now" kick — `store.refreshFromCloud(minInterval: 0)`.
     var syncNow: () -> Void = {}
+    /// Live, per-provider model lists — feeds the Default-model picker so it lists
+    /// what each enabled provider actually offers (fallback: hardcoded catalog).
+    @ObservedObject var liveModelCatalog: LiveModelCatalog
     let theme: SettingsTheme
 
     /// True only when this build carries the iCloud entitlement (the team-signed
@@ -71,7 +74,7 @@ struct SettingsGeneralView: View {
                         set: { settingsStore.settings.defaultModel = $0 }
                     )) {
                         ForEach(ModelCatalog.groupsPreservingSelection(
-                            ModelCatalog.availableGroups(for: settingsStore.settings.providers),
+                            liveModelCatalog.groups(for: settingsStore.settings.providers),
                             selected: settingsStore.settings.defaultModel
                         )) { group in
                             Section(group.title) {
