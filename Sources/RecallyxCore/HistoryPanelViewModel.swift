@@ -14,6 +14,9 @@ public final class HistoryPanelViewModel: ObservableObject {
         case custom
         /// Editing a transient copy of a saved action, paginated over its steps.
         case edit
+        /// Collecting a run-time `{{INPUT:Label}}` value before running an action
+        /// (one column per placeholder; ↵ advances / runs, esc backs out).
+        case inputPrompt
     }
 
     /// The same search field serves two domains: clips in list mode, the action
@@ -70,7 +73,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list: return "\(filtered.count) clips"
         case .actions: return "\(filteredMenuItems.count) actions"
-        case .custom, .edit: return "\(menuItems.count) actions"
+        case .custom, .edit, .inputPrompt: return "\(menuItems.count) actions"
         }
     }
 
@@ -79,6 +82,24 @@ public final class HistoryPanelViewModel: ObservableObject {
     @Published public private(set) var editAction: Action?
     @Published public private(set) var editStepIndex: Int = 0
     @Published public var editBody: String = ""
+
+    // Run-time input-prompt state (`.inputPrompt` mode). The action being run is
+    // held transiently; the user answers one placeholder per column.
+    /// The current placeholder's text field value.
+    @Published public var inputText: String = ""
+    /// The distinct placeholders to collect, in ask order.
+    @Published public private(set) var inputPlaceholders: [ActionInputs.Placeholder] = []
+    /// Which placeholder (0-based) is being asked.
+    @Published public private(set) var inputIndex: Int = 0
+    /// The action awaiting inputs; its INPUT tokens are substituted on completion.
+    private var pendingInputAction: Action?
+    /// Values entered so far, keyed by placeholder label.
+    private var collectedInputs: [String: String] = [:]
+
+    /// The label of the placeholder currently being asked (for the UI).
+    public var currentInputLabel: String {
+        inputPlaceholders.indices.contains(inputIndex) ? inputPlaceholders[inputIndex].label : ""
+    }
 
     private(set) var allItems: [HistoryItem]
     private let actions: [Action]
@@ -199,7 +220,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list: stepList(by: -1)
         case .actions: stepAction(by: -1)
-        case .custom, .edit: break
+        case .custom, .edit, .inputPrompt: break
         }
     }
 
@@ -207,7 +228,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list: stepList(by: 1)
         case .actions: stepAction(by: 1)
-        case .custom, .edit: break
+        case .custom, .edit, .inputPrompt: break
         }
     }
 
@@ -225,6 +246,8 @@ public final class HistoryPanelViewModel: ObservableObject {
             runCustom()
         case .edit:
             break // ⌘↵ runs (see runEdit); plain ↵ adds a newline in the editor
+        case .inputPrompt:
+            confirmInput()
         }
     }
 
@@ -293,7 +316,7 @@ public final class HistoryPanelViewModel: ObservableObject {
             if case .saved(let a) = $0 { return a } else { return nil }
         }
         guard saved.indices.contains(index) else { return }
-        onRunAction(saved[index], item)
+        launch(saved[index], on: item)
     }
 
     // MARK: - Quick-key numbers (⌘1–9 discoverability)
@@ -326,7 +349,7 @@ public final class HistoryPanelViewModel: ObservableObject {
     public func cancel() {
         switch mode {
         case .actions: returnToList()
-        case .custom, .edit: backToActions()
+        case .custom, .edit, .inputPrompt: backToActions()
         case .list: onDismiss()
         }
     }
@@ -399,7 +422,7 @@ public final class HistoryPanelViewModel: ObservableObject {
             }
         case .edit:
             advanceEditStep()
-        case .custom:
+        case .custom, .inputPrompt:
             break
         }
     }
@@ -448,10 +471,79 @@ public final class HistoryPanelViewModel: ObservableObject {
             // Controller performs the action and dismisses the panel.
             onBuiltin(action, item)
         case .saved(let action):
-            onRunAction(action, item)
+            launch(action, on: item)
         case .custom:
             enterCustom()
         }
+    }
+
+    // MARK: - Run-time input prompts (`{{INPUT:Label}}`)
+
+    /// Run `action` on `item`, first collecting any `{{INPUT:Label}}` values it
+    /// declares. With no placeholders it runs immediately (unchanged behavior);
+    /// otherwise it enters `.inputPrompt` mode to ask for each distinct label,
+    /// then runs a transient copy with the values substituted (the saved action
+    /// is never mutated). Shared by the action menu ↵, ⌘1–9 quick-run, edit ⌘↵,
+    /// and Custom… paths.
+    private func launch(_ action: Action, on item: HistoryItem) {
+        let placeholders = ActionInputs.placeholders(in: action)
+        guard !placeholders.isEmpty else {
+            onRunAction(action, item)
+            return
+        }
+        pendingInputAction = action
+        inputPlaceholders = placeholders
+        inputIndex = 0
+        collectedInputs = [:]
+        inputText = ""
+        mode = .inputPrompt
+    }
+
+    /// ↵ in `.inputPrompt`: record the current value, advance to the next
+    /// placeholder, or (on the last) substitute + run the transient action. A
+    /// blank value is a no-op (like Custom…'s empty guard) so a stray ↵ doesn't
+    /// skip an input.
+    private func confirmInput() {
+        guard let item = actionItem, let action = pendingInputAction,
+              inputPlaceholders.indices.contains(inputIndex) else { return }
+        let value = inputText
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        collectedInputs[inputPlaceholders[inputIndex].label] = value
+        if inputIndex + 1 < inputPlaceholders.count {
+            inputIndex += 1
+            inputText = ""
+        } else {
+            let resolved = ActionInputs.apply(values: collectedInputs, to: action)
+            clearInputState()
+            onRunAction(resolved, item)
+        }
+    }
+
+    private func clearInputState() {
+        pendingInputAction = nil
+        inputPlaceholders = []
+        inputIndex = 0
+        collectedInputs = [:]
+        inputText = ""
+    }
+
+    /// Global-hotkey entry point: open the panel already collecting `action`'s
+    /// inputs for the clip with `focusId` (the captured selection). Sets up the
+    /// same action context `tab()` does so esc backs out to that clip's action
+    /// menu, then begins the input prompt. No-op if the list is empty or the
+    /// action has no placeholders (the caller checks, but we run it directly then).
+    public func openInputPrompt(for action: Action, focusId: UUID?) {
+        guard !filtered.isEmpty else { return }
+        selectedIndex = focusId.flatMap { id in filtered.firstIndex(where: { $0.id == id }) } ?? 0
+        guard let item = selectedItem else { return }
+        actionItem = item
+        menuItems = buildMenu(for: item)
+        savedClipQuery = query
+        savedClipID = item.id
+        query = ""
+        applyMenuFilter()
+        actionIndex = 0
+        launch(action, on: item)
     }
 
     // MARK: - Ad-hoc AI
@@ -480,7 +572,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         let transient = Action(name: "Custom", icon: "sparkle", steps: [
             Step(type: .ai, prompt: Self.buildCustomPrompt(trimmed, isImage: item.kind == .image)),
         ])
-        onRunAction(transient, item)
+        launch(transient, on: item)
     }
 
     private func enterEdit(_ action: Action) {
@@ -503,7 +595,7 @@ public final class HistoryPanelViewModel: ObservableObject {
     public func runEdit() {
         guard let item = actionItem, var action = editAction else { return }
         commitEditBody(into: &action)
-        onRunAction(action, item)
+        launch(action, on: item)
     }
 
     public var editStepCount: Int { editAction?.steps.count ?? 0 }
@@ -525,6 +617,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         editAction = nil
         customText = ""
         editBody = ""
+        clearInputState()
         mode = .actions
         // Reset the action search to show the full menu again.
         query = ""
@@ -632,7 +725,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list: refreshClips(); recomputeTokenSuggestions()
         case .actions: applyMenuFilter(); actionIndex = 0; clearTokenSuggestions()
-        case .custom, .edit: clearTokenSuggestions()   // the field isn't the active control here
+        case .custom, .edit, .inputPrompt: clearTokenSuggestions()   // the field isn't the active control here
         }
     }
 

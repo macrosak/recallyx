@@ -117,6 +117,54 @@ struct CustomPromptColumn: View {
     }
 }
 
+/// Right column for a run-time `{{INPUT:Label}}` prompt: shows the label and a
+/// single-line field. ↵ advances to the next input (or runs on the last); esc
+/// backs out. One column is shown per placeholder.
+struct InputPromptColumn: View {
+    let item: HistoryItem
+    let label: String
+    let index: Int
+    let total: Int
+    @Binding var text: String
+    let theme: RXTheme
+    var focus: FocusState<HistoryPanelView.Field?>.Binding
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ColumnHeader(label: "Action input", theme: theme) {
+                AppIconView(item: item, size: 15)
+            }
+            VStack(alignment: .leading, spacing: 11) {
+                if total > 1 {
+                    Text("Input \(index + 1) of \(total)")
+                        .font(.system(size: 11.5, weight: .semibold)).tracking(0.3)
+                        .foregroundStyle(theme.textFaint).monospacedDigit()
+                }
+                Text(label)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                TextField("", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(theme.text)
+                    .focused(focus, equals: .editor)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 9)
+                            .fill(theme.isDark ? Color(white: 0, opacity: 0.22) : Color(white: 0, opacity: 0.03))
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(theme.accent, lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(theme.selSoft, lineWidth: 3).blur(radius: 1))
+                    )
+                Text("This value is substituted for {{INPUT}} in the action, then it runs.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(theme.textFaint)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+        }
+    }
+}
+
 /// Right column for edit-before-run: paginated over a transient copy's steps.
 struct EditStepsColumn: View {
     let action: Action
