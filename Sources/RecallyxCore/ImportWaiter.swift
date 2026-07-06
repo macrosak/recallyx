@@ -22,10 +22,17 @@ public final class ImportWaiter {
     /// `true` if a signal arrived, `false` on timeout. `sleep` is injectable so
     /// tests can force an immediate timeout (or a never-returning wait) without a
     /// real clock.
+    ///
+    /// `onParked` runs **synchronously the instant this waiter is registered**,
+    /// before the continuation suspends. Callers use it to trigger the work whose
+    /// completion they're waiting on (e.g. the pull-to-refresh store reload) so
+    /// the trigger happens *after* the waiter is parked — a fast `signal()` racing
+    /// back can then be captured instead of dropped into an empty waiter set.
     @discardableResult
     public func wait(
         timeout: Duration,
-        sleep: @escaping (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        onParked: (() -> Void)? = nil
     ) async -> Bool {
         let id = UUID()
         let timeoutTask = Task { @MainActor [weak self] in
@@ -36,6 +43,7 @@ public final class ImportWaiter {
         // stores synchronously before suspending) so no signal is missed.
         let signaled = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
             waiters[id] = cont
+            onParked?()   // trigger the awaited work now that we're parked
         }
         timeoutTask.cancel()
         return signaled

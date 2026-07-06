@@ -49,6 +49,17 @@ public final class HistoryStore: ObservableObject {
     private var dirtyIDs: Set<UUID> = []
     private var deletedIDs: Set<UUID> = []
 
+    /// Ids that are genuine local **inserts** (a fresh `add`, or the JSON
+    /// migration) — as distinct from *mutations* of an existing row (`bump` /
+    /// `setPinned` / `setOCRText` / a dedupe-bump). `persist` creates a brand-new
+    /// `ClipEntity` ONLY for an id in this set. A dirty id that is NOT here and
+    /// whose row is gone was **deleted on another device** (a CloudKit import
+    /// removed it from the shared SQLite file before our ~1s debounced merge
+    /// caught up); recreating it would resurrect a clip the user deleted and
+    /// re-export it fleet-wide, so `persist` drops that write instead. Cleared
+    /// alongside `dirtyIDs`/`deletedIDs` in `persist`.
+    private var addedIDs: Set<UUID> = []
+
     /// Debounce + task for merging remote (CloudKit / other-coordinator) changes.
     private let remoteMergeDelay: TimeInterval
     private var mergeTask: Task<Void, Never>?
@@ -198,7 +209,7 @@ public final class HistoryStore: ObservableObject {
         )
         items.insert(item, at: 0)
         Log.debug("history add kind=\(captured.kind.rawValue) id=\(id.uuidString.prefix(8)) count=\(items.count)")
-        markDirty(id)
+        markAdded(id)
         enforceCap()
         didMutate()
         return id
@@ -336,8 +347,10 @@ public final class HistoryStore: ObservableObject {
         guard !dirtyIDs.isEmpty || !deletedIDs.isEmpty else { return }
         let dirty = dirtyIDs
         let deleted = deletedIDs
+        let added = addedIDs
         dirtyIDs.removeAll()
         deletedIDs.removeAll()
+        addedIDs.removeAll()
 
         var itemsByID: [UUID: HistoryItem] = [:]
         for item in items { itemsByID[item.id] = item }
@@ -363,8 +376,21 @@ public final class HistoryStore: ObservableObject {
                 // delete mark, if any, already handled removal.
                 for id in dirty {
                     guard let item = itemsByID[id] else { continue }
-                    let entity = byID[id] ?? ClipEntity(context: ctx)
-                    entity.apply(item)
+                    if let entity = byID[id] {
+                        entity.apply(item)                       // existing row → update
+                    } else if added.contains(id) {
+                        ClipEntity(context: ctx).apply(item)     // genuine local insert → create
+                    } else {
+                        // A *mutation* (bump/pin/OCR/dedupe-bump) whose row is
+                        // gone: it was deleted on another device and the remote
+                        // delete reached our SQLite file before the debounced
+                        // merge caught up. Do NOT recreate it — that would
+                        // resurrect the user's deleted clip and re-export it
+                        // fleet-wide. Leave the stale in-memory item for the next
+                        // `mergeRemoteChanges` (fired by the same remote-delete
+                        // notification) to reconcile away. Content-free log.
+                        Log.info("history persist: resurrection avoided id=\(id.uuidString.prefix(8))")
+                    }
                 }
 
                 if ctx.hasChanges { try ctx.save() }
@@ -378,7 +404,15 @@ public final class HistoryStore: ObservableObject {
         if failed {
             dirtyIDs.formUnion(dirty)
             deletedIDs.formUnion(deleted)
+            addedIDs.formUnion(added)
         }
+    }
+
+    /// Mark a locally-**inserted** id (new capture / migration). Implies dirty,
+    /// and records it in `addedIDs` so `persist` may create a fresh row for it.
+    private func markAdded(_ id: UUID) {
+        addedIDs.insert(id)
+        markDirty(id)
     }
 
     private func markDirty(_ id: UUID) {
@@ -389,6 +423,7 @@ public final class HistoryStore: ObservableObject {
     private func markDeleted(_ id: UUID) {
         deletedIDs.insert(id)
         dirtyIDs.remove(id)     // a delete supersedes a pending upsert
+        addedIDs.remove(id)     // …and cancels a never-persisted local insert
     }
 
     // MARK: - Remote-change merge (CloudKit / other coordinators)
@@ -548,7 +583,7 @@ public final class HistoryStore: ObservableObject {
         }
 
         items = decoded.sorted { $0.recency > $1.recency }
-        for item in items { markDirty(item.id) }
+        for item in items { markAdded(item.id) }
         persist()
         Log.info("migrated \(items.count) clip(s) from history.json → Core Data")
 

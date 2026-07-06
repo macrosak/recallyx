@@ -41,6 +41,31 @@ struct ImportWaiterTests {
         waiter.signal()   // must not crash / double-resume
     }
 
+    /// Park-before-signal ordering (the pull-to-refresh fix). The awaited work is
+    /// kicked from `onParked`, which runs the instant the waiter is registered —
+    /// so even a signal that races back immediately is captured, not dropped into
+    /// an empty waiter set. Here `onParked` signals synchronously; the wait must
+    /// still resolve `true` (never fall through to the timeout).
+    @Test func onParkedKickSignalsImmediately_isCaptured() async {
+        let waiter = ImportWaiter()
+        let result = await waiter.wait(
+            timeout: .seconds(60),
+            sleep: { _ in try? await Task.sleep(for: .seconds(60)) },   // never times out
+            onParked: { waiter.signal() }                                // fires while parked
+        )
+        #expect(result == true)
+    }
+
+    /// Ordering contrast: a signal fired BEFORE any waiter is parked is dropped
+    /// (the guard in `signal()`), so a later `wait` with an instant timeout
+    /// resolves `false`. This is the race the `onParked` kick exists to avoid.
+    @Test func signalBeforePark_isDropped() async {
+        let waiter = ImportWaiter()
+        waiter.signal()   // nothing parked yet → dropped
+        let result = await waiter.wait(timeout: .seconds(4)) { _ in }   // instant timeout
+        #expect(result == false)
+    }
+
     /// One signal releases every parked waiter (e.g. two overlapping pulls).
     @Test func signalReleasesAllWaiters() async {
         let waiter = ImportWaiter()
