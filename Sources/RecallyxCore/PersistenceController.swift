@@ -73,7 +73,8 @@ public final class PersistenceController {
     /// (loading a mirrored store in an unentitled process crashes in CloudKit).
     public static func makeStoreDescription(
         storeURL: URL? = nil, inMemory: Bool = false, cloudSyncEnabled: Bool = false,
-        hasEntitlement: Bool = PersistenceController.processHasCloudKitEntitlement
+        hasEntitlement: Bool = PersistenceController.processHasCloudKitEntitlement,
+        readOnly: Bool = false
     ) -> NSPersistentStoreDescription {
         let url: URL
         if inMemory {
@@ -88,9 +89,24 @@ public final class PersistenceController {
         description.cloudKitContainerOptions = cloudKitOptions(
             enabled: cloudSyncEnabled, hasEntitlement: hasEntitlement
         )
-        // WAL is the SQLite default; spelled out so a future read-only MCP
-        // reader (separate process) can read alongside the app's writes.
+        // WAL is the SQLite default; spelled out so a read-only sibling reader
+        // (the `recallyx` CLI, a separate process) can read alongside the app's
+        // writes.
         description.setOption(["journal_mode": "WAL"] as NSDictionary, forKey: NSSQLitePragmasOption)
+
+        if readOnly {
+            // Read-only sibling reader (the CLI): open the live store WITHOUT
+            // history tracking / remote-change / CloudKit. `isReadOnly` makes the
+            // coordinator reject every write, so the CLI can never mutate or
+            // corrupt the file the app owns. History tracking is itself a WRITE (it
+            // stamps transaction rows) and is incompatible with a read-only store,
+            // so it is deliberately skipped here — the reader just fetches a
+            // snapshot and exits; it needs no change notifications.
+            description.isReadOnly = true
+            description.cloudKitContainerOptions = nil
+            return description
+        }
+
         // Persistent history tracking + remote-change notifications. History
         // tracking is REQUIRED for `.NSPersistentStoreRemoteChange` to fire, which
         // is how the running app learns that a CloudKit import (or any other
@@ -174,14 +190,15 @@ public final class PersistenceController {
     ///     entitlement check.
     public init(
         storeURL: URL? = nil, inMemory: Bool = false, cloudSyncEnabled: Bool = false,
-        hasEntitlement: Bool = PersistenceController.processHasCloudKitEntitlement
+        hasEntitlement: Bool = PersistenceController.processHasCloudKitEntitlement,
+        readOnly: Bool = false
     ) {
         let model = ClipModel.makeModel()
         container = NSPersistentCloudKitContainer(name: "Recallyx", managedObjectModel: model)
 
         let description = Self.makeStoreDescription(
             storeURL: storeURL, inMemory: inMemory, cloudSyncEnabled: cloudSyncEnabled,
-            hasEntitlement: hasEntitlement
+            hasEntitlement: hasEntitlement, readOnly: readOnly
         )
         container.persistentStoreDescriptions = [description]
 

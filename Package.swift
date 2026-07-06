@@ -10,7 +10,10 @@ let package = Package(
     products: [
         // Vended so the (additive, XcodeGen-generated) Xcode app target can
         // depend on the shared library. swift build/test are unaffected.
-        .library(name: "RecallyxCore", targets: ["RecallyxCore"])
+        .library(name: "RecallyxCore", targets: ["RecallyxCore"]),
+        // The `recallyx` CLI. Build with
+        // `swift build -c release --product recallyx-cli`.
+        .executable(name: "recallyx-cli", targets: ["recallyx-cli"])
     ],
     targets: [
         .target(
@@ -22,6 +25,14 @@ let package = Package(
             dependencies: ["RecallyxCore"],
             path: "Sources/Recallyx",
             exclude: ["Resources"]
+        ),
+        // The `recallyx` command-line tool (product name `recallyx-cli`; install
+        // the binary as `recallyx`). Reuses RecallyxCore; AppKit is linked only
+        // for the `copy` command's NSPasteboard write. mac-only.
+        .executableTarget(
+            name: "recallyx-cli",
+            dependencies: ["RecallyxCore"],
+            path: "Sources/recallyx-cli"
         ),
         .testTarget(
             name: "RecallyxTests",

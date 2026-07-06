@@ -226,6 +226,39 @@ paste results) needs Accessibility: on first use the app shows an **Open Setting
 toggle **Recallyx** on under **Privacy & Security → Accessibility** → **quit and relaunch**
 (macOS reads the grant only at process start).
 
+## CLI
+
+`recallyx` is a small command-line companion: search your clipboard history and run
+your saved action pipelines as unix filters, straight from the terminal. It reads the
+**same** history the menu-bar app records — strictly **read-only**, so it can never
+mutate or corrupt the app's database, and it reads fine while the app is running.
+
+```bash
+# build the binary and put it on your PATH as `recallyx`
+swift build -c release --product recallyx-cli
+ln -s "$(swift build -c release --product recallyx-cli --show-bin-path)/recallyx-cli" \
+      /usr/local/bin/recallyx
+```
+
+```bash
+recallyx search "api key" -n 5     # fuzzy-search history (index · kind · time · app · snippet)
+recallyx recent -n 20              # most-recent clips
+recallyx get 2 | pbcopy            # print the full text of the 2nd clip
+echo '{"z":9,"a":1}' | recallyx run "Pretty-print JSON"   # pipe stdin through a saved action
+recallyx get 1 | recallyx run "Fix grammar (EN)"          # chain them
+recallyx list-actions              # names + SCRIPT/AI tags
+git rev-parse HEAD | recallyx copy # set the clipboard (the app then captures it into history)
+```
+
+Notes:
+
+- **Script action steps** run fully. **AI steps** need the app's Keychain access — from a
+  separate binary macOS may prompt or deny; if the key can't be read, `recallyx run` prints
+  a clear message pointing you back to the app instead of failing cryptically. When the key
+  *is* readable it makes the real API call.
+- Honors `RECALLYX_DATA_DIR` (same as the app), so you can point it at an isolated store.
+- `recallyx --help` lists everything.
+
 ## Troubleshooting
 
 - **A hotkey doesn't fire** — another app may have grabbed the combo globally
