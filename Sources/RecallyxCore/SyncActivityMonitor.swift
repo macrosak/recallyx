@@ -182,24 +182,50 @@ public final class SyncActivityMonitor: ObservableObject {
         return "\(ns.domain)#\(ns.code)"
     }
 
-    /// Names for the CKError codes worth distinguishing in a status line; other
-    /// codes fall back to their raw value. Content-free by construction.
+    /// Names for every `CKError.Code` case (raw values 1...36, stable per Apple's
+    /// CloudKit framework), else the raw value. RecallyxCore doesn't import
+    /// CloudKit (only Foundation/CryptoKit/FoundationModels/Vision/Security/os —
+    /// see CLAUDE.md), so this is a hardcoded `Int -> String` table rather than
+    /// switching on `CKError.Code` itself; the codes are a stable public ABI, so
+    /// hardcoding them carries no real drift risk. Content-free by construction.
     private static func ckErrorName(_ code: Int) -> String {
         switch code {
         case 1: return "internalError"
+        case 2: return "partialFailure"
         case 3: return "networkUnavailable"
         case 4: return "networkFailure"
+        case 5: return "badContainer"
         case 6: return "serviceUnavailable"
         case 7: return "requestRateLimited"
+        case 8: return "missingEntitlement"
         case 9: return "notAuthenticated"
         case 10: return "permissionFailure"
         case 11: return "unknownItem"
+        case 12: return "invalidArguments"
+        case 13: return "resultsTruncated"
+        case 14: return "serverRecordChanged"
         case 15: return "serverRejectedRequest"
+        case 16: return "assetFileNotFound"
+        case 17: return "assetFileModified"
+        case 18: return "incompatibleVersion"
+        case 19: return "constraintViolation"
+        case 20: return "operationCancelled"
+        case 21: return "changeTokenExpired"
+        case 22: return "batchRequestFailed"
+        case 23: return "zoneBusy"
+        case 24: return "badDatabase"
         case 25: return "quotaExceeded"
         case 26: return "zoneNotFound"
         case 27: return "limitExceeded"
         case 28: return "userDeletedZone"
-        case 35: return "accountTemporarilyUnavailable"
+        case 29: return "tooManyParticipants"
+        case 30: return "alreadyShared"
+        case 31: return "referenceViolation"
+        case 32: return "managedAccountRestricted"
+        case 33: return "participantMayNeedVerification"
+        case 34: return "serverResponseLost"
+        case 35: return "assetNotAvailable"
+        case 36: return "accountTemporarilyUnavailable"
         default: return "\(code)"
         }
     }

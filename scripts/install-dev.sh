@@ -12,31 +12,62 @@ cd "$(dirname "$0")/.."
 #
 #   ./scripts/install-dev.sh              # build (Release), then install + relaunch
 #   ./scripts/install-dev.sh --build-only # build only — no killall/copy/open
+#   ./scripts/install-dev.sh --ck-dev     # build against CloudKit DEVELOPMENT instead
+#                                         # of Production — see below
 #
 # --build-only is for CI-less verification and agents that must not disturb a
 # running instance. Requires full Xcode (not just the Command Line Tools),
 # xcodegen, and a Local.xcconfig with your DEVELOPMENT_TEAM set.
+#
+# --ck-dev: the CloudKit Production schema never auto-evolves, and every build
+# now targets Production (see CLAUDE.md) — so adding a synced model field (a new
+# ClipEntity attribute) silently breaks Production sync (CKError 2 /
+# partialFailure) until the field exists in the Development schema too. This
+# flag temporarily flips com.apple.developer.icloud-container-environment to
+# Development in Recallyx.entitlements, builds+installs, then restores the
+# entitlements file byte-for-byte (trap, like testflight.sh's Info.plist stamp)
+# so the working tree stays clean either way. Run it once, copy something to
+# create the new field in the Development schema, then in CloudKit Console:
+# Deploy Schema Changes to Production — then rebuild WITHOUT --ck-dev. Combine
+# with --build-only freely; the swap+restore wraps the same build either way.
 
 APP_NAME="Recallyx"
 APP_BUNDLE="${APP_NAME}.app"
 DEST_DIR="${HOME}/Applications"
 DERIVED="./.build/xcode"
+ENTITLEMENTS="Sources/Recallyx/Resources/Recallyx.entitlements"
 
 BUILD_ONLY=0
+CK_DEV=0
 for arg in "$@"; do
   case "${arg}" in
     --build-only) BUILD_ONLY=1 ;;
+    --ck-dev) CK_DEV=1 ;;
     -h|--help)
-      echo "Usage: $0 [--build-only]"
+      echo "Usage: $0 [--build-only] [--ck-dev]"
       exit 0
       ;;
     *)
       echo "Unknown option: ${arg}" >&2
-      echo "Usage: $0 [--build-only]" >&2
+      echo "Usage: $0 [--build-only] [--ck-dev]" >&2
       exit 2
       ;;
   esac
 done
+
+print_ck_dev_banner() {
+  echo "" >&2
+  echo "############################################################" >&2
+  echo "#  --ck-dev: this build talks to the CloudKit DEVELOPMENT   #" >&2
+  echo "#  environment, not Production.                            #" >&2
+  echo "#                                                           #" >&2
+  echo "#  Use it to create new schema fields: launch it, copy      #" >&2
+  echo "#  something (so the new field round-trips), then in       #" >&2
+  echo "#  CloudKit Console: Deploy Schema Changes to Production.   #" >&2
+  echo "#  Then rebuild WITHOUT --ck-dev before daily use.          #" >&2
+  echo "############################################################" >&2
+  echo "" >&2
+}
 
 # --- Preflight ---------------------------------------------------------------
 
@@ -82,6 +113,33 @@ if ! DEV_DIR="$(find_developer_dir)"; then
   exit 1
 fi
 
+# --- Optional CloudKit Development swap (--ck-dev) ---------------------------
+
+# Temporarily flip the entitlements' CloudKit environment to Development for
+# this build, then ALWAYS restore the original file byte-for-byte — even on
+# failure — via an EXIT trap, mirroring testflight.sh's Info.plist stamp.
+if [ "${CK_DEV}" -eq 1 ]; then
+  if [ ! -f "${ENTITLEMENTS}" ]; then
+    echo "✗ Entitlements file not found at ${ENTITLEMENTS}" >&2
+    exit 1
+  fi
+
+  ENTITLEMENTS_BACKUP="$(mktemp)"
+  cp "${ENTITLEMENTS}" "${ENTITLEMENTS_BACKUP}"
+  restore_entitlements() {
+    cp "${ENTITLEMENTS_BACKUP}" "${ENTITLEMENTS}"
+    rm -f "${ENTITLEMENTS_BACKUP}"
+  }
+  trap restore_entitlements EXIT
+
+  echo "→ --ck-dev: swapping ${ENTITLEMENTS} to the Development CloudKit environment (restored after)"
+  /usr/libexec/PlistBuddy -c \
+    "Set :com.apple.developer.icloud-container-environment Development" \
+    "${ENTITLEMENTS}"
+
+  print_ck_dev_banner
+fi
+
 # --- Generate + build --------------------------------------------------------
 
 echo "→ xcodegen generate"
@@ -100,6 +158,10 @@ PRODUCT="${DERIVED}/Build/Products/Release/${APP_BUNDLE}"
 [ -d "${PRODUCT}" ] || { echo "✗ built app not found at ${PRODUCT}" >&2; exit 1; }
 
 echo "✓ Built ${PRODUCT}"
+
+if [ "${CK_DEV}" -eq 1 ]; then
+  print_ck_dev_banner
+fi
 
 if [ "${BUILD_ONLY}" -eq 1 ]; then
   echo "→ --build-only: skipping killall / install / launch"
