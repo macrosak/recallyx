@@ -26,12 +26,25 @@ enum AccessibilityError: LocalizedError {
 @MainActor
 final class AccessibilityClient {
     private var promptShownThisSession = false
+    private var systemPromptRequestedThisSession = false
 
     func isTrusted() -> Bool { AXIsProcessTrusted() }
 
     @discardableResult
     func ensureTrustedOrPrompt() -> Bool {
         if isTrusted() { return true }
+        // Ask the system to pop *its own* permission dialog first. This is the
+        // only call that RE-REGISTERS the app's row in System Settings →
+        // Privacy & Security → Accessibility: after a `tccutil reset` the row
+        // is gone, and a plain `AXIsProcessTrusted()` never brings it back, so
+        // the user opens Settings and finds nothing to enable. macOS ignores
+        // repeat prompts within one process, so gate it once per session too
+        // (no spamming; the follow-up alert carries the relaunch instruction).
+        if !systemPromptRequestedThisSession {
+            systemPromptRequestedThisSession = true
+            let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
+            _ = AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+        }
         if !promptShownThisSession {
             promptShownThisSession = true
             showAlert()
@@ -153,9 +166,9 @@ final class AccessibilityClient {
         let alert = NSAlert()
         alert.messageText = "Recallyx needs Accessibility permission"
         alert.informativeText = """
-        To paste clips back into other apps (⌘⇧V) and to grab the current selection (⌃⇧V), Recallyx needs Accessibility access. Enable it in System Settings → Privacy & Security → Accessibility.
+        To paste clips back into other apps (⌘⇧V) and to grab the current selection (⌃⇧V), Recallyx needs Accessibility access. Turn on Recallyx in System Settings → Privacy & Security → Accessibility (the row is added automatically).
 
-        After granting access, quit and relaunch the app (permissions are read only at process start).
+        After enabling the toggle, quit and relaunch the app (permissions are read only at process start).
         """
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Open Settings")
