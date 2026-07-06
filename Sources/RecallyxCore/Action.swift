@@ -5,6 +5,30 @@ public enum StepType: String, Codable, Equatable {
     case ai
 }
 
+/// What happens to an action's result once the pipeline finishes.
+///   • `paste`  — set the clipboard and synth-⌘V into the source app (default).
+///   • `copy`   — set the clipboard only; don't paste (keeps the current
+///                selection / target field intact).
+///   • `show`   — display the result in the panel (selectable + a Copy button);
+///                don't touch the clipboard until the user copies.
+///   • `append` — add the result silently to the top of history; no clipboard
+///                change, no paste.
+public enum OutputMode: String, Codable, Equatable, CaseIterable {
+    case paste
+    case copy
+    case show
+    case append
+
+    public var label: String {
+        switch self {
+        case .paste: return "Paste"
+        case .copy: return "Copy"
+        case .show: return "Show"
+        case .append: return "Append"
+        }
+    }
+}
+
 /// One stage of an action pipeline. A `.script` step pipes text through a bash
 /// filter; an `.ai` step runs it through OpenAI with `prompt` (and an optional
 /// per-step model override). Generalizes AI Replace's fixed pre/AI/post stages.
@@ -41,12 +65,34 @@ public struct Action: Codable, Identifiable, Equatable {
     /// SF Symbol name.
     public var icon: String
     public var steps: [Step]
+    /// What to do with the result once the pipeline finishes. Defaults to
+    /// `.paste` (today's behavior); a decode of a pre-feature action (no
+    /// `output` key) also lands on `.paste`.
+    public var output: OutputMode
 
-    public init(id: UUID = UUID(), name: String, icon: String, steps: [Step]) {
+    public init(id: UUID = UUID(), name: String, icon: String, steps: [Step], output: OutputMode = .paste) {
         self.id = id
         self.name = name
         self.icon = icon
         self.steps = steps
+        self.output = output
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, icon, steps, output
+    }
+
+    // Custom decode so a saved action from before this feature (no `output`
+    // key) decodes cleanly to `.paste` — a synthesized decoder would reject the
+    // missing key. An unknown/future value also falls back to `.paste`. `encode`
+    // stays synthesized (all fields are non-optional + Codable).
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        icon = try c.decode(String.self, forKey: .icon)
+        steps = try c.decode([Step].self, forKey: .steps)
+        output = (try? c.decodeIfPresent(OutputMode.self, forKey: .output)) ?? .paste
     }
 
     /// A SCRIPT/AI tag for the action menu — AI if any AI step is present.
@@ -134,7 +180,30 @@ public struct Action: Codable, Identifiable, Equatable {
         let existingNames = Set(existing.map(\.name))
         let missing = defaults().filter { !existingNames.contains($0.name) }
         return existing + missing.map {
-            Action(name: $0.name, icon: $0.icon, steps: $0.steps)
+            Action(name: $0.name, icon: $0.icon, steps: $0.steps, output: $0.output)
+        }
+    }
+}
+
+/// What `AppDelegate.runAction` should do with an action's result, decided from
+/// the action's `output` mode. An empty / whitespace-only result skips
+/// regardless of mode (pasting/copying "" would clobber the user's selection or
+/// clipboard). Pure + testable — the delegate switches on the outcome and does
+/// the AppKit side-effects (paste / clipboard / panel / store.add).
+public enum ActionOutcome: Equatable {
+    case skipEmpty
+    case paste(String)
+    case copy(String)
+    case show(String)
+    case append(String)
+
+    public static func plan(output: OutputMode, result: String) -> ActionOutcome {
+        guard !ActionRunner.isEmptyResult(result) else { return .skipEmpty }
+        switch output {
+        case .paste: return .paste(result)
+        case .copy: return .copy(result)
+        case .show: return .show(result)
+        case .append: return .append(result)
         }
     }
 }

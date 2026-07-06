@@ -66,8 +66,9 @@ public final class ActionRunner {
     /// True when a run produced nothing worth pasting (empty / whitespace-only).
     /// Pasting such a result would set the clipboard to "" and synth-⌘V over the
     /// user's current selection, silently wiping it — callers use this to skip
-    /// the paste and surface a no-op instead. Pure + testable.
-    public static func isEmptyResult(_ result: String) -> Bool {
+    /// the paste and surface a no-op instead. Pure + testable. `nonisolated` so
+    /// it's callable from the actor-free `ActionOutcome.plan`.
+    public nonisolated static func isEmptyResult(_ result: String) -> Bool {
         result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
