@@ -89,7 +89,16 @@ final class HistoryPanelController {
         show(focusId: id, inputPromptAction: action)
     }
 
-    func show(openActionsOnTop: Bool = false, focusId: UUID? = nil, inputPromptAction: Action? = nil) {
+    /// Output-mode `show` entry point: open (or reopen) the panel displaying an
+    /// action's result in a selectable, copyable result view. Called from
+    /// `AppDelegate.runAction` after the async run completes — the panel was
+    /// dismissed when the action started, so this is a fresh open.
+    func showResult(_ text: String) {
+        if isVisible { dismiss() }
+        show(resultText: text)
+    }
+
+    func show(openActionsOnTop: Bool = false, focusId: UUID? = nil, inputPromptAction: Action? = nil, resultText: String? = nil) {
         guard !isVisible else { return }
         // Kick a best-effort CloudKit pull so this (or, more reliably, the next)
         // open shows fresh remote clips. Fire-and-forget + async so it never
@@ -151,12 +160,19 @@ final class HistoryPanelController {
 
         // ⌃⇧V: jump straight to the captured clip's action menu (by id, so
         // pinned-first ordering doesn't hijack the selection).
-        if let inputPromptAction {
+        if let resultText {
+            viewModel.enterResult(resultText)
+        } else if let inputPromptAction {
             viewModel.openInputPrompt(for: inputPromptAction, focusId: focusId)
         } else if openActionsOnTop {
             viewModel.openActionsOnTop(focusId: focusId)
         }
-        log("panel_open", ["mode": inputPromptAction != nil ? "actionInput" : (openActionsOnTop ? "transform" : "history")])
+        let openMode: String
+        if resultText != nil { openMode = "actionResult" }
+        else if inputPromptAction != nil { openMode = "actionInput" }
+        else if openActionsOnTop { openMode = "transform" }
+        else { openMode = "history" }
+        log("panel_open", ["mode": openMode])
         Log.info("history panel shown items=\(viewModel.filtered.count) actionsOnTop=\(openActionsOnTop)")
     }
 
@@ -346,6 +362,12 @@ final class HistoryPanelController {
             if isEsc { vm.cancel(); return nil }
             if isTab { vm.tab(); return nil }
             return event
+
+        case .result:
+            // esc closes; everything else (⌘C copy, ⌘A select-all, arrows to
+            // scroll/select) flows to the focused result text view.
+            if isEsc { vm.cancel(); return nil }
+            return event
         }
     }
 }
@@ -366,6 +388,7 @@ extension HistoryPanelController {
         case .edit: vm.editBody = text
         case .inputPrompt: vm.inputText = text
         case .list, .actions: vm.query = text
+        case .result: break // result view has no editable field
         }
     }
 

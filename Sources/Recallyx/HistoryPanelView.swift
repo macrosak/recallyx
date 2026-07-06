@@ -26,24 +26,30 @@ struct HistoryPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            searchBar
-            if viewModel.isEmpty {
-                EmptyHistoryView(theme: theme)
-                    .frame(height: 470)
-            } else if viewModel.filtered.isEmpty {
-                NoMatchesView(query: viewModel.query, theme: theme)
+            if viewModel.mode == .result {
+                ResultHeader(theme: theme)
+                ResultColumn(text: viewModel.resultText, theme: theme)
                     .frame(height: 470)
             } else {
-                HStack(spacing: 0) {
-                    leftColumn
-                        .frame(maxWidth: .infinity)
-                        .overlay(alignment: .trailing) {
-                            Rectangle().fill(theme.hairline).frame(width: 0.5)
-                        }
-                    rightColumn
-                        .frame(maxWidth: .infinity)
+                searchBar
+                if viewModel.isEmpty {
+                    EmptyHistoryView(theme: theme)
+                        .frame(height: 470)
+                } else if viewModel.filtered.isEmpty {
+                    NoMatchesView(query: viewModel.query, theme: theme)
+                        .frame(height: 470)
+                } else {
+                    HStack(spacing: 0) {
+                        leftColumn
+                            .frame(maxWidth: .infinity)
+                            .overlay(alignment: .trailing) {
+                                Rectangle().fill(theme.hairline).frame(width: 0.5)
+                            }
+                        rightColumn
+                            .frame(maxWidth: .infinity)
+                    }
+                    .frame(height: 470)
                 }
-                .frame(height: 470)
             }
             HintBar(items: hints, theme: theme)
         }
@@ -76,6 +82,7 @@ struct HistoryPanelView: View {
         switch mode {
         case .list, .actions: focus = .search
         case .custom, .edit, .inputPrompt: focus = .editor
+        case .result: focus = nil // the result text view takes focus on click
         }
     }
 
@@ -114,6 +121,11 @@ struct HistoryPanelView: View {
                 HintItem(keys: ["↵"], label: last ? "run" : "next"),
                 HintItem(keys: ["esc"], label: "back"),
             ]
+        case .result:
+            return [
+                HintItem(keys: ["⌘", "C"], label: "Copy"),
+                HintItem(keys: ["esc"], label: "Close"),
+            ]
         }
     }
 
@@ -125,6 +137,8 @@ struct HistoryPanelView: View {
         case .list: list
         // The clip you're acting on becomes the context column.
         case .actions, .custom, .edit, .inputPrompt: detail(viewModel.actionItem)
+        // Result mode renders its own full-panel view (see body); unreached here.
+        case .result: Color.clear
         }
     }
 
@@ -175,6 +189,8 @@ struct HistoryPanelView: View {
             } else {
                 Color.clear
             }
+        case .result:
+            Color.clear // result mode renders its own full-panel view (see body)
         }
     }
 
@@ -464,6 +480,86 @@ struct DetailPaneView: View {
     }
 
     private var byteString: String { ByteFormat.string(item.byteSize) }
+}
+
+/// Header bar for the `show`-output result view — same height as the search bar
+/// so the panel chrome doesn't jump.
+struct ResultHeader: View {
+    let theme: RXTheme
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(theme.accent)
+            Text("Result")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(theme.text)
+            Spacer()
+        }
+        .padding(.horizontal, 18)
+        .frame(height: 54)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.hairline).frame(height: 0.5)
+        }
+    }
+}
+
+/// The `show`-output result view: the produced text, selectable (native ⌘C /
+/// ⌘A) plus a Copy-all button. Copying is unmarked, so the copied text re-enters
+/// history like any pasteboard write. Esc (handled by the controller) closes.
+struct ResultColumn: View {
+    let text: String
+    let theme: RXTheme
+
+    @State private var copied = false
+    @State private var resetTask: Task<Void, Never>?
+    // Stable id so LargeTextView doesn't reload/reset scroll on re-render.
+    @State private var textID = UUID()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            LargeTextView(text: text, itemID: textID, theme: theme, onCopy: nil)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 18)
+            HStack {
+                Spacer()
+                Button(action: copyAll) {
+                    HStack(spacing: 6) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 12, weight: .medium))
+                        Text(copied ? "Copied" : "Copy")
+                            .font(.system(size: 12.5, weight: .medium))
+                    }
+                    .foregroundStyle(copied ? theme.good : theme.text)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(theme.chip))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.chipBorder, lineWidth: 0.5))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 11)
+            .overlay(alignment: .top) {
+                Rectangle().fill(theme.hairline).frame(height: 0.5)
+            }
+        }
+    }
+
+    private func copyAll() {
+        // Unmarked pasteboard write — the watcher captures it as a fresh clip,
+        // just like the paste/copy output paths.
+        Paster.setClipboardText(text)
+        copied = true
+        resetTask?.cancel()
+        resetTask = Task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            if !Task.isCancelled { copied = false }
+        }
+    }
 }
 
 /// Empty / first-run state, mirroring the proposal's empty panel.

@@ -100,6 +100,7 @@ struct SettingsActionsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 header(binding)
                 shortcutSection(binding.wrappedValue)
+                outputSection(binding)
                 stepsSection(binding)
                 Text("Text flows through enabled steps in order — disabled steps are skipped, a failing step aborts before pasting. Text-only in v1.")
                     .font(.system(size: 11.5))
@@ -137,6 +138,37 @@ struct SettingsActionsView: View {
                 SectionLabel(text: "Action name", theme: theme)
                 SettingsField(text: action.name, placeholder: "Name", width: nil, theme: theme)
             }
+        }
+    }
+
+    // MARK: - Output
+
+    /// Per-action output mode: what happens with the result once the pipeline
+    /// finishes — paste it (default), copy it, show it in the panel, or append
+    /// it silently to history.
+    private func outputSection(_ action: Binding<Action>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SectionLabel(text: "Output", theme: theme)
+            Picker("", selection: action.output) {
+                ForEach(OutputMode.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 320)
+            Text(outputCaption(action.wrappedValue.output))
+                .font(.system(size: 11.5))
+                .foregroundStyle(theme.textFaint)
+        }
+    }
+
+    private func outputCaption(_ mode: OutputMode) -> String {
+        switch mode {
+        case .paste: return "Pastes the result into the app you triggered the action from."
+        case .copy: return "Copies the result to the clipboard without pasting."
+        case .show: return "Shows the result in the panel — copy it from there."
+        case .append: return "Adds the result to history without pasting or copying."
         }
     }
 

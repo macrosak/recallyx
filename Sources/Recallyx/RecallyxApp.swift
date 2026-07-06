@@ -473,20 +473,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } else {
                     result = try await actionRunner.run(action, on: item.text ?? "")
                 }
-                // An empty/whitespace-only result must NOT paste — doing so would
-                // set the clipboard to "" and synth-⌘V over the user's current
-                // selection, silently wiping it. Surface a no-op instead.
-                guard !ActionRunner.isEmptyResult(result) else {
+                // Branch on the action's output mode. An empty/whitespace-only
+                // result skips regardless (pasting/copying "" would clobber the
+                // user's selection or clipboard). The decision is the pure
+                // `ActionOutcome.plan`; the side-effects live here.
+                switch ActionOutcome.plan(output: action.output, result: result) {
+                case .skipEmpty:
                     journal.log("action_error", ["name": action.name, "category": "emptyResult"])
-                    Log.info("action produced no output — skipping paste")
+                    Log.info("action produced no output — skipping")
                     state.flash(.error("no output"))
                     notifier.notify(body: "Action produced no output.")
-                    return
+                case .paste(let text):
+                    Paster.setClipboardText(text)
+                    guard ensurePasteTrusted() else { return }
+                    await Paster.activateAndPaste(sourceApp: app)
+                    state.flash(.success)
+                case .copy(let text):
+                    // Set the clipboard but DON'T paste — leaves the user's
+                    // selection/target field intact. NOT markSelfWrite'd, so the
+                    // watcher captures the result as a fresh top clip, exactly
+                    // like today's (also-unmarked) paste path.
+                    Paster.setClipboardText(text)
+                    state.flash(.success)
+                    notifier.notify(body: "Result copied to the clipboard.")
+                case .show(let text):
+                    // Show the result in the panel; don't touch the clipboard
+                    // until the user copies it there (the panel's Copy button /
+                    // ⌘C, both unmarked so they enter history).
+                    state.flash(.success)
+                    historyPanel?.showResult(text)
+                case .append(let text):
+                    appendActionResult(text)
+                    state.flash(.success)
+                    notifier.notify(body: "Result added to history.")
                 }
-                Paster.setClipboardText(result)
-                guard ensurePasteTrusted() else { return }
-                await Paster.activateAndPaste(sourceApp: app)
-                state.flash(.success)
             } catch let ActionError.missingApiKey(provider) {
                 journal.log("action_error", ["name": action.name, "category": "missingApiKey"])
                 state.flash(.error("no key"))
@@ -521,6 +541,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Append an action's result silently to the top of history (output mode
+    /// `append`) — no clipboard change, no paste. Tagged as captured by Recallyx
+    /// on this device, mirroring every other `store.add` capture site.
+    private func appendActionResult(_ text: String) {
+        let clip = CapturedClip(
+            kind: .text, text: text, imageData: nil,
+            preview: String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(280)),
+            byteSize: text.utf8.count,
+            sourceAppBundleID: Bundle.main.bundleIdentifier,
+            sourceAppName: "Recallyx",
+            sourceAppPath: Bundle.main.bundlePath,
+            contentHash: ContentHash.of(text: text), imageDimensions: nil,
+            sourceDeviceName: DeviceOrigin.name, sourceDeviceType: DeviceOrigin.type
+        )
+        _ = store.add(clip)
+        Log.info("action result appended to history len=\(text.count)")
+    }
+
     /// Build the non-sensitive `action_run` event fields. Never includes the
     /// clip contents — only the action name (local-only, so a user-named action
     /// is fine), its kind/step types, the resolved provider, the clip kind, and
@@ -535,6 +573,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "provider": provider.map { $0 as Any } ?? NSNull(),
             "clipKind": item.kind.rawValue,
             "custom": action.name == "Custom",
+            "output": action.output.rawValue,
         ]
     }
 

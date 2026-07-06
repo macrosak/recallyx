@@ -72,6 +72,21 @@ struct HistoryPanelViewModelTests {
         #expect(ran?.name == "Upper")
     }
 
+    @Test func enterResult_showsResultMode() {
+        let vm = makeVM([textItem("hi")])
+        vm.enterResult("the output")
+        #expect(vm.mode == .result)
+        #expect(vm.resultText == "the output")
+    }
+
+    @Test func escFromResult_dismisses() {
+        var dismissed = false
+        let vm = HistoryPanelViewModel(items: [textItem("hi")], onBuiltin: { _, _ in }, onDismiss: { dismissed = true })
+        vm.enterResult("out")
+        vm.cancel()
+        #expect(dismissed)
+    }
+
     @Test func escFromActions_returnsToList() {
         let vm = makeVM([textItem("hi")])
         vm.tab()

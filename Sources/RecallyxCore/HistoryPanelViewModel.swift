@@ -17,6 +17,9 @@ public final class HistoryPanelViewModel: ObservableObject {
         /// Collecting a run-time `{{INPUT:Label}}` value before running an action
         /// (one column per placeholder; ↵ advances / runs, esc backs out).
         case inputPrompt
+        /// Showing an action's result (output mode `show`): a full-panel,
+        /// selectable text view + Copy button; esc closes.
+        case result
     }
 
     /// The same search field serves two domains: clips in list mode, the action
@@ -74,8 +77,13 @@ public final class HistoryPanelViewModel: ObservableObject {
         case .list: return "\(filtered.count) clips"
         case .actions: return "\(filteredMenuItems.count) actions"
         case .custom, .edit, .inputPrompt: return "\(menuItems.count) actions"
+        case .result: return "Result"
         }
     }
+
+    /// The result text shown in `.result` mode (output mode `show`). Set via
+    /// `enterResult`; empty otherwise.
+    @Published public private(set) var resultText: String = ""
 
     // Ad-hoc AI state.
     @Published public var customText: String = ""
@@ -220,7 +228,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list: stepList(by: -1)
         case .actions: stepAction(by: -1)
-        case .custom, .edit, .inputPrompt: break
+        case .custom, .edit, .inputPrompt, .result: break
         }
     }
 
@@ -228,7 +236,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list: stepList(by: 1)
         case .actions: stepAction(by: 1)
-        case .custom, .edit, .inputPrompt: break
+        case .custom, .edit, .inputPrompt, .result: break
         }
     }
 
@@ -248,6 +256,8 @@ public final class HistoryPanelViewModel: ObservableObject {
             break // ⌘↵ runs (see runEdit); plain ↵ adds a newline in the editor
         case .inputPrompt:
             confirmInput()
+        case .result:
+            break // ↵ is inert; the Copy button / ⌘C copies, esc closes
         }
     }
 
@@ -345,13 +355,21 @@ public final class HistoryPanelViewModel: ObservableObject {
         return savedSoFar
     }
 
-    /// esc — actions/custom/edit: step back; list: close the panel.
+    /// esc — actions/custom/edit: step back; list/result: close the panel.
     public func cancel() {
         switch mode {
         case .actions: returnToList()
         case .custom, .edit, .inputPrompt: backToActions()
-        case .list: onDismiss()
+        case .list, .result: onDismiss()
         }
+    }
+
+    /// Enter `.result` mode to display an action's output (output mode `show`).
+    /// Opened fresh by the controller after the async run completes, so there's
+    /// no prior action state to preserve — esc just closes.
+    public func enterResult(_ text: String) {
+        resultText = text
+        mode = .result
     }
 
     /// Open the action menu on the clip with `focusId` (the ⌃⇧V captured
@@ -422,7 +440,7 @@ public final class HistoryPanelViewModel: ObservableObject {
             }
         case .edit:
             advanceEditStep()
-        case .custom, .inputPrompt:
+        case .custom, .inputPrompt, .result:
             break
         }
     }
@@ -725,7 +743,7 @@ public final class HistoryPanelViewModel: ObservableObject {
         switch mode {
         case .list: refreshClips(); recomputeTokenSuggestions()
         case .actions: applyMenuFilter(); actionIndex = 0; clearTokenSuggestions()
-        case .custom, .edit, .inputPrompt: clearTokenSuggestions()   // the field isn't the active control here
+        case .custom, .edit, .inputPrompt, .result: clearTokenSuggestions()   // the field isn't the active control here
         }
     }
 
