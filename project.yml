@@ -48,6 +48,21 @@ targets:
     dependencies:
       - package: RecallyxCore
         product: RecallyxCore
+      # Ship the `recallyx` CLI inside the app at Contents/Helpers/recallyx so the
+      # DMG and this team-signed build both carry it (Settings → General installs
+      # it into /usr/local/bin). A native `tool` target (built from the same
+      # Sources/recallyx-cli the SPM `recallyx-cli` product uses) is the
+      # least-fragile mechanism: Xcode builds + signs it as a first-class target,
+      # and this copy-files phase re-signs it into Helpers with the app's
+      # identity (`codeSign: true`). The alternative — a run-script phase calling
+      # `swift build --product recallyx-cli` — would mix SPM into xcodebuild,
+      # fight script sandboxing, and duplicate the RecallyxCore build.
+      - target: RecallyxCLI
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper       # Contents/…
+          subpath: Helpers           #   → Contents/Helpers/recallyx
     settings:
       base:
         INFOPLIST_FILE: Sources/Recallyx/Resources/Info.plist
@@ -67,6 +82,27 @@ targets:
         # No app-sandbox: it would break the AX/hotkey/paste paths.
         CODE_SIGN_ENTITLEMENTS: Sources/Recallyx/Resources/Recallyx.entitlements
 
+  # The `recallyx` command-line tool, built as a native Xcode command-line-tool
+  # target from the SAME sources as the SPM `recallyx-cli` product. The app
+  # target embeds its product into Contents/Helpers/recallyx (see above). Product
+  # name is `recallyx` so the bundled binary matches the install path. No
+  # entitlements / no sandbox — a plain CLI. This is macOS-only; the ad-hoc
+  # scripts/bundle.sh release path builds the same CLI via `swift build`.
+  RecallyxCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/recallyx-cli
+    dependencies:
+      - package: RecallyxCore
+        product: RecallyxCore
+    settings:
+      base:
+        PRODUCT_NAME: recallyx
+        # A bare CLI is not a bundle, so it has no Info.plist of its own; let
+        # Xcode synthesize the minimal one it needs.
+        GENERATE_INFOPLIST_FILE: YES
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
 
   # iOS companion app — a second application target on the shared RecallyxCore
   # package. iOS builds are Xcode-only and local; the ad-hoc scripts/bundle.sh +
