@@ -148,6 +148,38 @@ struct SettingsStoreTests {
         #expect(store.settings.actions.isEmpty)
     }
 
+    // MARK: - first-run showcase flags
+
+    @Test func firstRunFlags_defaultFalse() {
+        let store = SettingsStore(defaults: makeDefaults())
+        #expect(store.settings.firstRunHandled == false)
+        #expect(store.settings.firstRunShowcaseCompleted == false)
+    }
+
+    @Test func firstRunFlags_absentInBlob_defaultFalse() throws {
+        // A pre-feature blob (no first-run keys) must decode both to false so an
+        // existing install evaluates the showcase once at its next panel open.
+        let defaults = makeDefaults()
+        let partial = try JSONSerialization.data(withJSONObject: ["retentionCap": 500])
+        defaults.set(partial, forKey: SettingsStore.storageKey)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.settings.firstRunHandled == false)
+        #expect(store.settings.firstRunShowcaseCompleted == false)
+    }
+
+    @Test func firstRunFlags_roundTrip() {
+        let defaults = makeDefaults()
+        let store = SettingsStore(defaults: defaults)
+        store.settings.firstRunHandled = true
+        store.settings.firstRunShowcaseCompleted = true
+        store.flush()
+
+        let reloaded = SettingsStore(defaults: defaults)
+        #expect(reloaded.settings.firstRunHandled == true)
+        #expect(reloaded.settings.firstRunShowcaseCompleted == true)
+    }
+
     @Test func ollamaBaseURL_defaultsAndRoundTrips() {
         let defaults = makeDefaults()
         let store = SettingsStore(defaults: defaults)

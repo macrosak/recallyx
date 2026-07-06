@@ -27,6 +27,17 @@ struct AppSettings: Codable, Equatable {
     /// counterpart to the otherwise-ephemeral stderr/os_log output, so a bug is
     /// already captured on disk when the user reports it.
     var fileLogEnabled: Bool
+    /// First-run showcase — seed-decision guard (default false). Flips true the
+    /// first time the panel evaluates the first-run logic, whatever the outcome
+    /// (seeded a sample, or an existing/non-empty store). Gates re-seeding so a
+    /// later `RECALLYX_DATA_DIR` debug run (empty history, SHARED UserDefaults)
+    /// never re-seeds a sample clip. See `FirstRunShowcase.shouldSeed`.
+    var firstRunHandled: Bool
+    /// First-run showcase — hint-done flag (default false). The one-line ⇥ hint
+    /// shows in list mode while this is false; it flips true (persisted) when the
+    /// user opens an action menu once, dismisses the hint, or on any existing
+    /// install where the sample was never seeded. Never shows again after that.
+    var firstRunShowcaseCompleted: Bool
     /// Model used by AI steps that don't override it.
     var defaultModel: String
     /// User-defined script/AI action pipelines shown in the Tab menu.
@@ -64,6 +75,7 @@ struct AppSettings: Codable, Equatable {
         case retentionCap, captureSensitive, launchAtLogin, usageJournalEnabled
         case iCloudSyncEnabled
         case fileLogEnabled, defaultModel, actions, ollamaBaseURL, providers
+        case firstRunHandled, firstRunShowcaseCompleted
         case searchHistoryShortcut, transformSelectionShortcut, actionShortcuts
     }
 
@@ -77,6 +89,8 @@ struct AppSettings: Codable, Equatable {
             && lhs.iCloudSyncEnabled == rhs.iCloudSyncEnabled
             && lhs.usageJournalEnabled == rhs.usageJournalEnabled
             && lhs.fileLogEnabled == rhs.fileLogEnabled
+            && lhs.firstRunHandled == rhs.firstRunHandled
+            && lhs.firstRunShowcaseCompleted == rhs.firstRunShowcaseCompleted
             && lhs.defaultModel == rhs.defaultModel
             && lhs.actions == rhs.actions
             && lhs.ollamaBaseURL == rhs.ollamaBaseURL
@@ -93,6 +107,8 @@ struct AppSettings: Codable, Equatable {
         iCloudSyncEnabled: Bool = false,
         usageJournalEnabled: Bool = false,
         fileLogEnabled: Bool = true,
+        firstRunHandled: Bool = false,
+        firstRunShowcaseCompleted: Bool = false,
         defaultModel: String = ModelCatalog.default,
         actions: [Action] = Action.defaults(),
         ollamaBaseURL: String = AppSettings.defaultOllamaBaseURL,
@@ -107,6 +123,8 @@ struct AppSettings: Codable, Equatable {
         self.iCloudSyncEnabled = iCloudSyncEnabled
         self.usageJournalEnabled = usageJournalEnabled
         self.fileLogEnabled = fileLogEnabled
+        self.firstRunHandled = firstRunHandled
+        self.firstRunShowcaseCompleted = firstRunShowcaseCompleted
         self.defaultModel = defaultModel
         self.actions = actions
         self.ollamaBaseURL = ollamaBaseURL
@@ -139,6 +157,13 @@ struct AppSettings: Codable, Equatable {
         // Default ON: absent (older blobs) or malformed → enabled, so existing
         // installs start persisting logs without any user action.
         fileLogEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .fileLogEnabled)) ?? true
+        // Both default false: an older blob (absent keys) or a malformed value is
+        // treated as "not yet handled / not completed". A pre-feature install
+        // therefore evaluates the first-run logic once at its next panel open —
+        // and, having a non-empty store, is immediately marked completed with no
+        // sample seeded and no hint shown (see AppDelegate.prepareFirstRunShowcase).
+        firstRunHandled = (try? c.decodeIfPresent(Bool.self, forKey: .firstRunHandled)) ?? false
+        firstRunShowcaseCompleted = (try? c.decodeIfPresent(Bool.self, forKey: .firstRunShowcaseCompleted)) ?? false
         defaultModel = (try? c.decodeIfPresent(String.self, forKey: .defaultModel)) ?? ModelCatalog.default
         // Absent or malformed → seed defaults; a present-but-empty [] (the user
         // deleted them all) decodes to [] and is preserved.
