@@ -20,6 +20,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let syncMonitor: SyncActivityMonitor?
     private let syncActive: Bool
     private let syncNow: () -> Void
+    private let liveModelCatalog: LiveModelCatalog
+    /// Kicks a live model-list refresh (`force` re-fetches even within the TTL,
+    /// used right after a key/URL save). Called on every Settings open.
+    private let refreshModels: (_ force: Bool) -> Void
     private var window: NSWindow?
 
     init(
@@ -34,7 +38,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         relaunch: @escaping () -> Void = {},
         syncMonitor: SyncActivityMonitor? = nil,
         syncActive: Bool = false,
-        syncNow: @escaping () -> Void = {}
+        syncNow: @escaping () -> Void = {},
+        liveModelCatalog: LiveModelCatalog,
+        refreshModels: @escaping (_ force: Bool) -> Void = { _ in }
     ) {
         self.settingsStore = settingsStore
         self.clearHistory = clearHistory
@@ -48,6 +54,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         self.syncMonitor = syncMonitor
         self.syncActive = syncActive
         self.syncNow = syncNow
+        self.liveModelCatalog = liveModelCatalog
+        self.refreshModels = refreshModels
         super.init()
     }
 
@@ -59,6 +67,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     func show(tab: SettingsTab = .general) {
+        // Every open refreshes the live model lists (TTL-throttled in the catalog).
+        refreshModels(false)
         if let window {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
@@ -78,6 +88,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             syncMonitor: syncMonitor,
             syncActive: syncActive,
             syncNow: syncNow,
+            liveModelCatalog: liveModelCatalog,
+            refreshModels: refreshModels,
             initialTab: tab
         )
         let hosting = NSHostingController(rootView: view)

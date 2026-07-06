@@ -67,6 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The single CloudKit sync observer — drives the Settings + menu-bar "Last
     /// sync" status line. Observed by `StatusItemView` (built in the App body).
     let syncMonitor = SyncActivityMonitor()
+    /// Live, per-provider model lists fetched from each enabled provider's API
+    /// (with the hardcoded `ModelCatalog` as fallback). Refreshed when Settings
+    /// opens and when a provider key/URL is saved — never at launch (no network
+    /// at launch; AI calls only on explicit user action).
+    let liveModelCatalog = LiveModelCatalog()
     /// Whether CloudKit mirroring is actually running (sync on + entitled + built
     /// with it) — gates the menu-bar / Settings "Last sync" line.
     var isCloudSyncActive: Bool { store.isCloudSyncActive }
@@ -179,7 +184,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             syncActive: store.isCloudSyncActive,
             // Explicit "Sync now" kick — no throttle (minInterval 0), unlike the
             // 300s-throttled ⌘⇧V panel-open kick.
-            syncNow: { [weak self] in self?.store.refreshFromCloud(minInterval: 0) }
+            syncNow: { [weak self] in self?.store.refreshFromCloud(minInterval: 0) },
+            liveModelCatalog: liveModelCatalog,
+            // Opening Settings is an explicit user action → refresh every enabled
+            // provider's model list (TTL-throttled inside the catalog).
+            refreshModels: { [weak self] force in
+                guard let self else { return }
+                self.liveModelCatalog.refresh(providers: self.settingsStore.settings.providers, force: force)
+            }
         )
         self.settingsWindow = settingsWindow
 

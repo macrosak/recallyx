@@ -8,6 +8,8 @@ struct SettingsActionsView: View {
     @ObservedObject var settingsStore: SettingsStore
     /// Hotkey seam for the per-action global-shortcut recorder.
     let shortcutActions: ShortcutActions
+    /// Live, per-provider model lists — feeds the per-step model-override picker.
+    @ObservedObject var liveModelCatalog: LiveModelCatalog
     let theme: SettingsTheme
 
     @State private var selectedID: UUID?
@@ -236,7 +238,7 @@ struct SettingsActionsView: View {
                     StepCard(
                         step: action.steps[idx],
                         theme: theme,
-                        availableGroups: ModelCatalog.availableGroups(for: settingsStore.settings.providers),
+                        availableGroups: liveModelCatalog.groups(for: settingsStore.settings.providers),
                         canMoveUp: idx > 0,
                         canMoveDown: idx < action.wrappedValue.steps.count - 1,
                         onMoveUp: { move(action, from: idx, to: idx - 1) },

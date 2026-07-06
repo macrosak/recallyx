@@ -8,6 +8,9 @@ import RecallyxCore
 /// appear in the Default-model + per-step pickers.
 struct SettingsProvidersView: View {
     @ObservedObject var settingsStore: SettingsStore
+    /// Kicks a live model-list refresh (`force` re-fetches even within the TTL).
+    /// Called after a key/URL save so a just-configured provider's models appear.
+    var refreshModels: (_ force: Bool) -> Void = { _ in }
     let theme: SettingsTheme
 
     @State private var selectedID: UUID?
@@ -118,7 +121,8 @@ struct SettingsProvidersView: View {
                 ProviderEditor(
                     provider: binding,
                     theme: theme,
-                    keychainRevision: $keychainRevision
+                    keychainRevision: $keychainRevision,
+                    refreshModels: refreshModels
                 )
                 .padding(.horizontal, 20)
                 .padding(.vertical, 18)
@@ -215,6 +219,9 @@ struct ProviderEditor: View {
     @Binding var provider: ProviderConfig
     let theme: SettingsTheme
     @Binding var keychainRevision: Int
+    /// Re-fetch model lists after a key/URL save so the pickers pick up the newly
+    /// configured provider's real models.
+    var refreshModels: (_ force: Bool) -> Void = { _ in }
 
     @State private var apiKey: String = ""
     @State private var showKey: Bool = false
@@ -429,6 +436,8 @@ struct ProviderEditor: View {
             provider.keychainAccount = keychain.account
         }
         keychainRevision += 1
+        // A just-saved key/URL can now fetch this provider's real model list.
+        refreshModels(true)
     }
 
     /// Tests the key as typed WITHOUT persisting it. Cloud providers hit their
