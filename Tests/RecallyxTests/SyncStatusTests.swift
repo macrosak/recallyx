@@ -142,6 +142,33 @@ struct SyncActivityMonitorTests {
         #expect(!cat.contains("secret"))   // never the message
     }
 
+    // Code 2 — the schema-mismatch error the owner actually hit adding a synced
+    // field. Regression guard for it rendering as the opaque "CKError.2".
+    @Test func ckErrorCategory_partialFailure() {
+        let e = NSError(domain: "CKErrorDomain", code: 2)
+        #expect(SyncActivityMonitor.errorCategory(e) == "CKError.partialFailure")
+    }
+
+    @Test func ckErrorCategory_changeTokenExpired() {
+        let e = NSError(domain: "CKErrorDomain", code: 21)
+        #expect(SyncActivityMonitor.errorCategory(e) == "CKError.changeTokenExpired")
+    }
+
+    @Test func ckErrorCategory_zoneNotFound() {
+        let e = NSError(domain: "CKErrorDomain", code: 26)
+        #expect(SyncActivityMonitor.errorCategory(e) == "CKError.zoneNotFound")
+    }
+
+    @Test func ckErrorCategory_accountTemporarilyUnavailable() {
+        let e = NSError(domain: "CKErrorDomain", code: 36)
+        #expect(SyncActivityMonitor.errorCategory(e) == "CKError.accountTemporarilyUnavailable")
+    }
+
+    @Test func ckErrorCategory_unknownCode_fallsBackToRawNumber() {
+        let e = NSError(domain: "CKErrorDomain", code: 999)
+        #expect(SyncActivityMonitor.errorCategory(e) == "CKError.999")
+    }
+
     @Test func nonCKError_domainAndCode() {
         let e = NSError(domain: "NSURLErrorDomain", code: -1009)
         #expect(SyncActivityMonitor.errorCategory(e) == "NSURLErrorDomain#-1009")

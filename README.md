@@ -175,7 +175,9 @@ All builds — the Development-signed Mac app and the TestFlight/App Store iOS a
 CloudKit **Production** environment (set via the `com.apple.developer.icloud-container-environment`
 entitlement), so your dev Mac build syncs with the iPhone companion. Before the first Production
 sync you must deploy the container schema to Production once: **CloudKit Console → the container →
-Deploy Schema Changes to Production**.
+Deploy Schema Changes to Production**. (Maintainers: adding a new synced field later needs the same
+deploy step again — `./scripts/install-dev.sh --ck-dev` builds against Development so the field gets
+created there first; see CLAUDE.md.)
 
 **How sync interacts with retention:** history deletions sync too — an explicit delete, Clear
 history, and retention-cap eviction all propagate to every synced device. That means the
