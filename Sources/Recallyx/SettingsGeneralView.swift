@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import RecallyxCore
 
@@ -45,16 +46,20 @@ struct SettingsGeneralView: View {
     @State private var launchError: String?
     @State private var searchShortcutError: String?
     @State private var transformShortcutError: String?
+    @State private var cliStatus: CLIInstall.Status?
+    @State private var cliError: String?
 
     var body: some View {
         VStack(spacing: 17) {
             defaultModelSection
             shortcutsSection
             historySection
+            commandLineToolSection
             startupSection
         }
         .onAppear {
             capText = String(settingsStore.settings.retentionCap)
+            cliStatus = computeCLIStatus()
         }
     }
 
@@ -255,6 +260,57 @@ struct SettingsGeneralView: View {
         }
     }
 
+    // MARK: - Command-line tool
+
+    /// The `recallyx` CLI ships inside the app bundle (Contents/Helpers/recallyx);
+    /// this row symlinks it into /usr/local/bin. No privilege escalation — when
+    /// the dir isn't writable we show the `ln -s` command to run instead.
+    private var commandLineToolSection: some View {
+        VStack(spacing: 0) {
+            SectionLabel(text: "Command-line tool", theme: theme)
+            SettingsCard(theme: theme) {
+                SettingsRow(
+                    label: "recallyx CLI",
+                    desc: cliError ?? cliDescription,
+                    last: true,
+                    theme: theme
+                ) {
+                    cliControls
+                }
+            }
+        }
+    }
+
+    private var cliDescription: String {
+        switch cliStatus ?? .installable(linkPath: CLIInstall.defaultLinkPath) {
+        case .installed(let linkPath):
+            return "Installed at \(linkPath). Search history and run actions from the terminal."
+        case .installable:
+            return "Search your history and run saved actions from the terminal."
+        case .conflict(let linkPath):
+            return "A different recallyx is linked at \(linkPath). Replace it to point at this app."
+        case .manual(let command):
+            return "/usr/local/bin isn't writable. Run this in Terminal:\n\(command)"
+        }
+    }
+
+    @ViewBuilder
+    private var cliControls: some View {
+        switch cliStatus ?? .installable(linkPath: CLIInstall.defaultLinkPath) {
+        case .installed:
+            SettingsButton(title: "Reveal in Finder", theme: theme, action: revealCLI)
+        case .installable:
+            SettingsButton(title: "Install", theme: theme, action: installCLI)
+        case .conflict:
+            SettingsButton(title: "Replace", theme: theme, action: installCLI)
+        case .manual(let command):
+            SettingsButton(title: "Copy command", theme: theme) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(command, forType: .string)
+            }
+        }
+    }
+
     // MARK: - Startup
 
     private var startupSection: some View {
@@ -298,6 +354,64 @@ struct SettingsGeneralView: View {
         } catch {
             launchError = error.localizedDescription
         }
+    }
+
+    // MARK: - CLI install (thin FileManager shell around CLIInstall.status)
+
+    /// Absolute path to the bundled CLI: `<Recallyx.app>/Contents/Helpers/recallyx`.
+    private func cliHelperPath() -> String {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Helpers/recallyx")
+            .path
+    }
+
+    /// Probe the filesystem and hand the observed facts to the pure decider.
+    private func computeCLIStatus() -> CLIInstall.Status {
+        let fm = FileManager.default
+        let link = CLIInstall.defaultLinkPath
+        // `destinationOfSymbolicLink` is non-nil iff `link` is a symlink (even a
+        // broken/stale one); `fileExists` follows the link (a real file or a
+        // valid target). Either means something is there.
+        let rawTarget = try? fm.destinationOfSymbolicLink(atPath: link)
+        let linkExists = rawTarget != nil || fm.fileExists(atPath: link)
+        let target = rawTarget.map { raw -> String in
+            (raw as NSString).isAbsolutePath
+                ? raw
+                : (URL(fileURLWithPath: link).deletingLastPathComponent()
+                    .appendingPathComponent(raw).path)
+        }
+        let binDir = URL(fileURLWithPath: link).deletingLastPathComponent().path
+        var isDir: ObjCBool = false
+        let binDirWritable = fm.fileExists(atPath: binDir, isDirectory: &isDir)
+            && isDir.boolValue && fm.isWritableFile(atPath: binDir)
+        return CLIInstall.status(
+            helperPath: cliHelperPath(),
+            linkExists: linkExists,
+            linkTarget: target,
+            binDirWritable: binDirWritable
+        )
+    }
+
+    /// Create (or replace a stale) symlink, then re-probe.
+    private func installCLI() {
+        let fm = FileManager.default
+        let link = CLIInstall.defaultLinkPath
+        cliError = nil
+        // Remove whatever's there first so createSymbolicLink can't fail on a
+        // stale link/file (we only reach here when the dir is writable).
+        if (try? fm.destinationOfSymbolicLink(atPath: link)) != nil || fm.fileExists(atPath: link) {
+            try? fm.removeItem(atPath: link)
+        }
+        do {
+            try fm.createSymbolicLink(atPath: link, withDestinationPath: cliHelperPath())
+        } catch {
+            cliError = "Couldn't install: \(error.localizedDescription)"
+        }
+        cliStatus = computeCLIStatus()
+    }
+
+    private func revealCLI() {
+        NSWorkspace.shared.selectFile(CLIInstall.defaultLinkPath, inFileViewerRootedAtPath: "")
     }
 }
 

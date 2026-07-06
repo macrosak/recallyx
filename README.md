@@ -233,8 +233,21 @@ your saved action pipelines as unix filters, straight from the terminal. It read
 **same** history the menu-bar app records — strictly **read-only**, so it can never
 mutate or corrupt the app's database, and it reads fine while the app is running.
 
+The CLI **ships inside the app** (at `Recallyx.app/Contents/Helpers/recallyx`), so
+there's nothing extra to build. Put it on your PATH one of two ways:
+
+- **Settings → General → Command-line tool → Install** — symlinks it into
+  `/usr/local/bin/recallyx`. (If that dir isn't writable it shows the `ln -s` command
+  to run instead — no admin prompt.)
+- Or by hand:
+
+  ```bash
+  ln -s /Applications/Recallyx.app/Contents/Helpers/recallyx /usr/local/bin/recallyx
+  ```
+
+Building from source instead? The CLI is also an SPM product:
+
 ```bash
-# build the binary and put it on your PATH as `recallyx`
 swift build -c release --product recallyx-cli
 ln -s "$(swift build -c release --product recallyx-cli --show-bin-path)/recallyx-cli" \
       /usr/local/bin/recallyx
