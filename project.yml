@@ -61,8 +61,8 @@ targets:
         embed: true
         codeSign: true
         copy:
-          destination: wrapper       # Contents/…
-          subpath: Helpers           #   → Contents/Helpers/recallyx
+          destination: wrapper                 # the .app bundle root
+          subpath: Contents/Helpers            #   → Recallyx.app/Contents/Helpers/recallyx
     settings:
       base:
         INFOPLIST_FILE: Sources/Recallyx/Resources/Info.plist
