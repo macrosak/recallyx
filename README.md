@@ -120,6 +120,25 @@ xattr -dr com.apple.quarantine /Applications/Recallyx.app
 (On macOS 15 Sequoia and later, the old right-click → Open override no longer appears for
 un-notarized apps, so the `xattr` command is the reliable way in.)
 
+### Update or reinstall with one command
+
+This command installs the latest release and fixes the Accessibility permission:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/macrosak/recallyx/main/scripts/reinstall-latest.sh | bash
+```
+
+It quits Recallyx and resets its Accessibility permission (`tccutil reset`). Then it
+downloads the latest DMG, replaces the app, clears the quarantine flag and relaunches.
+It replaces the app wherever it's already installed, `/Applications` or
+`~/Applications`. Afterwards, press ⌃⇧V, turn Recallyx on under
+**Privacy & Security → Accessibility**, then quit and reopen it.
+To keep the current permission, add `--no-reset`. To pick the install folder, add
+`--dest <dir>`. Pass either through `| bash -s -- --no-reset`.
+
+This installs the ad-hoc DMG build. If a Mac runs the team-signed `install-dev.sh` build
+for iCloud sync, this replaces it and sync turns off.
+
 > **Heads up on iCloud sync:** the DMG (and the `bundle.sh` build below) is ad-hoc signed,
 > which can't carry the CloudKit entitlement — so **iCloud sync is unavailable in these builds**:
 > the Settings toggle is disabled and captioned, and the app never turns mirroring on there.
@@ -283,6 +302,8 @@ Notes:
   tccutil reset Accessibility io.github.macrosak.recallyx
   killall Recallyx && ./scripts/install.sh
   ```
+  Running a release DMG? The [one-command reinstall](#update-or-reinstall-with-one-command)
+  resets the permission and installs the latest version in one step.
 - **App blocked by Gatekeeper after replacing the bundle** — re-run the `xattr` command above
   on the new `Recallyx.app`.
 

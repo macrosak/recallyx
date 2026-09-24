@@ -6,6 +6,7 @@ Build, packaging, and dev tooling. Everything runs with Command Line Tools only 
 
 - **`bundle.sh`** — builds `Recallyx.app` in the repo root via `swift build` + a hand-rolled bundle. Signs with the `Recallyx Dev` identity if present, else ad-hoc. Honors `RECALLYX_VERSION` (set by CI) for the Info.plist version.
 - **`make-dmg.sh`** — wraps an existing `Recallyx.app` into `Recallyx-<version>-arm64.dmg` (built-in `hdiutil`, drag-to-install layout). Run `bundle.sh` first.
+- **`reinstall-latest.sh`** — installs the latest GitHub release for end users, and is meant to be run with `curl … | bash`. It quits the app and runs `tccutil reset Accessibility` (skip it with `--no-reset`). Then it downloads the release DMG, replaces the installed app (wherever it is now, else `/Applications`; `--dest` overrides), removes the quarantine flag and relaunches. It downloads the app and never builds it, so it needs no toolchain.
 - **`install.sh`** — killalls any running instance, copies the bundle to `~/Applications`, and launches it.
 - **`test.sh`** — runs the test suite. Use this instead of bare `swift test`: under CLT the swift-testing framework lives off the default search path, and this wrapper adds the needed `-F`/rpath flags.
 
