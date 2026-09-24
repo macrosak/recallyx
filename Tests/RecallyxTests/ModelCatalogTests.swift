@@ -10,12 +10,12 @@ struct ModelCatalogTests {
     }
 
     @Test func defaultStaysOpenAI() {
-        #expect(ModelCatalog.default == "gpt-4o-mini")
+        #expect(ModelCatalog.default == "gpt-6-luna")
         #expect(ModelCatalog.openAI.contains(ModelCatalog.default))
     }
 
     @Test func claudeModelsPresentAndRouteToAnthropic() {
-        let expected = ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-8"]
+        let expected = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5-5", "claude-fable-5-1"]
         #expect(ModelCatalog.anthropic == expected)
         for model in ModelCatalog.anthropic {
             #expect(AIProvider.provider(for: model) == .anthropic)

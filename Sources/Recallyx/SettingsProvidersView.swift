@@ -453,7 +453,7 @@ struct ProviderEditor: View {
             case .anthropic:
                 _ = try await AnthropicClient().complete(apiKey: trimmed, model: ModelCatalog.anthropic.first ?? "claude-haiku-4-5", promptTemplate: "Reply with: ok", text: "")
             case .gemini:
-                _ = try await GeminiClient().complete(apiKey: trimmed, model: ModelCatalog.gemini.first ?? "gemini-3.5-flash", promptTemplate: "Reply with: ok", text: "")
+                _ = try await GeminiClient().complete(apiKey: trimmed, model: ModelCatalog.gemini.first ?? "gemini-3.8-flash", promptTemplate: "Reply with: ok", text: "")
             case .openAICompatible:
                 guard let baseURL = provider.baseURL, !baseURL.isEmpty,
                       let model = (provider.models ?? []).first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
