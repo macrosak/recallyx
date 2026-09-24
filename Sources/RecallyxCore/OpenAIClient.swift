@@ -144,23 +144,22 @@ public struct OpenAIClient {
 /// `AIProvider`).
 public enum ModelCatalog {
     public static let openAI: [String] = [
-        "gpt-4o-mini",
-        "gpt-4o",
-        "gpt-5.4-nano",
-        "gpt-5.4-mini",
-        "gpt-5.4",
+        "gpt-6-luna",
+        "gpt-6-sol",
+        "gpt-6-astra",
     ]
     public static let anthropic: [String] = [
         "claude-haiku-4-5",
-        "claude-sonnet-4-6",
-        "claude-opus-4-8",
+        "claude-sonnet-5",
+        "claude-opus-5-5",
+        "claude-fable-5-1",
     ]
     /// Google Gemini cloud models — addressed `gemini*` so they route to
     /// `GeminiClient` (BYO-key). Easily updatable as Google ships new GA ids.
     public static let gemini: [String] = [
-        "gemini-3.5-flash",
-        "gemini-2.5-pro",
-        "gemini-3.1-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-pro-preview",
     ]
     /// Local models served by Ollama — addressed `ollama:<name>` so they route
     /// to `OllamaClient`. Users can also type a custom `ollama:<model>` override.
@@ -179,7 +178,7 @@ public enum ModelCatalog {
     public static let apple: [String] = ["apple:on-device"]
     /// Existing call sites that iterate every model keep working.
     public static let all: [String] = openAI + anthropic + gemini + ollama + apple
-    public static let `default` = "gpt-4o-mini"
+    public static let `default` = "gpt-6-luna"
 
     // MARK: - Availability-aware grouping (for the Settings model pickers)
 
