@@ -263,8 +263,14 @@ final class HistoryPanelController {
     }
 
     private func installEventMonitors() {
+        // Not `self?.handleKeyDown(event) ?? event`: optional chaining flattens
+        // the handler's `nil` ("consumed") into the same `nil` as "self is
+        // gone", and `?? event` then re-delivers every handled key to the
+        // window — the text field beeps on esc, and ↵ lands after the panel
+        // has closed, so AppKit plays its "unhandled key" alert sound.
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKeyDown(event) ?? event
+            guard let self else { return event }
+            return self.handleKeyDown(event)
         }
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.dismiss() }
