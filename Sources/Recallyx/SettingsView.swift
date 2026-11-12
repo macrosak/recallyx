@@ -85,7 +85,7 @@ struct SettingsView: View {
                         .padding(.vertical, 20)
                 }
             case .providers:
-                SettingsProvidersView(settingsStore: settingsStore, refreshModels: refreshModels, theme: theme)
+                SettingsProvidersView(settingsStore: settingsStore, liveModelCatalog: liveModelCatalog, theme: theme)
             case .actions:
                 SettingsActionsView(settingsStore: settingsStore, shortcutActions: shortcutActions, liveModelCatalog: liveModelCatalog, theme: theme)
             }
