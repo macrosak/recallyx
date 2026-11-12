@@ -21,35 +21,29 @@ public enum VisionTextRecognizer {
     ///     retry rather than marking it permanently empty).
     ///
     /// Runs the (synchronous, CPU-heavy) Vision request on the calling context —
-    /// callers invoke it from an off-main `Task.detached`.
+    /// callers invoke it from an off-main `Task.detached`. `perform` is
+    /// synchronous, so results are read straight off the request afterwards (no
+    /// completion handler / continuation: Vision invokes a completion handler
+    /// with the error *and* `perform` throws, so bridging both would resume a
+    /// continuation twice and crash).
     public static func recognize(png: Data) async -> String? {
         #if canImport(Vision)
         guard let cgImage = decodeCGImage(png) else { return nil }
-        return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            let request = VNRecognizeTextRequest { request, error in
-                if error != nil {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                guard let observations = request.results as? [VNRecognizedTextObservation] else {
-                    continuation.resume(returning: "")
-                    return
-                }
-                let lines = observations.compactMap { $0.topCandidates(1).first?.string }
-                continuation.resume(returning: lines.joined(separator: "\n"))
-            }
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-            request.automaticallyDetectsLanguage = true
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            do {
-                // Synchronous: the completion handler above fires before this
-                // returns, so exactly one branch resumes the continuation.
-                try handler.perform([request])
-            } catch {
-                continuation.resume(returning: nil)
-            }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.automaticallyDetectsLanguage = true
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            return nil
         }
+        guard let observations = request.results as? [VNRecognizedTextObservation] else {
+            return ""
+        }
+        let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+        return lines.joined(separator: "\n")
         #else
         return nil
         #endif
