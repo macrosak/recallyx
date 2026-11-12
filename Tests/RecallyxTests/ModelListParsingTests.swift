@@ -127,4 +127,54 @@ struct ModelListParsingTests {
     @Test func ollamaGarbageYieldsEmpty() {
         #expect(OllamaModelList.parse(data("nope")).isEmpty)
     }
+
+    // MARK: - OpenAI denylist spot checks
+
+    @Test func openAIDenylistDropsNonChatFamilies() {
+        let nonChat = [
+            "text-embedding-3-large", "tts-1-hd", "gpt-4o-mini-tts", "whisper-1",
+            "dall-e-3", "gpt-image-1", "omni-moderation-latest", "gpt-4o-realtime-preview",
+            "gpt-4o-audio-preview", "gpt-4o-transcribe", "gpt-4o-search-preview",
+            "gpt-3.5-turbo-instruct", "davinci-002", "babbage-002",
+        ]
+        for id in nonChat { #expect(!OpenAIModelList.isChatCapable(id), "\(id) should be dropped") }
+        for id in ["gpt-5.4-mini", "gpt-4.1", "o3", "o4-mini", "chatgpt-4o-latest"] {
+            #expect(OpenAIModelList.isChatCapable(id), "\(id) should be kept")
+        }
+    }
+
+    // MARK: - OpenAI-compatible (custom endpoints)
+
+    @Test func compatibleKeepsArbitraryIdsDropsNonChatSortsAlpha() {
+        let json = """
+        {"object":"list","data":[
+          {"id":"mixtral-8x7b-32768"},{"id":"llama-3.1-70b"},{"id":"meta-llama/Llama-3-8b"},
+          {"id":"nomic-embed-text"},{"id":"text-embedding-ada-002"},{"id":"bge-reranker-v2"},
+          {"id":"whisper-large-v3"},{"id":"llama-3.1-70b"}
+        ]}
+        """
+        #expect(OpenAICompatibleModelList.parse(data(json)) == ["llama-3.1-70b", "meta-llama/Llama-3-8b", "mixtral-8x7b-32768"])
+    }
+
+    @Test func compatibleGarbageYieldsEmpty() {
+        #expect(OpenAICompatibleModelList.parse(data("[]")).isEmpty)
+    }
+
+    // MARK: - Pagination cursors
+
+    @Test func anthropicPageCursorOnlyWhenHasMore() {
+        let more = AnthropicModelList.parsePage(data(#"{"data":[{"id":"a"}],"has_more":true,"last_id":"a"}"#))
+        #expect(more?.ids == ["a"])
+        #expect(more?.nextAfterID == "a")
+        let last = AnthropicModelList.parsePage(data(#"{"data":[{"id":"b"}],"has_more":false,"last_id":"b"}"#))
+        #expect(last?.nextAfterID == nil)
+        #expect(AnthropicModelList.parsePage(data("nope")) == nil)
+    }
+
+    @Test func geminiPageToken() {
+        let page = GeminiModelList.parsePage(data(#"{"models":[],"nextPageToken":"t"}"#))
+        #expect(page?.ids == [])
+        #expect(page?.nextPageToken == "t")
+        #expect(GeminiModelList.parsePage(data(#"{"models":[],"nextPageToken":""}"#))?.nextPageToken == nil)
+    }
 }

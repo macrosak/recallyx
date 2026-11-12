@@ -302,7 +302,7 @@ public final class LiveModelCatalog: ObservableObject {
     }
 
     /// Only these provider types have a fetchable model list; Apple is static.
-    public static func isFetchable(_ type: ProviderType) -> Bool {
+    nonisolated public static func isFetchable(_ type: ProviderType) -> Bool {
         switch type {
         case .openai, .anthropic, .gemini, .ollama, .openAICompatible: return true
         case .apple: return false
@@ -381,7 +381,7 @@ public final class LiveModelCatalog: ObservableObject {
     }
 
     /// The Providers-tab status line for one provider. Pure.
-    public static func statusText(entry: Entry?, status: Status?, now: Date = Date()) -> String {
+    nonisolated public static func statusText(entry: Entry?, status: Status?, now: Date = Date()) -> String {
         switch status {
         case .fetching:
             return "Fetching models…"
