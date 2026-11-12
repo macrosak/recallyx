@@ -7,6 +7,17 @@ public enum AIClientDefaults {
     /// off mid-sentence at the old 1000-token ceiling. The local Ollama/Apple
     /// paths don't take a cap.
     public static let maxOutputTokens = 4096
+    /// Output-token cap used instead when a step sets a reasoning effort:
+    /// reasoning tokens count against the cap on every provider, so the plain
+    /// 4096 would leave little room for the visible answer.
+    public static let maxOutputTokensWithReasoning = 16000
+    /// Request timeout without / with a reasoning effort — reasoning is slower.
+    public static let requestTimeout: TimeInterval = 30
+    public static let reasoningRequestTimeout: TimeInterval = 120
+
+    public static func timeout(for effort: Effort?) -> TimeInterval {
+        effort == nil ? requestTimeout : reasoningRequestTimeout
+    }
 }
 
 /// Fill an AI-step prompt template with the clip text. When the template
@@ -155,7 +166,10 @@ public struct AIClient {
     /// request. The gate is **model-aware** (`supportsVision(forModel:)`) since
     /// Ollama vision is per-model — a non-vision model with an image throws
     /// `ActionError.imageNotSupported`; a vision-capable model passes it through.
-    public func complete(prompt: String, model: String, input: String, imageData: Data? = nil) async throws -> String {
+    ///
+    /// `effort` (nil = Default, nothing sent) is forwarded to the cloud clients,
+    /// which map it to their own reasoning knob; Ollama/Apple ignore it.
+    public func complete(prompt: String, model: String, input: String, imageData: Data? = nil, effort: Effort? = nil) async throws -> String {
         let provider = AIProvider.provider(for: model)
         if imageData != nil, !AIProvider.supportsVision(forModel: model) {
             throw ActionError.imageNotSupported
@@ -180,7 +194,9 @@ public struct AIClient {
                 model: parsed.model,
                 promptTemplate: prompt,
                 text: input,
-                imageData: imageData
+                imageData: imageData,
+                effort: effort,
+                isCustomEndpoint: true
             )
         case .openai, .anthropic, .gemini:
             guard let apiKey = provider.keychain?.read(), !apiKey.isEmpty else {
@@ -188,11 +204,11 @@ public struct AIClient {
             }
             switch provider {
             case .openai:
-                return try await openAI.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData)
+                return try await openAI.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData, effort: effort)
             case .anthropic:
-                return try await anthropic.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData)
+                return try await anthropic.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData, effort: effort)
             default:
-                return try await gemini.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData)
+                return try await gemini.complete(apiKey: apiKey, model: model, promptTemplate: prompt, text: input, imageData: imageData, effort: effort)
             }
         }
     }

@@ -29,6 +29,25 @@ public enum OutputMode: String, Codable, Equatable, CaseIterable {
     }
 }
 
+/// Per-AI-step reasoning effort. `nil` on a `Step` means "Default" — nothing is
+/// sent, so the request is byte-identical to a pre-feature one. Each cloud
+/// client maps a level to its own knob (OpenAI `reasoning_effort`, Anthropic
+/// `output_config.effort` / a thinking budget, Gemini `thinkingLevel`); the
+/// local Ollama/Apple paths ignore it.
+public enum Effort: String, Codable, Equatable, CaseIterable {
+    case low
+    case medium
+    case high
+
+    public var label: String {
+        switch self {
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        }
+    }
+}
+
 /// One stage of an action pipeline. A `.script` step pipes text through a bash
 /// filter; an `.ai` step runs it through OpenAI with `prompt` (and an optional
 /// per-step model override). Generalizes AI Replace's fixed pre/AI/post stages.
@@ -39,6 +58,9 @@ public struct Step: Codable, Identifiable, Equatable {
     public var script: String
     public var prompt: String
     public var model: String?
+    /// Optional reasoning effort for `.ai` steps; `nil` = provider default
+    /// (nothing sent). Ignored for `.script` steps.
+    public var effort: Effort?
 
     public init(
         id: UUID = UUID(),
@@ -46,7 +68,8 @@ public struct Step: Codable, Identifiable, Equatable {
         enabled: Bool = true,
         script: String = "",
         prompt: String = "",
-        model: String? = nil
+        model: String? = nil,
+        effort: Effort? = nil
     ) {
         self.id = id
         self.type = type
@@ -54,6 +77,25 @@ public struct Step: Codable, Identifiable, Equatable {
         self.script = script
         self.prompt = prompt
         self.model = model
+        self.effort = effort
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, enabled, script, prompt, model, effort
+    }
+
+    // Custom decode so a pre-feature step (no `effort` key) and an unknown /
+    // future effort value both decode to `nil` (Default) instead of failing the
+    // whole actions list. `encode` stays synthesized (nil `effort` is omitted).
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        type = try c.decode(StepType.self, forKey: .type)
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        script = try c.decode(String.self, forKey: .script)
+        prompt = try c.decode(String.self, forKey: .prompt)
+        model = try c.decodeIfPresent(String.self, forKey: .model)
+        effort = (try? c.decodeIfPresent(Effort.self, forKey: .effort)) ?? nil
     }
 }
 

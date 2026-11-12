@@ -63,7 +63,9 @@ public struct OpenAIClient {
         model: String,
         promptTemplate: String,
         text: String,
-        imageData: Data? = nil
+        imageData: Data? = nil,
+        effort: Effort? = nil,
+        isCustomEndpoint: Bool = false
     ) async throws -> String {
         guard !apiKey.isEmpty else { throw OpenAIError.missingApiKey }
         guard let endpoint = Self.chatCompletionsURL(baseURL: baseURL) else {
@@ -74,26 +76,18 @@ public struct OpenAIClient {
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        request.timeoutInterval = 30
+        request.timeoutInterval = AIClientDefaults.timeout(for: effort)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
-        let content: Any
-        if let imageData {
-            let dataURL = "data:image/png;base64,\(imageData.base64EncodedString())"
-            content = [
-                ["type": "text", "text": fullPrompt],
-                ["type": "image_url", "image_url": ["url": dataURL]],
-            ]
-        } else {
-            content = fullPrompt
-        }
-
-        let body: [String: Any] = [
-            "model": model,
-            "messages": [["role": "user", "content": content]],
-            "max_completion_tokens": Self.maxTokens
-        ]
+        let body = Self.requestBody(
+            model: model,
+            fullPrompt: fullPrompt,
+            imageData: imageData,
+            effort: effort,
+            isCustomEndpoint: isCustomEndpoint
+        )
+        let maxTokens = body["max_completion_tokens"] as? Int ?? Self.maxTokens
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -111,7 +105,7 @@ public struct OpenAIClient {
         }
 
         if decoded?.choices.first?.finishReason == "length" {
-            Log.info("OpenAI response truncated at max_completion_tokens=\(Self.maxTokens)")
+            Log.info("OpenAI response truncated at max_completion_tokens=\(maxTokens)")
         }
 
         guard let text = decoded?.choices.first?.message.content?
@@ -120,6 +114,57 @@ public struct OpenAIClient {
             throw OpenAIError.emptyResponse
         }
         return text
+    }
+
+    /// Pure chat-completions request body. With `effort == nil` (Default) this
+    /// is byte-for-byte the pre-feature body. A non-nil effort adds
+    /// `reasoning_effort` (+ a larger `max_completion_tokens`, since reasoning
+    /// tokens count against it) **only** for built-in OpenAI reasoning models
+    /// (`supportsReasoningEffort`). Custom OpenAI-compatible endpoints never get
+    /// it — servers vary and many reject unknown params with a 400.
+    public static func requestBody(
+        model: String,
+        fullPrompt: String,
+        imageData: Data? = nil,
+        effort: Effort? = nil,
+        isCustomEndpoint: Bool = false
+    ) -> [String: Any] {
+        let content: Any
+        if let imageData {
+            let dataURL = "data:image/png;base64,\(imageData.base64EncodedString())"
+            content = [
+                ["type": "text", "text": fullPrompt],
+                ["type": "image_url", "image_url": ["url": dataURL]],
+            ]
+        } else {
+            content = fullPrompt
+        }
+
+        var body: [String: Any] = [
+            "model": model,
+            "messages": [["role": "user", "content": content]],
+            "max_completion_tokens": maxTokens
+        ]
+        if let effort, !isCustomEndpoint, supportsReasoningEffort(model: model) {
+            body["reasoning_effort"] = effort.rawValue
+            body["max_completion_tokens"] = AIClientDefaults.maxOutputTokensWithReasoning
+        }
+        return body
+    }
+
+    /// Whether an OpenAI model id accepts `reasoning_effort`: the o-series
+    /// (`o1`, `o3`, `o4`, with or without a `-suffix`) and `gpt-N` for N ≥ 5,
+    /// excluding the non-reasoning `-chat` variants. Everything else (gpt-4o,
+    /// gpt-4.1, …) gets nothing — those models 400 on the parameter.
+    public static func supportsReasoningEffort(model: String) -> Bool {
+        let m = model.lowercased()
+        for series in ["o1", "o3", "o4"] where m == series || m.hasPrefix(series + "-") {
+            return true
+        }
+        guard m.hasPrefix("gpt-"), !m.contains("-chat") else { return false }
+        let digits = m.dropFirst(4).prefix { $0.isNumber }
+        guard let major = Int(digits) else { return false }
+        return major >= 5
     }
 
     private struct ChatCompletionResponse: Decodable {
