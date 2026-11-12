@@ -35,14 +35,15 @@ public enum ActionError: LocalizedError {
 @MainActor
 public final class ActionRunner {
     private let runScript: (_ script: String, _ input: String) async throws -> String
-    private let runAI: (_ prompt: String, _ model: String?, _ input: String, _ imageData: Data?) async throws -> String
+    private let runAI: (_ prompt: String, _ model: String?, _ input: String, _ imageData: Data?, _ effort: Effort?) async throws -> String
 
     public init(
         defaultModel: @escaping () -> String,
         ollamaBaseURL: @escaping () -> String = { recallyxDefaultOllamaBaseURL },
         customEndpoint: @escaping (_ providerID: String) -> AIClient.CustomEndpoint? = { _ in nil },
         runScript: ((String, String) async throws -> String)? = nil,
-        runAI: ((String, String?, String, Data?) async throws -> String)? = nil
+        runAI: ((String, String?, String, Data?) async throws -> String)? = nil,
+        runAIWithEffort: ((String, String?, String, Data?, Effort?) async throws -> String)? = nil
     ) {
         // `ScriptRunner` (Process-based) is macOS-only; on other platforms the
         // default script runner throws rather than reaching a missing symbol. An
@@ -54,12 +55,22 @@ public final class ActionRunner {
         self.runScript = runScript ?? { _, _ in throw ActionError.scriptUnavailable }
         #endif
         let aiClient = AIClient(ollamaBaseURL: ollamaBaseURL, customEndpoint: customEndpoint)
-        self.runAI = runAI ?? { prompt, model, input, imageData in
-            // Route by model id: `ollama:*` → local Ollama, `claude*` →
-            // Anthropic, else OpenAI. The facade reads the matching provider's
-            // keychain key (cloud only); local needs none. `imageData` (non-nil
-            // for image clips) runs a vision request — non-vision providers throw.
-            try await aiClient.complete(prompt: prompt, model: model ?? defaultModel(), input: input, imageData: imageData)
+        // Seam precedence: the effort-aware injected runner, then the legacy
+        // 4-arg one (effort dropped, so existing injected seams keep working),
+        // then the real facade.
+        if let runAIWithEffort {
+            self.runAI = runAIWithEffort
+        } else if let runAI {
+            self.runAI = { prompt, model, input, imageData, _ in try await runAI(prompt, model, input, imageData) }
+        } else {
+            self.runAI = { prompt, model, input, imageData, effort in
+                // Route by model id: `ollama:*` → local Ollama, `claude*` →
+                // Anthropic, else OpenAI. The facade reads the matching provider's
+                // keychain key (cloud only); local needs none. `imageData` (non-nil
+                // for image clips) runs a vision request — non-vision providers throw.
+                // `effort` (nil = Default) maps per provider; local ignores it.
+                try await aiClient.complete(prompt: prompt, model: model ?? defaultModel(), input: input, imageData: imageData, effort: effort)
+            }
         }
     }
 
@@ -93,8 +104,8 @@ public final class ActionRunner {
         let first = steps[firstIdx]
         guard first.type == .ai else { throw ActionError.scriptFirstOnImage }
 
-        Log.info("action step \(firstIdx) ai (image) start model=\(first.model ?? "default")")
-        var current = try await runAI(first.prompt, first.model, "", imageData)
+        Log.info("action step \(firstIdx) ai (image) start model=\(first.model ?? "default") effort=\(first.effort?.rawValue ?? "default")")
+        var current = try await runAI(first.prompt, first.model, "", imageData, first.effort)
         Log.info("action step \(firstIdx) ai (image) ok len=\(current.count)")
 
         current = try await thread(steps[(firstIdx + 1)...], current: current)
@@ -116,8 +127,8 @@ public final class ActionRunner {
 
             case .ai:
                 guard !step.prompt.isEmpty else { continue }
-                Log.info("action step \(idx) ai start model=\(step.model ?? "default") len=\(current.count)")
-                current = try await runAI(step.prompt, step.model, current, nil)
+                Log.info("action step \(idx) ai start model=\(step.model ?? "default") effort=\(step.effort?.rawValue ?? "default") len=\(current.count)")
+                current = try await runAI(step.prompt, step.model, current, nil, step.effort)
                 Log.info("action step \(idx) ai ok len=\(current.count)")
             }
         }

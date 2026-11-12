@@ -359,7 +359,7 @@ struct SettingsActionsView: View {
 }
 
 /// One step card in the editor: type segmented · enable · trash · reorder, then
-/// the body (bash text for Script, prompt + model override for AI).
+/// the body (bash text for Script, prompt + model override + effort for AI).
 struct StepCard: View {
     @Binding var step: Step
     let theme: SettingsTheme
@@ -452,7 +452,18 @@ struct StepCard: View {
                         }
                     }
                     .labelsHidden().frame(width: 150)
+                    Text("Effort").font(.system(size: 11.5)).foregroundStyle(theme.textDim)
+                        .padding(.leading, 6)
+                    Picker("", selection: $step.effort) {
+                        Text("Default").tag(Effort?.none)
+                        ForEach(Effort.allCases, id: \.self) { level in
+                            Text(level.label).tag(Effort?.some(level))
+                        }
+                    }
+                    .labelsHidden().frame(width: 100)
                 }
+                Text("Higher effort is slower; ignored by local models.")
+                    .font(.system(size: 11.5)).foregroundStyle(theme.textFaint)
             } else {
                 StepBodyEditor(text: $step.script, theme: theme, placeholder: "bash — stdin → stdout")
             }
