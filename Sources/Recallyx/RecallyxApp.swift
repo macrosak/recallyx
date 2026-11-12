@@ -68,10 +68,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// sync" status line. Observed by `StatusItemView` (built in the App body).
     let syncMonitor = SyncActivityMonitor()
     /// Live, per-provider model lists fetched from each enabled provider's API
-    /// (with the hardcoded `ModelCatalog` as fallback). Refreshed when Settings
-    /// opens and when a provider key/URL is saved — never at launch (no network
-    /// at launch; AI calls only on explicit user action).
-    let liveModelCatalog = LiveModelCatalog()
+    /// (with the hardcoded `ModelCatalog` as fallback). Seeded from the persisted
+    /// `ModelListCache` so pickers show the last-fetched lists at launch/offline;
+    /// refreshed when Settings opens, on provider enable / key save, and via the
+    /// Providers tab's Refresh button — never at launch (no network at launch).
+    let liveModelCatalog = LiveModelCatalog(
+        initialEntries: ModelListCache.load(),
+        onEntriesChanged: { ModelListCache.save($0) }
+    )
     /// Whether CloudKit mirroring is actually running (sync on + entitled + built
     /// with it) — gates the menu-bar / Settings "Last sync" line.
     var isCloudSyncActive: Bool { store.isCloudSyncActive }

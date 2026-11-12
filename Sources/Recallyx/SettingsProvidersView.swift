@@ -8,9 +8,9 @@ import RecallyxCore
 /// appear in the Default-model + per-step pickers.
 struct SettingsProvidersView: View {
     @ObservedObject var settingsStore: SettingsStore
-    /// Kicks a live model-list refresh (`force` re-fetches even within the TTL).
-    /// Called after a key/URL save so a just-configured provider's models appear.
-    var refreshModels: (_ force: Bool) -> Void = { _ in }
+    /// Fetched per-provider model lists + fetch status (the editor's "Models"
+    /// card: status line, Refresh button, custom-endpoint fill menu).
+    @ObservedObject var liveModelCatalog: LiveModelCatalog
     let theme: SettingsTheme
 
     @State private var selectedID: UUID?
@@ -122,7 +122,7 @@ struct SettingsProvidersView: View {
                     provider: binding,
                     theme: theme,
                     keychainRevision: $keychainRevision,
-                    refreshModels: refreshModels
+                    liveModelCatalog: liveModelCatalog
                 )
                 .padding(.horizontal, 20)
                 .padding(.vertical, 18)
@@ -183,6 +183,7 @@ struct SettingsProvidersView: View {
             _ = KeychainStore.custom(account: account).delete()
         }
         settingsStore.settings.providers.remove(at: idx)
+        liveModelCatalog.prune(keeping: settingsStore.settings.providers)
         selectedID = SettingsProvidersView.neighborSelection(in: settingsStore.settings.providers, removedIndex: idx)
         settingsStore.flush()
     }
@@ -191,6 +192,18 @@ struct SettingsProvidersView: View {
     static func neighborSelection(in providers: [ProviderConfig], removedIndex: Int) -> UUID? {
         guard !providers.isEmpty else { return nil }
         return providers[min(removedIndex, providers.count - 1)].id
+    }
+
+    /// Appends `adding` to a custom provider's curated model list, skipping
+    /// blanks and ids already present (order-preserving). Pure.
+    static func mergingModels(_ existing: [String], adding: [String]) -> [String] {
+        var result = existing
+        var seen = Set(existing)
+        for raw in adding {
+            let id = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !id.isEmpty, seen.insert(id).inserted { result.append(id) }
+        }
+        return result
     }
 
     private func moveProviders(from source: IndexSet, to destination: Int) {
@@ -219,9 +232,9 @@ struct ProviderEditor: View {
     @Binding var provider: ProviderConfig
     let theme: SettingsTheme
     @Binding var keychainRevision: Int
-    /// Re-fetch model lists after a key/URL save so the pickers pick up the newly
-    /// configured provider's real models.
-    var refreshModels: (_ force: Bool) -> Void = { _ in }
+    /// Fetched model lists + status; refreshed for this provider on Refresh, on
+    /// enable, and after a key Save.
+    @ObservedObject var liveModelCatalog: LiveModelCatalog
 
     @State private var apiKey: String = ""
     @State private var showKey: Bool = false
@@ -255,8 +268,42 @@ struct ProviderEditor: View {
             case .openAICompatible:
                 customSection
             }
+            if LiveModelCatalog.isFetchable(provider.type) {
+                fetchedModelsSection
+            }
         }
         .onAppear { apiKey = keychain?.read() ?? "" }
+        // Turning a provider on fetches its real model list right away.
+        .onChange(of: provider.enabled) { enabled in
+            if enabled { liveModelCatalog.refresh(provider) }
+        }
+    }
+
+    // MARK: Fetched model list (status + Refresh)
+
+    private var fetchedModelsSection: some View {
+        VStack(spacing: 0) {
+            SectionLabel(text: "Available models", theme: theme)
+            SettingsCard(theme: theme) {
+                SettingsRow(
+                    label: "Model list",
+                    desc: liveModelCatalog.statusText(for: provider),
+                    last: true,
+                    theme: theme
+                ) {
+                    SettingsButton(title: "Refresh models", theme: theme) {
+                        liveModelCatalog.refresh(provider)
+                    }
+                    .disabled(liveModelCatalog.status[provider.id] == .fetching)
+                }
+            }
+        }
+    }
+
+    /// Fetched ids for a custom endpoint not yet in its curated list.
+    private var fetchedNotAdded: [String] {
+        let have = Set(provider.models ?? [])
+        return (liveModelCatalog.entries[provider.id]?.models ?? []).filter { !have.contains($0) }
     }
 
     // MARK: Header (icon + enable toggle + name for custom)
@@ -317,7 +364,9 @@ struct ProviderEditor: View {
                             set: { provider.baseURL = $0 }
                         ),
                         placeholder: AppSettings.defaultOllamaBaseURL,
-                        mono: true, width: 220, theme: theme
+                        mono: true, width: 220, theme: theme,
+                        // A changed server URL → re-list its installed models.
+                        onEditingEnded: { liveModelCatalog.refresh(provider) }
                     )
                 }
             }
@@ -382,9 +431,27 @@ struct ProviderEditor: View {
                         SettingsButton(title: "Remove", kind: .danger, theme: theme) { removeModel(at: idx) }
                     }
                 }
-                SettingsRow(label: "Add model", desc: "Model id this endpoint serves, e.g. llama-3.1-70b.", last: true, theme: theme) {
+                SettingsRow(label: "Add model", desc: "Model id this endpoint serves, e.g. llama-3.1-70b.", last: fetchedNotAdded.isEmpty, theme: theme) {
                     SettingsField(text: $newModel, placeholder: "model id", mono: true, width: 160, theme: theme, onEditingEnded: addModel)
                     SettingsButton(title: "Add", theme: theme, action: addModel)
+                }
+                if !fetchedNotAdded.isEmpty {
+                    SettingsRow(
+                        label: "Add from server",
+                        desc: "\(fetchedNotAdded.count) more fetched from this endpoint. With none listed above, the pickers show the whole fetched list.",
+                        last: true,
+                        theme: theme
+                    ) {
+                        Menu("Add…") {
+                            Button("Add all \(fetchedNotAdded.count)") { addModels(fetchedNotAdded) }
+                            Divider()
+                            ForEach(fetchedNotAdded, id: \.self) { model in
+                                Button(model) { addModels([model]) }
+                            }
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
                 }
             }
         }
@@ -436,8 +503,8 @@ struct ProviderEditor: View {
             provider.keychainAccount = keychain.account
         }
         keychainRevision += 1
-        // A just-saved key/URL can now fetch this provider's real model list.
-        refreshModels(true)
+        // A just-saved key can now fetch this provider's real model list.
+        liveModelCatalog.refresh(provider)
     }
 
     /// Tests the key as typed WITHOUT persisting it. Cloud providers hit their
@@ -484,6 +551,10 @@ struct ProviderEditor: View {
         models.append(trimmed)
         provider.models = models
         newModel = ""
+    }
+
+    private func addModels(_ ids: [String]) {
+        provider.models = SettingsProvidersView.mergingModels(provider.models ?? [], adding: ids)
     }
 
     private func removeModel(at index: Int) {

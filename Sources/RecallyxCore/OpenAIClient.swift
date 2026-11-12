@@ -229,7 +229,9 @@ public enum ModelCatalog {
     /// that provider's group is built from the live list (namespaced as the picker
     /// needs — `ollama:`/`custom:<id>:` prefixes applied here) instead of the
     /// hardcoded catalog. A provider absent from `liveModels` (or with an empty
-    /// list) falls back to the exact static behavior. Pure + order-preserving.
+    /// list) falls back to the exact static behavior. Custom providers prefer
+    /// their user-curated `models` and use the live list only when none are set.
+    /// Pure + order-preserving.
     public static func groups(forProviders providers: [ProviderConfig], liveModels: [UUID: [String]]) -> [ModelGroup] {
         var result: [ModelGroup] = []
         for provider in providers where provider.enabled {
@@ -248,13 +250,14 @@ public enum ModelCatalog {
             case .apple:
                 result.append(ModelGroup(title: provider.displayName, models: apple))
             case .openAICompatible:
-                // Prefer the endpoint's live `/models` list; else the user's
-                // manually-entered ids. Either way, tag as `custom:<id>:<model>`.
-                let source: [String] = live.isEmpty
-                    ? (provider.models ?? [])
-                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                        .filter { !$0.isEmpty }
-                    : live
+                // The user's curated model list wins (the fetched list is offered
+                // in the Providers tab to fill it — OpenRouter-style endpoints
+                // serve hundreds); with no curated ids, fall back to the fetched
+                // `/models` list. Either way, tag as `custom:<id>:<model>`.
+                let manual = (provider.models ?? [])
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                let source = manual.isEmpty ? live : manual
                 let models = source.map { provider.customModelID($0) }
                 if !models.isEmpty {
                     result.append(ModelGroup(title: provider.displayName, models: models))
